@@ -26,8 +26,8 @@ try:
     HAS_WEBSOCKETS = True
 except ImportError:
     HAS_WEBSOCKETS = False
-    websockets = None
-    sync_ws = None
+    websockets = None  # type: ignore[assignment]
+    sync_ws = None  # type: ignore[assignment]
 
 
 class WebSocketClient:

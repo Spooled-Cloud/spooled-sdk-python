@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "spooled"
-version = "1.0.2"
+version = "1.0.3"
 description = "Official Python SDK for Spooled Cloud job queue service"
 readme = "README.md"
 license = "Apache-2.0"
@@ -90,6 +90,7 @@ python_version = "3.10"
 strict = true
 warn_return_any = true
 warn_unused_configs = true
+warn_unused_ignores = false
 exclude = ["tests", "examples"]
 ignore_missing_imports = true
 plugins = ["pydantic.mypy"]

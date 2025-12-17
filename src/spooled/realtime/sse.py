@@ -20,7 +20,7 @@ try:
     HAS_SSE = True
 except ImportError:
     HAS_SSE = False
-    sseclient = None
+    sseclient = None  # type: ignore[assignment]
 
 
 class SSEClient:
@@ -98,7 +98,7 @@ class SSEClient:
             },
         ).__enter__()
 
-        self._sse_client = sseclient.SSEClient(self._response.iter_lines())
+        self._sse_client = sseclient.SSEClient(self._response.iter_lines())  # type: ignore[arg-type]
 
     def events(self) -> Generator[RealtimeEvent, None, None]:
         """
