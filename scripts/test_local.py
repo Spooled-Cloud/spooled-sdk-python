@@ -1553,7 +1553,7 @@ def test_admin_endpoints() -> None:
 
 
 def test_grpc(client: SpooledClient) -> None:
-    print("\n🔌 gRPC - Basic Operations")
+    print("\n🔌 gRPC - Full Operations")
     print("─" * 60)
 
     if SKIP_GRPC:
@@ -1573,17 +1573,19 @@ def test_grpc(client: SpooledClient) -> None:
 
     queue_name = f"{test_prefix}-grpc"
     worker_id = ""
+    job_id = ""
     grpc_client = None
 
     def test_connect() -> None:
         nonlocal grpc_client
-        grpc_client = SpooledGrpcClient({
-            "address": GRPC_ADDRESS,
-            "api_key": API_KEY,
-            "use_tls": False,
-        })
-        grpc_client.wait_for_ready(timeout=5)
-        log("gRPC connected")
+        grpc_client = SpooledGrpcClient(
+            address=GRPC_ADDRESS,
+            api_key=API_KEY,
+            use_tls=False,
+        )
+        ready = grpc_client.wait_for_ready(timeout=5)
+        assert_(ready, "gRPC should be ready")
+        log(f"gRPC connected, state: {grpc_client.get_state()}")
 
     run_test("Connect to gRPC server", test_connect)
 
@@ -1593,57 +1595,246 @@ def test_grpc(client: SpooledClient) -> None:
 
     def test_grpc_register() -> None:
         nonlocal worker_id
-        result = grpc_client.workers.register({
-            "queue_name": queue_name,
-            "hostname": "grpc-test-worker",
-            "max_concurrency": 5,
-        })
+        result = grpc_client.workers.register(
+            queue_name=queue_name,
+            hostname="grpc-test-worker",
+            worker_type="python-test",
+            max_concurrency=5,
+            version="1.0.0",
+            metadata={"test": "true"},
+        )
         worker_id = result.worker_id
         assert_defined(result.worker_id, "worker id")
+        assert_(result.heartbeat_interval_secs > 0, "heartbeat interval should be positive")
+        log(f"Registered worker: {worker_id}")
 
     run_test("gRPC: Register worker", test_grpc_register)
 
     def test_grpc_enqueue() -> None:
-        result = grpc_client.queue.enqueue({
-            "queue_name": queue_name,
-            "payload": {"message": "Hello from gRPC!"},
-            "priority": 5,
-        })
+        nonlocal job_id
+        result = grpc_client.queue.enqueue(
+            queue_name=queue_name,
+            payload={"message": "Hello from gRPC!"},
+            priority=5,
+            max_retries=3,
+            timeout_seconds=300,
+            tags={"source": "grpc-test"},
+        )
+        job_id = result.job_id
         assert_defined(result.job_id, "job id")
         assert_equal(result.created, True, "created")
+        log(f"Enqueued job: {job_id}")
 
     run_test("gRPC: Enqueue job", test_grpc_enqueue)
 
+    def test_grpc_get_job() -> None:
+        result = grpc_client.queue.get_job(job_id)
+        assert_defined(result.job, "job")
+        assert_equal(result.job.id, job_id, "job id matches")
+        assert_equal(result.job.queue_name, queue_name, "queue name")
+        log(f"Got job status: {result.job.status}")
+
+    run_test("gRPC: Get job by ID", test_grpc_get_job)
+
+    def test_grpc_get_queue_stats() -> None:
+        result = grpc_client.queue.get_queue_stats(queue_name)
+        assert_equal(result.queue_name, queue_name, "queue name")
+        assert_(result.pending >= 0, "pending should be non-negative")
+        log(f"Queue stats: pending={result.pending}, total={result.total}")
+
+    run_test("gRPC: Get queue stats", test_grpc_get_queue_stats)
+
     def test_grpc_dequeue() -> None:
-        result = grpc_client.queue.dequeue({
-            "queue_name": queue_name,
-            "worker_id": worker_id,
-            "batch_size": 1,
-        })
+        result = grpc_client.queue.dequeue(
+            queue_name=queue_name,
+            worker_id=worker_id,
+            batch_size=1,
+            lease_duration_secs=30,
+        )
         assert_equal(len(result.jobs), 1, "should dequeue 1 job")
+        assert_equal(result.jobs[0].id, job_id, "dequeued job id matches")
+        log(f"Dequeued job: {result.jobs[0].id}")
 
     run_test("gRPC: Dequeue job", test_grpc_dequeue)
 
-    def test_grpc_heartbeat() -> None:
-        result = grpc_client.workers.heartbeat({
-            "worker_id": worker_id,
-            "current_jobs": 0,
-            "status": "healthy",
-        })
-        assert_equal(result.acknowledged, True, "acknowledged")
+    def test_grpc_renew_lease() -> None:
+        result = grpc_client.queue.renew_lease(
+            job_id=job_id,
+            worker_id=worker_id,
+            extension_secs=60,
+        )
+        assert_equal(result.success, True, "renew lease success")
+        log(f"Lease renewed, expires: {result.new_expires_at}")
 
-    run_test("gRPC: Heartbeat", test_grpc_heartbeat)
+    run_test("gRPC: Renew job lease", test_grpc_renew_lease)
+
+    def test_grpc_complete() -> None:
+        result = grpc_client.queue.complete(
+            job_id=job_id,
+            worker_id=worker_id,
+            result={"processed": True, "message": "Done via gRPC"},
+        )
+        assert_equal(result.success, True, "complete success")
+        log("Job completed via gRPC")
+
+    run_test("gRPC: Complete job", test_grpc_complete)
+
+    def test_grpc_enqueue_and_fail() -> None:
+        # Enqueue a new job to fail
+        enqueue_result = grpc_client.queue.enqueue(
+            queue_name=queue_name,
+            payload={"test": "fail"},
+        )
+        fail_job_id = enqueue_result.job_id
+
+        # Dequeue it
+        grpc_client.queue.dequeue(
+            queue_name=queue_name,
+            worker_id=worker_id,
+            batch_size=1,
+        )
+
+        # Fail it
+        fail_result = grpc_client.queue.fail(
+            job_id=fail_job_id,
+            worker_id=worker_id,
+            error="Test failure from gRPC",
+            retry=True,
+        )
+        assert_equal(fail_result.success, True, "fail success")
+        log(f"Job failed, will_retry: {fail_result.will_retry}")
+
+    run_test("gRPC: Fail job", test_grpc_enqueue_and_fail)
+
+    def test_grpc_heartbeat() -> None:
+        result = grpc_client.workers.heartbeat(
+            worker_id=worker_id,
+            current_jobs=0,
+            status="healthy",
+            metadata={"memory": "256MB"},
+        )
+        assert_equal(result.acknowledged, True, "acknowledged")
+        log(f"Heartbeat acknowledged, should_drain: {result.should_drain}")
+
+    run_test("gRPC: Worker heartbeat", test_grpc_heartbeat)
 
     def test_grpc_deregister() -> None:
         result = grpc_client.workers.deregister(worker_id)
         assert_equal(result.success, True, "deregister success")
+        log("Worker deregistered")
 
     run_test("gRPC: Deregister worker", test_grpc_deregister)
+
+    def test_grpc_context_manager() -> None:
+        with SpooledGrpcClient(
+            address=GRPC_ADDRESS,
+            api_key=API_KEY,
+            use_tls=False,
+        ) as ctx_client:
+            result = ctx_client.queue.get_queue_stats(queue_name)
+            assert_defined(result.queue_name, "queue name")
+        log("Context manager works correctly")
+
+    run_test("gRPC: Context manager", test_grpc_context_manager)
 
     # Cleanup
     if grpc_client:
         try:
             grpc_client.close()
+        except Exception:
+            pass
+
+
+def test_websocket_realtime(client: SpooledClient) -> None:
+    print("\n🔌 WebSocket - Real-time Events")
+    print("─" * 60)
+
+    # WebSocket requires the realtime extra
+    try:
+        from spooled.realtime import (
+            WebSocketClient,
+            WebSocketConnectionOptions,
+            ConnectionState,
+            SubscriptionFilter,
+        )
+    except ImportError:
+        print("  ⏭️  WebSocket tests skipped (websockets not installed)")
+        results.append(TestResult(name="WebSocket tests", passed=True, duration=0, skipped=True))
+        return
+
+    queue_name = f"{test_prefix}-ws"
+    ws_client = None
+    received_events: list[Any] = []
+
+    def test_ws_connect() -> None:
+        nonlocal ws_client
+        # Convert HTTP URL to WS URL
+        ws_url = BASE_URL.replace("http://", "ws://").replace("https://", "wss://")
+
+        ws_client = WebSocketClient(WebSocketConnectionOptions(
+            ws_url=ws_url,
+            token=API_KEY,
+            auto_reconnect=False,  # Don't reconnect in tests
+            command_timeout=5.0,
+        ))
+        assert_equal(ws_client.state, ConnectionState.DISCONNECTED, "initial state")
+
+    run_test("WebSocket: Create client", test_ws_connect)
+
+    if not ws_client:
+        print("  ⏭️  Skipping remaining WebSocket tests")
+        return
+
+    def test_ws_event_handler() -> None:
+        @ws_client.on("job.created")
+        def on_job_created(event):
+            received_events.append(event)
+            log(f"Event received: {event.type}")
+
+        assert_("job.created" in ws_client._event_handlers, "handler registered")
+
+    run_test("WebSocket: Register event handler", test_ws_event_handler)
+
+    def test_ws_state_handler() -> None:
+        states = []
+
+        @ws_client.on_state_change
+        def on_state(state):
+            states.append(state)
+
+        ws_client._set_state(ConnectionState.CONNECTING)
+        assert_(len(states) >= 1, "state handler called")
+        ws_client._set_state(ConnectionState.DISCONNECTED)
+
+    run_test("WebSocket: State change handler", test_ws_state_handler)
+
+    def test_ws_subscription_management() -> None:
+        filter1 = SubscriptionFilter(queue=queue_name)
+        filter2 = SubscriptionFilter(job_id="test-job")
+
+        ws_client.subscribe(filter1)
+        ws_client.subscribe(filter2)
+        assert_equal(len(ws_client._subscriptions), 2, "two subscriptions")
+
+        ws_client.unsubscribe(filter1)
+        assert_equal(len(ws_client._subscriptions), 1, "one subscription after unsubscribe")
+
+        ws_client.unsubscribe(filter2)
+        assert_equal(len(ws_client._subscriptions), 0, "no subscriptions")
+
+    run_test("WebSocket: Subscription management", test_ws_subscription_management)
+
+    def test_ws_build_url() -> None:
+        url = ws_client._build_ws_url()
+        assert_("api/v1/ws" in url, "URL contains ws path")
+        assert_("token=" in url, "URL contains token")
+
+    run_test("WebSocket: URL building", test_ws_build_url)
+
+    # Cleanup
+    if ws_client:
+        try:
+            ws_client.disconnect()
         except Exception:
             pass
 
@@ -1785,6 +1976,9 @@ def main() -> None:
 
         # gRPC
         test_grpc(client)
+
+        # WebSocket (extended tests)
+        test_websocket_realtime(client)
 
     finally:
         print("\n🧹 Cleaning up...")

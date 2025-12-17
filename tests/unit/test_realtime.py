@@ -83,7 +83,7 @@ class TestSubscribeCommand:
         """Test subscribe to queue command."""
         cmd = SubscribeCommand(queue="emails")
         data = cmd.to_dict()
-        assert data["cmd"] == "Subscribe"
+        assert data["type"] == "subscribe"
         assert data["queue"] == "emails"
         assert "job_id" not in data
 
@@ -91,7 +91,7 @@ class TestSubscribeCommand:
         """Test subscribe to job command."""
         cmd = SubscribeCommand(job_id="job_123")
         data = cmd.to_dict()
-        assert data["cmd"] == "Subscribe"
+        assert data["type"] == "subscribe"
         assert data["job_id"] == "job_123"
         assert "queue" not in data
 
@@ -99,6 +99,7 @@ class TestSubscribeCommand:
         """Test subscribe to queue and job."""
         cmd = SubscribeCommand(queue="emails", job_id="job_123")
         data = cmd.to_dict()
+        assert data["type"] == "subscribe"
         assert data["queue"] == "emails"
         assert data["job_id"] == "job_123"
 
@@ -110,14 +111,14 @@ class TestUnsubscribeCommand:
         """Test unsubscribe from queue command."""
         cmd = UnsubscribeCommand(queue="emails")
         data = cmd.to_dict()
-        assert data["cmd"] == "Unsubscribe"
+        assert data["type"] == "unsubscribe"
         assert data["queue"] == "emails"
 
     def test_unsubscribe_from_job(self) -> None:
         """Test unsubscribe from job command."""
         cmd = UnsubscribeCommand(job_id="job_123")
         data = cmd.to_dict()
-        assert data["cmd"] == "Unsubscribe"
+        assert data["type"] == "unsubscribe"
         assert data["job_id"] == "job_123"
 
 
@@ -128,7 +129,7 @@ class TestPingCommand:
         """Test ping command."""
         cmd = PingCommand()
         data = cmd.to_dict()
-        assert data == {"cmd": "Ping"}
+        assert data == {"type": "ping"}
 
 
 class TestRealtimeEventTypes:

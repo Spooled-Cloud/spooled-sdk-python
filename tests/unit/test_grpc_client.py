@@ -6,13 +6,13 @@ import pytest
 from pydantic import ValidationError as PydanticValidationError
 
 from spooled.grpc.client import (
-    CompleteRequest,
-    DequeueRequest,
-    EnqueueRequest,
-    FailRequest,
+    GrpcCompleteRequest as CompleteRequest,
+    GrpcDequeueRequest as DequeueRequest,
+    GrpcEnqueueRequest as EnqueueRequest,
+    GrpcFailRequest as FailRequest,
     GrpcJob,
-    RegisterWorkerRequest,
-    WorkerHeartbeatRequest,
+    GrpcRegisterWorkerRequest as RegisterWorkerRequest,
+    GrpcHeartbeatRequest as WorkerHeartbeatRequest,
 )
 
 
@@ -92,6 +92,7 @@ class TestGrpcJob:
         job = GrpcJob(
             id="job_123",
             queue_name="test",
+            status="pending",
             payload={"key": "value"},
             retry_count=0,
             max_retries=3,
@@ -99,6 +100,7 @@ class TestGrpcJob:
         )
         assert job.id == "job_123"
         assert job.payload == {"key": "value"}
+        assert job.status == "pending"
 
 
 class TestCompleteRequest:
