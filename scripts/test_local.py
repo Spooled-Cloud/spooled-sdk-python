@@ -62,7 +62,8 @@ BASE_URL = os.environ.get("BASE_URL", "http://localhost:8080")
 GRPC_ADDRESS = os.environ.get("GRPC_ADDRESS", "127.0.0.1:50051")
 WEBHOOK_PORT = int(os.environ.get("WEBHOOK_PORT", "3001"))
 VERBOSE = os.environ.get("VERBOSE", "0") in ("1", "true", "True")
-SKIP_GRPC = os.environ.get("SKIP_GRPC", "1") not in ("0", "false", "False")
+# Run all tests by default - set SKIP_GRPC=1 or SKIP_STRESS=1 to skip
+SKIP_GRPC = os.environ.get("SKIP_GRPC", "0") in ("1", "true", "True")
 SKIP_STRESS = os.environ.get("SKIP_STRESS", "0") in ("1", "true", "True")
 ADMIN_API_KEY = os.environ.get("ADMIN_API_KEY", "")
 
@@ -1710,14 +1711,16 @@ def test_grpc(client: SpooledClient) -> None:
 
     def test_connect() -> None:
         nonlocal grpc_client
+        # Auto-detect TLS: use TLS for production (port 443), no TLS for local
+        use_tls = ":443" in GRPC_ADDRESS or "grpc.spooled" in GRPC_ADDRESS
         grpc_client = SpooledGrpcClient(
             address=GRPC_ADDRESS,
             api_key=API_KEY,
-            use_tls=False,
+            use_tls=use_tls,
         )
         ready = grpc_client.wait_for_ready(timeout=5)
         assert_true(ready, "gRPC should be ready")
-        log(f"gRPC connected, state: {grpc_client.get_state()}")
+        log(f"gRPC connected (TLS={use_tls}), state: {grpc_client.get_state()}")
 
     run_test("Connect to gRPC server", test_connect)
 
@@ -1858,10 +1861,11 @@ def test_grpc(client: SpooledClient) -> None:
     run_test("gRPC: Deregister worker", test_grpc_deregister)
 
     def test_grpc_context_manager() -> None:
+        use_tls = ":443" in GRPC_ADDRESS or "grpc.spooled" in GRPC_ADDRESS
         with SpooledGrpcClient(
             address=GRPC_ADDRESS,
             api_key=API_KEY,
-            use_tls=False,
+            use_tls=use_tls,
         ) as ctx_client:
             result = ctx_client.queue.get_queue_stats(queue_name)
             assert_defined(result.queue_name, "queue name")
@@ -1995,10 +1999,11 @@ def test_grpc_advanced(client: SpooledClient) -> None:
 
     def test_connect() -> None:
         nonlocal grpc_client
+        use_tls = ":443" in GRPC_ADDRESS or "grpc.spooled" in GRPC_ADDRESS
         grpc_client = SpooledGrpcClient(
             address=GRPC_ADDRESS,
             api_key=API_KEY,
-            use_tls=False,
+            use_tls=use_tls,
         )
         ready = grpc_client.wait_for_ready(timeout=5)
         assert_true(ready, "gRPC should be ready")
@@ -2158,10 +2163,11 @@ def test_grpc_error_handling(client: SpooledClient) -> None:
 
     def test_connect() -> None:
         nonlocal grpc_client
+        use_tls = ":443" in GRPC_ADDRESS or "grpc.spooled" in GRPC_ADDRESS
         grpc_client = SpooledGrpcClient(
             address=GRPC_ADDRESS,
             api_key=API_KEY,
-            use_tls=False,
+            use_tls=use_tls,
         )
         ready = grpc_client.wait_for_ready(timeout=5)
         assert_true(ready, "gRPC should be ready")
@@ -2443,10 +2449,11 @@ def test_grpc_tier_limits(client: SpooledClient) -> None:
     def test_grpc_with_main_org() -> None:
         grpc_client = None
         try:
+            use_tls = ":443" in GRPC_ADDRESS or "grpc.spooled" in GRPC_ADDRESS
             grpc_client = SpooledGrpcClient(
                 address=GRPC_ADDRESS,
                 api_key=API_KEY,
-                use_tls=False,
+                use_tls=use_tls,
             )
             ready = grpc_client.wait_for_ready(timeout=5)
             if ready:
