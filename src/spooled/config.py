@@ -14,7 +14,7 @@ DEFAULT_BASE_URL = "https://api.spooled.cloud"
 DEFAULT_GRPC_ADDRESS = "grpc.spooled.cloud:443"
 API_BASE_PATH = "/api/v1"
 DEFAULT_TIMEOUT = 30.0
-DEFAULT_USER_AGENT = "spooled-python/1.0.0"
+DEFAULT_USER_AGENT = "spooled-python/1.0.1"
 
 
 class RetryConfig(BaseModel):

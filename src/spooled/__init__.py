@@ -36,7 +36,7 @@ from spooled.errors import (
 )
 
 # Version
-__version__ = "1.0.0"
+__version__ = "1.0.1"
 
 # These will be imported when the client modules are created
 __all__ = [
