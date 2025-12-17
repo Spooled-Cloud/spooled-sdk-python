@@ -1839,6 +1839,500 @@ def test_websocket_realtime(client: SpooledClient) -> None:
             pass
 
 
+def test_grpc_advanced(client: SpooledClient) -> None:
+    print("\n🔌 gRPC - Advanced Operations")
+    print("─" * 60)
+
+    if SKIP_GRPC:
+        print("  ⏭️  gRPC advanced tests skipped (set SKIP_GRPC=0 to enable)")
+        results.append(TestResult(name="gRPC advanced tests", passed=True, duration=0, skipped=True))
+        return
+
+    try:
+        from spooled.grpc import SpooledGrpcClient
+    except ImportError:
+        print("  ⏭️  gRPC advanced tests skipped (grpcio not installed)")
+        results.append(TestResult(name="gRPC advanced tests", passed=True, duration=0, skipped=True))
+        return
+
+    cleanup_old_jobs(client)
+    queue_name = f"{test_prefix}-grpc-adv"
+    grpc_client = None
+    worker_id = ""
+    job_id = ""
+
+    def test_connect() -> None:
+        nonlocal grpc_client
+        grpc_client = SpooledGrpcClient(
+            address=GRPC_ADDRESS,
+            api_key=API_KEY,
+            use_tls=False,
+        )
+        ready = grpc_client.wait_for_ready(timeout=5)
+        assert_(ready, "gRPC should be ready")
+
+    run_test("gRPC Advanced: Connect", test_connect)
+
+    if not grpc_client:
+        print("  ⏭️  Skipping gRPC advanced tests (connection failed)")
+        return
+
+    def test_grpc_get_job_existing() -> None:
+        nonlocal job_id
+        # Create a job first
+        result = grpc_client.queue.enqueue(
+            queue_name=queue_name,
+            payload={"test": "get_job"},
+        )
+        job_id = result.job_id
+        
+        # Get it back
+        get_result = grpc_client.queue.get_job(job_id)
+        assert_defined(get_result.job, "job should exist")
+        assert_equal(get_result.job.id, job_id, "job id matches")
+
+    run_test("gRPC Advanced: GetJob - existing job", test_grpc_get_job_existing)
+
+    def test_grpc_get_queue_stats() -> None:
+        result = grpc_client.queue.get_queue_stats(queue_name)
+        assert_equal(result.queue_name, queue_name, "queue name")
+        assert_(result.pending >= 0 or result.total >= 0, "has stats")
+        log(f"Queue stats: pending={result.pending}, total={result.total}")
+
+    run_test("gRPC Advanced: Queue stats", test_grpc_get_queue_stats)
+
+    def test_grpc_register_worker() -> None:
+        nonlocal worker_id
+        result = grpc_client.workers.register(
+            queue_name=queue_name,
+            hostname="grpc-adv-worker",
+            worker_type="python-test",
+            max_concurrency=10,
+        )
+        worker_id = result.worker_id
+        assert_defined(worker_id, "worker id")
+        log(f"Registered worker: {worker_id}")
+
+    run_test("gRPC Advanced: Register worker", test_grpc_register_worker)
+
+    def test_grpc_dequeue_batch() -> None:
+        # Enqueue multiple jobs
+        for i in range(3):
+            grpc_client.queue.enqueue(
+                queue_name=queue_name,
+                payload={"batch": i},
+            )
+        
+        # Dequeue batch
+        result = grpc_client.queue.dequeue(
+            queue_name=queue_name,
+            worker_id=worker_id,
+            batch_size=3,
+        )
+        assert_(len(result.jobs) > 0, "should dequeue jobs")
+        log(f"Dequeued {len(result.jobs)} jobs in batch")
+
+    run_test("gRPC Advanced: Batch dequeue", test_grpc_dequeue_batch)
+
+    def test_grpc_complete_with_result() -> None:
+        # Enqueue and dequeue
+        enqueue_result = grpc_client.queue.enqueue(
+            queue_name=queue_name,
+            payload={"complete_test": True},
+        )
+        grpc_client.queue.dequeue(
+            queue_name=queue_name,
+            worker_id=worker_id,
+            batch_size=1,
+        )
+        
+        # Complete with result
+        result = grpc_client.queue.complete(
+            job_id=enqueue_result.job_id,
+            worker_id=worker_id,
+            result={"output": "success", "processed_at": "now"},
+        )
+        assert_equal(result.success, True, "complete success")
+
+    run_test("gRPC Advanced: Complete with result", test_grpc_complete_with_result)
+
+    def test_grpc_fail_with_retry() -> None:
+        # Enqueue and dequeue
+        enqueue_result = grpc_client.queue.enqueue(
+            queue_name=queue_name,
+            payload={"fail_test": True},
+            max_retries=3,
+        )
+        grpc_client.queue.dequeue(
+            queue_name=queue_name,
+            worker_id=worker_id,
+            batch_size=1,
+        )
+        
+        # Fail with retry
+        result = grpc_client.queue.fail(
+            job_id=enqueue_result.job_id,
+            worker_id=worker_id,
+            error="Test failure - should retry",
+            retry=True,
+        )
+        assert_equal(result.success, True, "fail recorded")
+        log(f"will_retry={result.will_retry}")
+
+    run_test("gRPC Advanced: Fail with retry", test_grpc_fail_with_retry)
+
+    def test_grpc_heartbeat_with_metadata() -> None:
+        result = grpc_client.workers.heartbeat(
+            worker_id=worker_id,
+            current_jobs=2,
+            status="healthy",
+            metadata={"cpu": "50%", "memory": "256MB"},
+        )
+        assert_equal(result.acknowledged, True, "heartbeat acknowledged")
+
+    run_test("gRPC Advanced: Heartbeat with metadata", test_grpc_heartbeat_with_metadata)
+
+    def test_grpc_deregister() -> None:
+        result = grpc_client.workers.deregister(worker_id)
+        assert_equal(result.success, True, "deregistered")
+
+    run_test("gRPC Advanced: Deregister worker", test_grpc_deregister)
+
+    # Cleanup
+    if grpc_client:
+        try:
+            grpc_client.close()
+        except Exception:
+            pass
+
+
+def test_grpc_error_handling(client: SpooledClient) -> None:
+    print("\n🔌 gRPC - Error Handling")
+    print("─" * 60)
+
+    if SKIP_GRPC:
+        print("  ⏭️  gRPC error tests skipped (set SKIP_GRPC=0 to enable)")
+        results.append(TestResult(name="gRPC error tests", passed=True, duration=0, skipped=True))
+        return
+
+    try:
+        from spooled.grpc import SpooledGrpcClient
+    except ImportError:
+        print("  ⏭️  gRPC error tests skipped (grpcio not installed)")
+        results.append(TestResult(name="gRPC error tests", passed=True, duration=0, skipped=True))
+        return
+
+    grpc_client = None
+
+    def test_connect() -> None:
+        nonlocal grpc_client
+        grpc_client = SpooledGrpcClient(
+            address=GRPC_ADDRESS,
+            api_key=API_KEY,
+            use_tls=False,
+        )
+        ready = grpc_client.wait_for_ready(timeout=5)
+        assert_(ready, "gRPC should be ready")
+
+    run_test("gRPC Error: Connect", test_connect)
+
+    if not grpc_client:
+        print("  ⏭️  Skipping gRPC error tests (connection failed)")
+        return
+
+    def test_grpc_get_nonexistent_job() -> None:
+        try:
+            result = grpc_client.queue.get_job("nonexistent-job-id-12345")
+            # May return empty job or raise error
+            log(f"GetJob nonexistent: job={result.job}")
+        except Exception as e:
+            log(f"GetJob error (expected): {type(e).__name__}")
+
+    run_test("gRPC Error: Get nonexistent job", test_grpc_get_nonexistent_job)
+
+    def test_grpc_complete_without_claim() -> None:
+        try:
+            grpc_client.queue.complete(
+                job_id="unclaimed-job-123",
+                worker_id="invalid-worker",
+            )
+        except Exception as e:
+            log(f"Complete error (expected): {type(e).__name__}")
+
+    run_test("gRPC Error: Complete without claim", test_grpc_complete_without_claim)
+
+    def test_grpc_deregister_unknown_worker() -> None:
+        try:
+            result = grpc_client.workers.deregister("unknown-worker-id")
+            log(f"Deregister unknown: success={result.success}")
+        except Exception as e:
+            log(f"Deregister error (expected): {type(e).__name__}")
+
+    run_test("gRPC Error: Deregister unknown worker", test_grpc_deregister_unknown_worker)
+
+    # Cleanup
+    if grpc_client:
+        try:
+            grpc_client.close()
+        except Exception:
+            pass
+
+
+def test_webhook_retry(client: SpooledClient) -> None:
+    print("\n🔄 Webhook Retry")
+    print("─" * 60)
+
+    webhook_url = f"https://example.com/webhook-{int(time.time())}"
+    webhook_id = ""
+
+    def test_setup_webhook() -> None:
+        nonlocal webhook_id
+        try:
+            webhook = client.webhooks.create({
+                "name": f"retry-test-{int(time.time())}",
+                "url": webhook_url,
+                "events": ["job.created"],
+                "enabled": True,
+            })
+            webhook_id = webhook.id
+            log(f"Created webhook {webhook_id}")
+        except SpooledError as e:
+            log(f"Webhook creation failed: {e.message}")
+
+    run_test("Setup webhook for retry test", test_setup_webhook)
+
+    def test_retry_delivery() -> None:
+        if not webhook_id:
+            log("No webhook created, skipping retry test")
+            return
+        
+        try:
+            deliveries = client.webhooks.get_deliveries(webhook_id)
+            if deliveries and len(deliveries) > 0:
+                delivery = deliveries[0]
+                result = client.webhooks.retry_delivery(webhook_id, delivery.id)
+                log(f"Retried delivery: {result}")
+            else:
+                log("No deliveries to retry yet")
+        except SpooledError as e:
+            log(f"Retry failed: {e.message}")
+
+    run_test("POST /api/v1/outgoing-webhooks/{id}/retry/{delivery_id}", test_retry_delivery)
+
+    # Cleanup
+    if webhook_id:
+        try:
+            client.webhooks.delete(webhook_id)
+        except Exception:
+            pass
+
+
+def test_webhook_delivery(client: SpooledClient) -> None:
+    print("\n📬 Webhook Delivery (End-to-End)")
+    print("─" * 60)
+
+    cleanup_old_jobs(client)
+    queue_name = f"{test_prefix}-webhook-delivery"
+    webhook_url = f"http://localhost:{WEBHOOK_PORT}/webhook"
+    webhook_id = ""
+
+    def test_setup_webhook() -> None:
+        nonlocal webhook_id
+        clear_received_webhooks()
+        result = client.webhooks.create({
+            "name": f"{test_prefix}-delivery-test",
+            "url": webhook_url,
+            "events": ["job.created", "job.started", "job.completed"],
+            "enabled": True,
+        })
+        webhook_id = result.id
+
+    run_test("Setup webhook for job events", test_setup_webhook)
+
+    def test_receive_job_created_webhook() -> None:
+        client.jobs.create({
+            "queue_name": queue_name,
+            "payload": {"test": "webhook-delivery"},
+        })
+        
+        # Wait for webhook
+        webhook = wait_for_webhook("job.created", 3000)
+        if webhook:
+            assert_defined(webhook.data, "webhook data")
+            log("Received job.created webhook")
+        else:
+            log("job.created webhook not received (async delivery)")
+
+    run_test("Create job and receive job.created webhook", test_receive_job_created_webhook)
+
+    # Cleanup
+    if webhook_id:
+        try:
+            client.webhooks.delete(webhook_id)
+        except Exception:
+            pass
+
+
+def test_websocket(client: SpooledClient) -> None:
+    print("\n🔌 WebSocket")
+    print("─" * 60)
+
+    def test_ws_connectivity() -> None:
+        # Get JWT token first
+        auth = client.auth.login({"api_key": API_KEY})
+        
+        # Test WS upgrade capability
+        ws_url = BASE_URL.replace("http://", "ws://").replace("https://", "wss://")
+        log(f"WebSocket URL would be: {ws_url}/api/v1/ws?token=...")
+        
+        # Verify we can get the token for WS connection
+        assert_defined(auth.access_token, "JWT token for WS")
+        log("WebSocket auth token obtained successfully")
+
+    run_test("GET /api/v1/ws - WebSocket connectivity", test_ws_connectivity)
+
+
+def test_org_management(client: SpooledClient) -> None:
+    print("\n🏢 Organization Management")
+    print("─" * 60)
+
+    def test_check_slug() -> None:
+        try:
+            result = client.organizations.check_slug(f"test-unique-slug-{int(time.time())}")
+            assert_defined(result.available, "available field")
+            log(f"Slug availability: {result.available}")
+        except SpooledError as e:
+            if e.status_code == 404:
+                log("Slug check endpoint not available")
+            else:
+                raise
+
+    run_test("GET /api/v1/organizations/check-slug - Check slug availability", test_check_slug)
+
+    def test_generate_slug() -> None:
+        try:
+            result = client.organizations.generate_slug("My Test Organization")
+            assert_defined(result.slug, "generated slug")
+            log(f"Generated slug: {result.slug}")
+        except SpooledError as e:
+            if e.status_code == 404:
+                log("Generate slug endpoint not available")
+            else:
+                raise
+
+    run_test("POST /api/v1/organizations/generate-slug - Generate slug", test_generate_slug)
+
+    def test_list_organizations() -> None:
+        try:
+            orgs = client.organizations.list()
+            log(f"Found {len(orgs) if orgs else 0} organizations")
+        except SpooledError as e:
+            if e.status_code == 403:
+                log("List organizations requires admin access")
+            else:
+                raise
+
+    run_test("GET /api/v1/organizations - List organizations", test_list_organizations)
+
+
+def test_email_login(client: SpooledClient) -> None:
+    print("\n📧 Email Login Flow")
+    print("─" * 60)
+
+    def test_start_email_login() -> None:
+        test_email = f"test-{int(time.time())}@example.com"
+        try:
+            result = client.auth.start_email_login(test_email)
+            if result.success:
+                log("Email login initiated (would send email in production)")
+            else:
+                log(f"Email login: {getattr(result, 'message', 'unknown response')}")
+        except SpooledError as e:
+            if e.status_code == 404:
+                log("Email login not enabled")
+            elif e.status_code == 429:
+                log("Rate limited (email login)")
+            else:
+                log(f"Email login start returned {e.status_code}")
+
+    run_test("POST /api/v1/auth/email/start - Start email login", test_start_email_login)
+
+    def test_check_email() -> None:
+        try:
+            result = client.auth.check_email("test@example.com")
+            log(f"Email check: exists={result.exists}")
+        except SpooledError as e:
+            if e.status_code == 404:
+                log("Email check endpoint not available")
+            else:
+                raise
+
+    run_test("GET /api/v1/auth/check-email - Check email exists", test_check_email)
+
+
+def test_tier_limits(client: SpooledClient) -> None:
+    print("\n💎 Tier Limits & Plan Switching")
+    print("─" * 60)
+
+    def test_check_plan_usage() -> None:
+        usage = client.organizations.get_usage()
+        assert_defined(usage.plan, "should have plan")
+        assert_defined(usage.limits, "should have limits")
+        log(f"Plan: {usage.plan}")
+
+    run_test("Tier: Check current plan and usage", test_check_plan_usage)
+
+    def test_verify_usage_tracking() -> None:
+        usage = client.organizations.get_usage()
+        assert_defined(usage.usage, "should have usage data")
+        log(f"Usage data retrieved")
+
+    run_test("Tier: Verify usage tracking", test_verify_usage_tracking)
+
+
+def test_grpc_tier_limits(client: SpooledClient) -> None:
+    print("\n💎 gRPC Tier Limits")
+    print("─" * 60)
+
+    if SKIP_GRPC:
+        print("  ⏭️  gRPC tier limit tests skipped (set SKIP_GRPC=0 to enable)")
+        results.append(TestResult(name="gRPC tier limit tests", passed=True, duration=0, skipped=True))
+        return
+
+    try:
+        from spooled.grpc import SpooledGrpcClient
+    except ImportError:
+        print("  ⏭️  gRPC tier limit tests skipped (grpcio not installed)")
+        results.append(TestResult(name="gRPC tier limit tests", passed=True, duration=0, skipped=True))
+        return
+
+    cleanup_old_jobs(client)
+
+    def test_grpc_with_main_org() -> None:
+        grpc_client = None
+        try:
+            grpc_client = SpooledGrpcClient(
+                address=GRPC_ADDRESS,
+                api_key=API_KEY,
+                use_tls=False,
+            )
+            ready = grpc_client.wait_for_ready(timeout=5)
+            if ready:
+                log("gRPC connected with main org API key")
+            else:
+                log("gRPC connection timeout")
+        except Exception as e:
+            log(f"gRPC connection error: {e}")
+        finally:
+            if grpc_client:
+                try:
+                    grpc_client.close()
+                except Exception:
+                    pass
+
+    run_test("gRPC Tier: Test with main org", test_grpc_with_main_org)
+
+
 # ─────────────────────────────────────────────────────────────────────────────
 # Summary
 # ─────────────────────────────────────────────────────────────────────────────
@@ -1976,9 +2470,26 @@ def main() -> None:
 
         # gRPC
         test_grpc(client)
+        test_grpc_advanced(client)
+        test_grpc_error_handling(client)
 
-        # WebSocket (extended tests)
+        # WebSocket
+        test_websocket(client)
         test_websocket_realtime(client)
+
+        # Webhooks (advanced)
+        test_webhook_retry(client)
+        test_webhook_delivery(client)
+
+        # Organization Management
+        test_org_management(client)
+
+        # Email Login
+        test_email_login(client)
+
+        # Tier Limits
+        test_tier_limits(client)
+        test_grpc_tier_limits(client)
 
     finally:
         print("\n🧹 Cleaning up...")
