@@ -85,7 +85,7 @@ class JobSummary(BaseModel):
     queue_name: str
     status: JobStatus
     priority: int
-    retry_count: int
+    retry_count: int | None = None  # Not always returned by API
     created_at: datetime
     scheduled_at: datetime | None = None
     started_at: datetime | None = None

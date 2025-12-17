@@ -18,10 +18,10 @@ class WorkflowResponse(BaseModel):
     id: str
     name: str
     status: WorkflowStatus
-    total_jobs: int
-    completed_jobs: int
-    failed_jobs: int
-    progress_percent: float
+    total_jobs: int | None = None  # Not always returned
+    completed_jobs: int | None = None  # Not always returned
+    failed_jobs: int | None = None  # Not always returned
+    progress_percent: float | None = None  # Not always returned
     created_at: datetime
     started_at: datetime | None = None
     completed_at: datetime | None = None
