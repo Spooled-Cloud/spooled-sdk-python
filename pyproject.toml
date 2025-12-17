@@ -1,0 +1,104 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "spooled"
+version = "1.0.0"
+description = "Official Python SDK for Spooled Cloud job queue service"
+readme = "README.md"
+license = "Apache-2.0"
+authors = [
+    { name = "Spooled Cloud", email = "support@spooled.cloud" }
+]
+keywords = [
+    "spooled",
+    "job-queue",
+    "task-queue",
+    "background-jobs",
+    "webhooks",
+    "cron",
+    "scheduler",
+    "workflow"
+]
+classifiers = [
+    "Development Status :: 5 - Production/Stable",
+    "Intended Audience :: Developers",
+    "License :: OSI Approved :: Apache Software License",
+    "Operating System :: OS Independent",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Typing :: Typed",
+]
+requires-python = ">=3.10"
+
+dependencies = [
+    "httpx>=0.25.0",
+    "pydantic>=2.0.0",
+]
+
+[project.optional-dependencies]
+grpc = [
+    "grpcio>=1.60.0",
+    "grpcio-tools>=1.60.0",
+    "protobuf>=4.25.0",
+]
+realtime = [
+    "websockets>=12.0",
+    "sseclient-py>=1.8.0",
+]
+worker = []
+all = [
+    "spooled[grpc,realtime,worker]",
+]
+dev = [
+    "pytest>=7.4.0",
+    "pytest-asyncio>=0.23.0",
+    "pytest-cov>=4.1.0",
+    "respx>=0.21.0",
+    "mypy>=1.8.0",
+    "ruff>=0.1.0",
+    "pre-commit>=3.6.0",
+]
+
+[project.urls]
+Homepage = "https://spooled.cloud"
+Documentation = "https://docs.spooled.cloud/sdk/python"
+Repository = "https://github.com/spooled-cloud/spooled-sdk-python"
+Changelog = "https://github.com/spooled-cloud/spooled-sdk-python/blob/main/CHANGELOG.md"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/spooled"]
+
+[tool.hatch.build.targets.sdist]
+include = [
+    "/src",
+    "/proto",
+    "/LICENSE",
+    "/README.md",
+]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+asyncio_mode = "auto"
+addopts = "-v --cov=spooled --cov-report=term-missing"
+
+[tool.mypy]
+python_version = "3.10"
+strict = true
+warn_return_any = true
+warn_unused_configs = true
+exclude = ["tests", "examples"]
+
+[tool.ruff]
+target-version = "py310"
+line-length = 100
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "N", "W", "UP", "B", "C4", "SIM"]
+ignore = ["E501"]
+
+[tool.ruff.lint.isort]
+known-first-party = ["spooled"]
