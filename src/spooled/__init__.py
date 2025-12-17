@@ -61,17 +61,21 @@ __all__ = [
     "CircuitBreakerOpenError",
     "JobAbortedError",
     "is_spooled_error",
-    # Clients (to be added)
+    # Clients
     "SpooledClient",
     "AsyncSpooledClient",
-    # Worker (to be added)
+    # Worker
     "SpooledWorker",
     "AsyncSpooledWorker",
+    # gRPC
+    "SpooledGrpcClient",
+    # Realtime
+    "SpooledRealtime",
 ]
 
 
 def __getattr__(name: str) -> type:
-    """Lazy import for clients and workers."""
+    """Lazy import for clients, workers, gRPC, and realtime."""
     if name == "SpooledClient":
         from spooled.client import SpooledClient
 
@@ -88,6 +92,14 @@ def __getattr__(name: str) -> type:
         from spooled.worker import AsyncSpooledWorker
 
         return AsyncSpooledWorker
+    if name == "SpooledGrpcClient":
+        from spooled.grpc.client import SpooledGrpcClient
+
+        return SpooledGrpcClient
+    if name == "SpooledRealtime":
+        from spooled.realtime.unified import SpooledRealtime
+
+        return SpooledRealtime
     raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
 
 

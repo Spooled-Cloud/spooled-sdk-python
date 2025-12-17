@@ -6,7 +6,7 @@ Main entry point for the async Spooled SDK.
 
 from __future__ import annotations
 
-from typing import Any
+from typing import TYPE_CHECKING, Any, Literal
 
 from spooled.config import (
     ResolvedConfig,
@@ -32,6 +32,10 @@ from spooled.resources.workers import AsyncWorkersResource
 from spooled.resources.workflows import AsyncWorkflowsResource
 from spooled.utils.async_http import create_async_http_client
 from spooled.utils.circuit_breaker import create_circuit_breaker
+
+if TYPE_CHECKING:
+    from spooled.grpc.client import SpooledGrpcClient
+    from spooled.realtime.unified import SpooledRealtime
 
 
 class AsyncSpooledClient:
@@ -131,6 +135,9 @@ class AsyncSpooledClient:
         self._admin = AsyncAdminResource(self._http, self._config.admin_key)
         self._ingest = AsyncIngestResource(self._http)
 
+        # Lazy-loaded gRPC client
+        self._grpc: SpooledGrpcClient | None = None
+
         if self._config.debug_fn:
             self._config.debug_fn(
                 "AsyncSpooledClient initialized",
@@ -218,6 +225,178 @@ class AsyncSpooledClient:
         """Webhook ingestion endpoints."""
         return self._ingest
 
+    @property
+    def grpc(self) -> SpooledGrpcClient:
+        """
+        Get gRPC client (lazy-loaded).
+
+        The gRPC client is created on first access.
+
+        Example:
+            >>> job = client.grpc.enqueue(
+            ...     queue_name="test",
+            ...     payload={"task": "process"}
+            ... )
+        """
+        if self._grpc is None:
+            try:
+                from spooled.grpc.client import SpooledGrpcClient
+            except ImportError as e:
+                raise ImportError(
+                    "gRPC package required. Install with: pip install spooled[grpc]"
+                ) from e
+
+            # Build gRPC URL from base URL
+            base_url = self._config.base_url
+            if base_url.startswith("https://"):
+                grpc_url = base_url.replace("https://", "")
+                use_tls = True
+            elif base_url.startswith("http://"):
+                grpc_url = base_url.replace("http://", "")
+                use_tls = False
+            else:
+                grpc_url = base_url
+                use_tls = True
+
+            # Extract host and use default gRPC port
+            if ":" in grpc_url:
+                host = grpc_url.split(":")[0]
+            else:
+                host = grpc_url
+            grpc_port = 50051
+            grpc_url = f"{host}:{grpc_port}"
+
+            # Get API key or token for auth
+            api_key = self._config.api_key
+            if not api_key and self._config.access_token:
+                api_key = self._config.access_token
+
+            self._grpc = SpooledGrpcClient(
+                address=grpc_url,
+                api_key=api_key or "",
+                use_tls=use_tls,
+            )
+
+        return self._grpc
+
+    def realtime(
+        self,
+        type: Literal["websocket", "sse"] = "websocket",
+        auto_reconnect: bool = True,
+        max_reconnect_attempts: int = 10,
+        reconnect_delay: float = 1.0,
+        max_reconnect_delay: float = 30.0,
+    ) -> SpooledRealtime:
+        """
+        Create a unified realtime client.
+
+        The realtime client provides a common interface for both WebSocket
+        and SSE connections, matching the Node.js SDK API.
+
+        Args:
+            type: Connection type ('websocket' or 'sse')
+            auto_reconnect: Whether to automatically reconnect on disconnect
+            max_reconnect_attempts: Maximum reconnection attempts
+            reconnect_delay: Base delay between reconnection attempts (seconds)
+            max_reconnect_delay: Maximum delay between reconnection attempts
+
+        Returns:
+            SpooledRealtime client instance
+
+        Example:
+            >>> realtime = client.realtime(type="websocket")
+            >>>
+            >>> @realtime.on("job.created")
+            ... def on_job_created(data):
+            ...     print(f"Job created: {data}")
+            >>>
+            >>> realtime.connect()
+            >>> realtime.subscribe(SubscriptionFilter(queue="emails"))
+        """
+        try:
+            from spooled.realtime.unified import (
+                SpooledRealtime,
+                SpooledRealtimeOptions,
+            )
+        except ImportError as e:
+            raise ImportError(
+                "Realtime packages required. Install with: pip install spooled[realtime]"
+            ) from e
+
+        # For async client, we need to synchronously get token
+        # The caller should have already authenticated
+        token = self._config.access_token or self._config.api_key or ""
+
+        options = SpooledRealtimeOptions(
+            base_url=self._config.base_url,
+            token=token,
+            type=type,
+            auto_reconnect=auto_reconnect,
+            max_reconnect_attempts=max_reconnect_attempts,
+            reconnect_delay=reconnect_delay,
+            max_reconnect_delay=max_reconnect_delay,
+            debug=self._config.debug_fn,
+        )
+
+        return SpooledRealtime(options)
+
+    def with_options(
+        self,
+        *,
+        api_key: str | None = None,
+        access_token: str | None = None,
+        refresh_token: str | None = None,
+        admin_key: str | None = None,
+        base_url: str | None = None,
+        timeout: float | None = None,
+        debug: bool | None = None,
+        **kwargs: Any,
+    ) -> AsyncSpooledClient:
+        """
+        Create a new client with modified options.
+
+        Returns a new AsyncSpooledClient instance with the specified options
+        merged with the current configuration.
+
+        Args:
+            api_key: Override API key
+            access_token: Override access token
+            refresh_token: Override refresh token
+            admin_key: Override admin key
+            base_url: Override base URL
+            timeout: Override timeout
+            debug: Override debug flag
+            **kwargs: Additional configuration options
+
+        Returns:
+            New AsyncSpooledClient instance
+
+        Example:
+            >>> # Create client with debug enabled
+            >>> debug_client = client.with_options(debug=True)
+            >>>
+            >>> # Create client with different API key
+            >>> other_client = client.with_options(api_key="sk_live_other")
+        """
+        # Start with current config values
+        new_config: dict[str, Any] = {
+            "api_key": api_key if api_key is not None else self._config.api_key,
+            "access_token": access_token if access_token is not None else self._config.access_token,
+            "refresh_token": refresh_token if refresh_token is not None else self._config.refresh_token,
+            "admin_key": admin_key if admin_key is not None else self._config.admin_key,
+            "base_url": base_url if base_url is not None else self._config.base_url,
+            "timeout": timeout if timeout is not None else self._config.timeout,
+            "debug": debug if debug is not None else (self._config.debug_fn is not None),
+        }
+
+        # Add any extra kwargs
+        new_config.update(kwargs)
+
+        # Remove None values
+        new_config = {k: v for k, v in new_config.items() if v is not None}
+
+        return AsyncSpooledClient(**new_config)
+
     # Token management
 
     async def get_jwt_token(self) -> str:
@@ -270,6 +449,11 @@ class AsyncSpooledClient:
     async def close(self) -> None:
         """Close the client and release resources."""
         await self._http.close()
+
+        # Close gRPC client if it was created
+        if self._grpc is not None:
+            self._grpc.close()
+            self._grpc = None
 
     async def __aenter__(self) -> AsyncSpooledClient:
         return self

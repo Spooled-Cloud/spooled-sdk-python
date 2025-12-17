@@ -26,6 +26,13 @@ from spooled.realtime.websocket import (
 from spooled.realtime.sse import (
     SSEClient,
     AsyncSSEClient,
+    SSEConnectionState,
+)
+
+from spooled.realtime.unified import (
+    SpooledRealtime,
+    SpooledRealtimeOptions,
+    SubscriptionFilter as UnifiedSubscriptionFilter,
 )
 
 __all__ = [
@@ -44,4 +51,9 @@ __all__ = [
     # SSE
     "SSEClient",
     "AsyncSSEClient",
+    "SSEConnectionState",
+    # Unified Realtime
+    "SpooledRealtime",
+    "SpooledRealtimeOptions",
+    "UnifiedSubscriptionFilter",
 ]
