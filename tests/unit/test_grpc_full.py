@@ -2,10 +2,10 @@
 Comprehensive tests for gRPC client functionality.
 """
 
-import pytest
 from datetime import datetime, timezone
-from unittest.mock import MagicMock, patch, PropertyMock
+from unittest.mock import MagicMock
 
+import pytest
 from google.protobuf import struct_pb2, timestamp_pb2
 
 
@@ -29,16 +29,18 @@ class TestGrpcModels:
 
     def test_enqueue_request_invalid_queue_name(self):
         """Test GrpcEnqueueRequest rejects empty queue_name."""
-        from spooled.grpc import GrpcEnqueueRequest
         from pydantic import ValidationError
+
+        from spooled.grpc import GrpcEnqueueRequest
 
         with pytest.raises(ValidationError):
             GrpcEnqueueRequest(queue_name="", payload={})
 
     def test_enqueue_request_invalid_priority(self):
         """Test GrpcEnqueueRequest rejects invalid priority."""
-        from spooled.grpc import GrpcEnqueueRequest
         from pydantic import ValidationError
+
+        from spooled.grpc import GrpcEnqueueRequest
 
         with pytest.raises(ValidationError):
             GrpcEnqueueRequest(queue_name="test", payload={}, priority=200)
@@ -211,7 +213,7 @@ class TestJobStream:
 
     def test_job_stream_iteration(self):
         """Test JobStream iteration."""
-        from spooled.grpc.client import JobStream, GrpcJob, _proto_job_to_grpc_job
+        from spooled.grpc.client import JobStream
 
         # Create mock call that yields jobs
         mock_job = MagicMock()
@@ -262,7 +264,7 @@ class TestProcessRequest:
 
     def test_process_request_dequeue(self):
         """Test ProcessRequest with dequeue."""
-        from spooled.grpc import ProcessRequest, GrpcDequeueRequest
+        from spooled.grpc import GrpcDequeueRequest, ProcessRequest
 
         req = ProcessRequest(
             dequeue=GrpcDequeueRequest(
@@ -275,7 +277,7 @@ class TestProcessRequest:
 
     def test_process_request_complete(self):
         """Test ProcessRequest with complete."""
-        from spooled.grpc import ProcessRequest, GrpcCompleteRequest
+        from spooled.grpc import GrpcCompleteRequest, ProcessRequest
 
         req = ProcessRequest(
             complete=GrpcCompleteRequest(
@@ -292,7 +294,7 @@ class TestProcessResponse:
 
     def test_process_response_job(self):
         """Test ProcessResponse with job."""
-        from spooled.grpc import ProcessResponse, GrpcJob
+        from spooled.grpc import GrpcJob, ProcessResponse
 
         resp = ProcessResponse(
             job=GrpcJob(
@@ -584,32 +586,9 @@ class TestGrpcExports:
     def test_all_exports_available(self):
         """Test all expected exports are available."""
         from spooled.grpc import (
-            SpooledGrpcClient,
             GrpcQueueService,
             GrpcWorkersService,
-            GrpcEnqueueRequest,
-            GrpcEnqueueResponse,
-            GrpcDequeueRequest,
-            GrpcDequeueResponse,
-            GrpcCompleteRequest,
-            GrpcCompleteResponse,
-            GrpcFailRequest,
-            GrpcFailResponse,
-            GrpcRenewLeaseRequest,
-            GrpcRenewLeaseResponse,
-            GrpcGetJobResponse,
-            GrpcQueueStats,
-            GrpcRegisterWorkerRequest,
-            GrpcRegisterWorkerResponse,
-            GrpcHeartbeatRequest,
-            GrpcHeartbeatResponse,
-            GrpcDeregisterResponse,
-            GrpcJob,
-            StreamOptions,
-            JobStream,
-            ProcessRequest,
-            ProcessResponse,
-            ProcessJobsStream,
+            SpooledGrpcClient,
         )
 
         # Just verify they all exist

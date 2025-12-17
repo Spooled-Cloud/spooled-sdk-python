@@ -2,11 +2,8 @@
 Comprehensive tests for WebSocket client functionality.
 """
 
-import pytest
-import time
 import json
-import threading
-from unittest.mock import MagicMock, patch, PropertyMock
+from unittest.mock import MagicMock
 
 
 class TestConnectionState:
@@ -223,7 +220,7 @@ class TestWebSocketClientInit:
 
     def test_initial_state(self):
         """Test initial state is disconnected."""
-        from spooled.realtime import WebSocketClient, WebSocketConnectionOptions, ConnectionState
+        from spooled.realtime import ConnectionState, WebSocketClient, WebSocketConnectionOptions
 
         opts = WebSocketConnectionOptions(
             ws_url="wss://api.spooled.cloud",
@@ -299,7 +296,7 @@ class TestWebSocketClientEventHandlers:
 
     def test_on_state_change(self):
         """Test on_state_change() handler."""
-        from spooled.realtime import WebSocketClient, WebSocketConnectionOptions, ConnectionState
+        from spooled.realtime import ConnectionState, WebSocketClient, WebSocketConnectionOptions
 
         opts = WebSocketConnectionOptions(
             ws_url="wss://api.spooled.cloud",
@@ -325,7 +322,7 @@ class TestWebSocketClientSubscriptions:
 
     def test_subscribe_stores_filter(self):
         """Test subscribe stores filter."""
-        from spooled.realtime import WebSocketClient, WebSocketConnectionOptions, SubscriptionFilter
+        from spooled.realtime import SubscriptionFilter, WebSocketClient, WebSocketConnectionOptions
 
         opts = WebSocketConnectionOptions(
             ws_url="wss://api.spooled.cloud",
@@ -343,7 +340,7 @@ class TestWebSocketClientSubscriptions:
 
     def test_subscribe_deduplicates(self):
         """Test subscribe doesn't add duplicate."""
-        from spooled.realtime import WebSocketClient, WebSocketConnectionOptions, SubscriptionFilter
+        from spooled.realtime import SubscriptionFilter, WebSocketClient, WebSocketConnectionOptions
 
         opts = WebSocketConnectionOptions(
             ws_url="wss://api.spooled.cloud",
@@ -360,7 +357,7 @@ class TestWebSocketClientSubscriptions:
 
     def test_unsubscribe_removes_filter(self):
         """Test unsubscribe removes filter."""
-        from spooled.realtime import WebSocketClient, WebSocketConnectionOptions, SubscriptionFilter
+        from spooled.realtime import SubscriptionFilter, WebSocketClient, WebSocketConnectionOptions
 
         opts = WebSocketConnectionOptions(
             ws_url="wss://api.spooled.cloud",
@@ -378,7 +375,7 @@ class TestWebSocketClientSubscriptions:
 
     def test_unsubscribe_nonexistent(self):
         """Test unsubscribe for nonexistent filter."""
-        from spooled.realtime import WebSocketClient, WebSocketConnectionOptions, SubscriptionFilter
+        from spooled.realtime import SubscriptionFilter, WebSocketClient, WebSocketConnectionOptions
 
         opts = WebSocketConnectionOptions(
             ws_url="wss://api.spooled.cloud",
@@ -416,7 +413,7 @@ class TestWebSocketClientDisconnect:
 
     def test_disconnect_clears_state(self):
         """Test disconnect clears state."""
-        from spooled.realtime import WebSocketClient, WebSocketConnectionOptions, ConnectionState
+        from spooled.realtime import ConnectionState, WebSocketClient, WebSocketConnectionOptions
 
         opts = WebSocketConnectionOptions(
             ws_url="wss://api.spooled.cloud",
@@ -442,7 +439,11 @@ class TestAsyncWebSocketClient:
 
     def test_initial_state(self):
         """Test initial state is disconnected."""
-        from spooled.realtime import AsyncWebSocketClient, WebSocketConnectionOptions, ConnectionState
+        from spooled.realtime import (
+            AsyncWebSocketClient,
+            ConnectionState,
+            WebSocketConnectionOptions,
+        )
 
         opts = WebSocketConnectionOptions(
             ws_url="wss://api.spooled.cloud",
@@ -490,25 +491,33 @@ class TestRealtimeExports:
     def test_all_exports_available(self):
         """Test all expected exports are available."""
         from spooled.realtime import (
+            AsyncSSEClient,
+            AsyncWebSocketClient,
+            ConnectionState,
+            PingCommand,
             RealtimeEvent,
             RealtimeEventType,
-            SubscribeCommand,
-            UnsubscribeCommand,
-            PingCommand,
-            WebSocketClient,
-            AsyncWebSocketClient,
-            WebSocketConnectionOptions,
-            ConnectionState,
-            SubscriptionFilter,
             SSEClient,
-            AsyncSSEClient,
+            SubscribeCommand,
+            SubscriptionFilter,
+            UnsubscribeCommand,
+            WebSocketClient,
+            WebSocketConnectionOptions,
         )
 
-        # Just verify they all exist
+        # Verify all exports exist
         assert RealtimeEvent is not None
+        assert RealtimeEventType is not None
+        assert SubscribeCommand is not None
+        assert UnsubscribeCommand is not None
+        assert PingCommand is not None
         assert WebSocketClient is not None
         assert AsyncWebSocketClient is not None
+        assert WebSocketConnectionOptions is not None
         assert ConnectionState is not None
+        assert SubscriptionFilter is not None
+        assert SSEClient is not None
+        assert AsyncSSEClient is not None
 
 
 class TestReconnectLogic:

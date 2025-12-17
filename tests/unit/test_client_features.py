@@ -15,8 +15,7 @@ from typing import Any
 
 import pytest
 
-from spooled import SpooledClient, AsyncSpooledClient
-
+from spooled import AsyncSpooledClient, SpooledClient
 
 # ─────────────────────────────────────────────────────────────────────────────
 # Test with_options()
@@ -216,9 +215,9 @@ class TestSpooledRealtimeUnified:
         """Test SpooledRealtime initial state."""
         try:
             from spooled.realtime.unified import (
+                ConnectionState,
                 SpooledRealtime,
                 SpooledRealtimeOptions,
-                ConnectionState,
             )
 
             options = SpooledRealtimeOptions(
@@ -290,11 +289,11 @@ class TestSpooledRealtimeUnified:
     def test_realtime_on_event_handler(self) -> None:
         """Test SpooledRealtime on_event() for all events."""
         try:
+            from spooled.realtime.events import RealtimeEvent
             from spooled.realtime.unified import (
                 SpooledRealtime,
                 SpooledRealtimeOptions,
             )
-            from spooled.realtime.events import RealtimeEvent
 
             options = SpooledRealtimeOptions(
                 base_url="https://api.spooled.cloud",
@@ -322,9 +321,9 @@ class TestSpooledRealtimeUnified:
         """Test SpooledRealtime on_state_change()."""
         try:
             from spooled.realtime.unified import (
+                ConnectionState,
                 SpooledRealtime,
                 SpooledRealtimeOptions,
-                ConnectionState,
             )
 
             options = SpooledRealtimeOptions(
@@ -421,8 +420,8 @@ class TestSSEClientEventHandlers:
     def test_sse_client_on_event(self) -> None:
         """Test SSEClient on_event() for all events."""
         try:
-            from spooled.realtime.sse import SSEClient
             from spooled.realtime.events import RealtimeEvent
+            from spooled.realtime.sse import SSEClient
         except ImportError:
             pytest.skip("SSE client not available")
 
@@ -536,8 +535,8 @@ class TestAsyncSSEClientEventHandlers:
     def test_async_sse_client_on_event(self) -> None:
         """Test AsyncSSEClient on_event() for all events."""
         try:
-            from spooled.realtime.sse import AsyncSSEClient
             from spooled.realtime.events import RealtimeEvent
+            from spooled.realtime.sse import AsyncSSEClient
         except ImportError:
             pytest.skip("Async SSE client not available")
 

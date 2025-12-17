@@ -10,11 +10,10 @@ Note: Requires the 'grpc' extra: pip install spooled[grpc]
 from __future__ import annotations
 
 import queue
-import threading
-from collections.abc import Generator, Iterator
+from collections.abc import Callable, Generator, Iterator
 from dataclasses import dataclass
 from datetime import datetime, timezone
-from typing import Any, Callable
+from typing import Any
 
 from google.protobuf import struct_pb2, timestamp_pb2
 from pydantic import BaseModel, Field
@@ -407,7 +406,6 @@ class ProcessJobsStream:
             return
 
         # Import stubs
-        from spooled.grpc.stubs import ProcessRequest as ProtoProcessRequest
 
         def request_generator() -> Generator[Any, None, None]:
             while True:
@@ -427,11 +425,13 @@ class ProcessJobsStream:
     def send(self, request: ProcessRequest) -> None:
         """Send a request to the server."""
         from spooled.grpc.stubs import (
-            ProcessRequest as ProtoProcessRequest,
-            DequeueRequest,
             CompleteRequest,
+            DequeueRequest,
             FailRequest,
             RenewLeaseRequest,
+        )
+        from spooled.grpc.stubs import (
+            ProcessRequest as ProtoProcessRequest,
         )
 
         self._ensure_started()

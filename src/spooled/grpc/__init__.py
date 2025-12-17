@@ -29,36 +29,36 @@ Example:
 """
 
 from spooled.grpc.client import (
-    # Main client
-    SpooledGrpcClient,
-    # Service classes
-    GrpcQueueService,
-    GrpcWorkersService,
+    GrpcCompleteRequest,
+    GrpcCompleteResponse,
+    GrpcDequeueRequest,
+    GrpcDequeueResponse,
+    GrpcDeregisterResponse,
     # Request/Response models
     GrpcEnqueueRequest,
     GrpcEnqueueResponse,
-    GrpcDequeueRequest,
-    GrpcDequeueResponse,
-    GrpcCompleteRequest,
-    GrpcCompleteResponse,
     GrpcFailRequest,
     GrpcFailResponse,
-    GrpcRenewLeaseRequest,
-    GrpcRenewLeaseResponse,
     GrpcGetJobResponse,
+    GrpcHeartbeatRequest,
+    GrpcHeartbeatResponse,
+    GrpcJob,
+    # Service classes
+    GrpcQueueService,
     GrpcQueueStats,
     GrpcRegisterWorkerRequest,
     GrpcRegisterWorkerResponse,
-    GrpcHeartbeatRequest,
-    GrpcHeartbeatResponse,
-    GrpcDeregisterResponse,
-    GrpcJob,
-    # Streaming types
-    StreamOptions,
+    GrpcRenewLeaseRequest,
+    GrpcRenewLeaseResponse,
+    GrpcWorkersService,
     JobStream,
+    ProcessJobsStream,
     ProcessRequest,
     ProcessResponse,
-    ProcessJobsStream,
+    # Main client
+    SpooledGrpcClient,
+    # Streaming types
+    StreamOptions,
 )
 
 __all__ = [

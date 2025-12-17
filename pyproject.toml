@@ -109,6 +109,8 @@ ignore_missing_imports = true
 [tool.ruff]
 target-version = "py310"
 line-length = 100
+# Exclude auto-generated protobuf files
+exclude = ["src/spooled/grpc/stubs/*_pb2*.py"]
 
 [tool.ruff.lint]
 select = ["E", "F", "I", "N", "W", "UP", "B", "C4", "SIM"]
@@ -118,6 +120,10 @@ ignore = [
     "SIM105",  # Use contextlib.suppress - not always appropriate for async
     "SIM117",  # Nested with statements - sometimes clearer in tests
 ]
+
+[tool.ruff.lint.per-file-ignores]
+# Auto-generated protobuf stubs use gRPC naming conventions
+"src/spooled/grpc/stubs/*.py" = ["N802", "N803", "N806"]
 
 [tool.ruff.lint.isort]
 known-first-party = ["spooled"]

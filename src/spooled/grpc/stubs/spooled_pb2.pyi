@@ -1,13 +1,14 @@
 import datetime
+from collections.abc import Iterable as _Iterable
+from collections.abc import Mapping as _Mapping
+from typing import ClassVar as _ClassVar
 
-from google.protobuf import timestamp_pb2 as _timestamp_pb2
-from google.protobuf import struct_pb2 as _struct_pb2
-from google.protobuf.internal import containers as _containers
-from google.protobuf.internal import enum_type_wrapper as _enum_type_wrapper
 from google.protobuf import descriptor as _descriptor
 from google.protobuf import message as _message
-from collections.abc import Iterable as _Iterable, Mapping as _Mapping
-from typing import ClassVar as _ClassVar, Optional as _Optional, Union as _Union
+from google.protobuf import struct_pb2 as _struct_pb2
+from google.protobuf import timestamp_pb2 as _timestamp_pb2
+from google.protobuf.internal import containers as _containers
+from google.protobuf.internal import enum_type_wrapper as _enum_type_wrapper
 
 DESCRIPTOR: _descriptor.FileDescriptor
 
@@ -68,7 +69,7 @@ class Job(_message.Message):
     lease_expires_at: _timestamp_pb2.Timestamp
     assigned_worker_id: str
     idempotency_key: str
-    def __init__(self, id: _Optional[str] = ..., organization_id: _Optional[str] = ..., queue_name: _Optional[str] = ..., status: _Optional[_Union[JobStatus, str]] = ..., payload: _Optional[_Union[_struct_pb2.Struct, _Mapping]] = ..., result: _Optional[_Union[_struct_pb2.Struct, _Mapping]] = ..., retry_count: _Optional[int] = ..., max_retries: _Optional[int] = ..., last_error: _Optional[str] = ..., priority: _Optional[int] = ..., timeout_seconds: _Optional[int] = ..., created_at: _Optional[_Union[datetime.datetime, _timestamp_pb2.Timestamp, _Mapping]] = ..., scheduled_at: _Optional[_Union[datetime.datetime, _timestamp_pb2.Timestamp, _Mapping]] = ..., started_at: _Optional[_Union[datetime.datetime, _timestamp_pb2.Timestamp, _Mapping]] = ..., completed_at: _Optional[_Union[datetime.datetime, _timestamp_pb2.Timestamp, _Mapping]] = ..., lease_expires_at: _Optional[_Union[datetime.datetime, _timestamp_pb2.Timestamp, _Mapping]] = ..., assigned_worker_id: _Optional[str] = ..., idempotency_key: _Optional[str] = ...) -> None: ...
+    def __init__(self, id: str | None = ..., organization_id: str | None = ..., queue_name: str | None = ..., status: JobStatus | str | None = ..., payload: _struct_pb2.Struct | _Mapping | None = ..., result: _struct_pb2.Struct | _Mapping | None = ..., retry_count: int | None = ..., max_retries: int | None = ..., last_error: str | None = ..., priority: int | None = ..., timeout_seconds: int | None = ..., created_at: datetime.datetime | _timestamp_pb2.Timestamp | _Mapping | None = ..., scheduled_at: datetime.datetime | _timestamp_pb2.Timestamp | _Mapping | None = ..., started_at: datetime.datetime | _timestamp_pb2.Timestamp | _Mapping | None = ..., completed_at: datetime.datetime | _timestamp_pb2.Timestamp | _Mapping | None = ..., lease_expires_at: datetime.datetime | _timestamp_pb2.Timestamp | _Mapping | None = ..., assigned_worker_id: str | None = ..., idempotency_key: str | None = ...) -> None: ...
 
 class EnqueueRequest(_message.Message):
     __slots__ = ("queue_name", "payload", "priority", "max_retries", "timeout_seconds", "scheduled_at", "idempotency_key", "tags")
@@ -78,7 +79,7 @@ class EnqueueRequest(_message.Message):
         VALUE_FIELD_NUMBER: _ClassVar[int]
         key: str
         value: str
-        def __init__(self, key: _Optional[str] = ..., value: _Optional[str] = ...) -> None: ...
+        def __init__(self, key: str | None = ..., value: str | None = ...) -> None: ...
     QUEUE_NAME_FIELD_NUMBER: _ClassVar[int]
     PAYLOAD_FIELD_NUMBER: _ClassVar[int]
     PRIORITY_FIELD_NUMBER: _ClassVar[int]
@@ -95,7 +96,7 @@ class EnqueueRequest(_message.Message):
     scheduled_at: _timestamp_pb2.Timestamp
     idempotency_key: str
     tags: _containers.ScalarMap[str, str]
-    def __init__(self, queue_name: _Optional[str] = ..., payload: _Optional[_Union[_struct_pb2.Struct, _Mapping]] = ..., priority: _Optional[int] = ..., max_retries: _Optional[int] = ..., timeout_seconds: _Optional[int] = ..., scheduled_at: _Optional[_Union[datetime.datetime, _timestamp_pb2.Timestamp, _Mapping]] = ..., idempotency_key: _Optional[str] = ..., tags: _Optional[_Mapping[str, str]] = ...) -> None: ...
+    def __init__(self, queue_name: str | None = ..., payload: _struct_pb2.Struct | _Mapping | None = ..., priority: int | None = ..., max_retries: int | None = ..., timeout_seconds: int | None = ..., scheduled_at: datetime.datetime | _timestamp_pb2.Timestamp | _Mapping | None = ..., idempotency_key: str | None = ..., tags: _Mapping[str, str] | None = ...) -> None: ...
 
 class EnqueueResponse(_message.Message):
     __slots__ = ("job_id", "created")
@@ -103,7 +104,7 @@ class EnqueueResponse(_message.Message):
     CREATED_FIELD_NUMBER: _ClassVar[int]
     job_id: str
     created: bool
-    def __init__(self, job_id: _Optional[str] = ..., created: bool = ...) -> None: ...
+    def __init__(self, job_id: str | None = ..., created: bool = ...) -> None: ...
 
 class DequeueRequest(_message.Message):
     __slots__ = ("queue_name", "worker_id", "lease_duration_secs", "batch_size")
@@ -115,13 +116,13 @@ class DequeueRequest(_message.Message):
     worker_id: str
     lease_duration_secs: int
     batch_size: int
-    def __init__(self, queue_name: _Optional[str] = ..., worker_id: _Optional[str] = ..., lease_duration_secs: _Optional[int] = ..., batch_size: _Optional[int] = ...) -> None: ...
+    def __init__(self, queue_name: str | None = ..., worker_id: str | None = ..., lease_duration_secs: int | None = ..., batch_size: int | None = ...) -> None: ...
 
 class DequeueResponse(_message.Message):
     __slots__ = ("jobs",)
     JOBS_FIELD_NUMBER: _ClassVar[int]
     jobs: _containers.RepeatedCompositeFieldContainer[Job]
-    def __init__(self, jobs: _Optional[_Iterable[_Union[Job, _Mapping]]] = ...) -> None: ...
+    def __init__(self, jobs: _Iterable[Job | _Mapping] | None = ...) -> None: ...
 
 class CompleteRequest(_message.Message):
     __slots__ = ("job_id", "worker_id", "result")
@@ -131,7 +132,7 @@ class CompleteRequest(_message.Message):
     job_id: str
     worker_id: str
     result: _struct_pb2.Struct
-    def __init__(self, job_id: _Optional[str] = ..., worker_id: _Optional[str] = ..., result: _Optional[_Union[_struct_pb2.Struct, _Mapping]] = ...) -> None: ...
+    def __init__(self, job_id: str | None = ..., worker_id: str | None = ..., result: _struct_pb2.Struct | _Mapping | None = ...) -> None: ...
 
 class CompleteResponse(_message.Message):
     __slots__ = ("success",)
@@ -149,7 +150,7 @@ class FailRequest(_message.Message):
     worker_id: str
     error: str
     retry: bool
-    def __init__(self, job_id: _Optional[str] = ..., worker_id: _Optional[str] = ..., error: _Optional[str] = ..., retry: bool = ...) -> None: ...
+    def __init__(self, job_id: str | None = ..., worker_id: str | None = ..., error: str | None = ..., retry: bool = ...) -> None: ...
 
 class FailResponse(_message.Message):
     __slots__ = ("success", "will_retry", "next_retry_delay_secs")
@@ -159,7 +160,7 @@ class FailResponse(_message.Message):
     success: bool
     will_retry: bool
     next_retry_delay_secs: int
-    def __init__(self, success: bool = ..., will_retry: bool = ..., next_retry_delay_secs: _Optional[int] = ...) -> None: ...
+    def __init__(self, success: bool = ..., will_retry: bool = ..., next_retry_delay_secs: int | None = ...) -> None: ...
 
 class RenewLeaseRequest(_message.Message):
     __slots__ = ("job_id", "worker_id", "extension_secs")
@@ -169,7 +170,7 @@ class RenewLeaseRequest(_message.Message):
     job_id: str
     worker_id: str
     extension_secs: int
-    def __init__(self, job_id: _Optional[str] = ..., worker_id: _Optional[str] = ..., extension_secs: _Optional[int] = ...) -> None: ...
+    def __init__(self, job_id: str | None = ..., worker_id: str | None = ..., extension_secs: int | None = ...) -> None: ...
 
 class RenewLeaseResponse(_message.Message):
     __slots__ = ("success", "new_expires_at")
@@ -177,25 +178,25 @@ class RenewLeaseResponse(_message.Message):
     NEW_EXPIRES_AT_FIELD_NUMBER: _ClassVar[int]
     success: bool
     new_expires_at: _timestamp_pb2.Timestamp
-    def __init__(self, success: bool = ..., new_expires_at: _Optional[_Union[datetime.datetime, _timestamp_pb2.Timestamp, _Mapping]] = ...) -> None: ...
+    def __init__(self, success: bool = ..., new_expires_at: datetime.datetime | _timestamp_pb2.Timestamp | _Mapping | None = ...) -> None: ...
 
 class GetJobRequest(_message.Message):
     __slots__ = ("job_id",)
     JOB_ID_FIELD_NUMBER: _ClassVar[int]
     job_id: str
-    def __init__(self, job_id: _Optional[str] = ...) -> None: ...
+    def __init__(self, job_id: str | None = ...) -> None: ...
 
 class GetJobResponse(_message.Message):
     __slots__ = ("job",)
     JOB_FIELD_NUMBER: _ClassVar[int]
     job: Job
-    def __init__(self, job: _Optional[_Union[Job, _Mapping]] = ...) -> None: ...
+    def __init__(self, job: Job | _Mapping | None = ...) -> None: ...
 
 class GetQueueStatsRequest(_message.Message):
     __slots__ = ("queue_name",)
     QUEUE_NAME_FIELD_NUMBER: _ClassVar[int]
     queue_name: str
-    def __init__(self, queue_name: _Optional[str] = ...) -> None: ...
+    def __init__(self, queue_name: str | None = ...) -> None: ...
 
 class GetQueueStatsResponse(_message.Message):
     __slots__ = ("queue_name", "pending", "scheduled", "processing", "completed", "failed", "deadletter", "total", "max_age_ms")
@@ -217,7 +218,7 @@ class GetQueueStatsResponse(_message.Message):
     deadletter: int
     total: int
     max_age_ms: int
-    def __init__(self, queue_name: _Optional[str] = ..., pending: _Optional[int] = ..., scheduled: _Optional[int] = ..., processing: _Optional[int] = ..., completed: _Optional[int] = ..., failed: _Optional[int] = ..., deadletter: _Optional[int] = ..., total: _Optional[int] = ..., max_age_ms: _Optional[int] = ...) -> None: ...
+    def __init__(self, queue_name: str | None = ..., pending: int | None = ..., scheduled: int | None = ..., processing: int | None = ..., completed: int | None = ..., failed: int | None = ..., deadletter: int | None = ..., total: int | None = ..., max_age_ms: int | None = ...) -> None: ...
 
 class StreamJobsRequest(_message.Message):
     __slots__ = ("queue_name", "worker_id", "lease_duration_secs")
@@ -227,7 +228,7 @@ class StreamJobsRequest(_message.Message):
     queue_name: str
     worker_id: str
     lease_duration_secs: int
-    def __init__(self, queue_name: _Optional[str] = ..., worker_id: _Optional[str] = ..., lease_duration_secs: _Optional[int] = ...) -> None: ...
+    def __init__(self, queue_name: str | None = ..., worker_id: str | None = ..., lease_duration_secs: int | None = ...) -> None: ...
 
 class ProcessRequest(_message.Message):
     __slots__ = ("dequeue", "complete", "fail", "renew_lease")
@@ -239,7 +240,7 @@ class ProcessRequest(_message.Message):
     complete: CompleteRequest
     fail: FailRequest
     renew_lease: RenewLeaseRequest
-    def __init__(self, dequeue: _Optional[_Union[DequeueRequest, _Mapping]] = ..., complete: _Optional[_Union[CompleteRequest, _Mapping]] = ..., fail: _Optional[_Union[FailRequest, _Mapping]] = ..., renew_lease: _Optional[_Union[RenewLeaseRequest, _Mapping]] = ...) -> None: ...
+    def __init__(self, dequeue: DequeueRequest | _Mapping | None = ..., complete: CompleteRequest | _Mapping | None = ..., fail: FailRequest | _Mapping | None = ..., renew_lease: RenewLeaseRequest | _Mapping | None = ...) -> None: ...
 
 class ProcessResponse(_message.Message):
     __slots__ = ("job", "complete", "fail", "renew_lease", "error")
@@ -253,7 +254,7 @@ class ProcessResponse(_message.Message):
     fail: FailResponse
     renew_lease: RenewLeaseResponse
     error: ErrorResponse
-    def __init__(self, job: _Optional[_Union[Job, _Mapping]] = ..., complete: _Optional[_Union[CompleteResponse, _Mapping]] = ..., fail: _Optional[_Union[FailResponse, _Mapping]] = ..., renew_lease: _Optional[_Union[RenewLeaseResponse, _Mapping]] = ..., error: _Optional[_Union[ErrorResponse, _Mapping]] = ...) -> None: ...
+    def __init__(self, job: Job | _Mapping | None = ..., complete: CompleteResponse | _Mapping | None = ..., fail: FailResponse | _Mapping | None = ..., renew_lease: RenewLeaseResponse | _Mapping | None = ..., error: ErrorResponse | _Mapping | None = ...) -> None: ...
 
 class ErrorResponse(_message.Message):
     __slots__ = ("code", "message")
@@ -261,7 +262,7 @@ class ErrorResponse(_message.Message):
     MESSAGE_FIELD_NUMBER: _ClassVar[int]
     code: str
     message: str
-    def __init__(self, code: _Optional[str] = ..., message: _Optional[str] = ...) -> None: ...
+    def __init__(self, code: str | None = ..., message: str | None = ...) -> None: ...
 
 class RegisterWorkerRequest(_message.Message):
     __slots__ = ("queue_name", "hostname", "worker_type", "max_concurrency", "version", "metadata")
@@ -271,7 +272,7 @@ class RegisterWorkerRequest(_message.Message):
         VALUE_FIELD_NUMBER: _ClassVar[int]
         key: str
         value: str
-        def __init__(self, key: _Optional[str] = ..., value: _Optional[str] = ...) -> None: ...
+        def __init__(self, key: str | None = ..., value: str | None = ...) -> None: ...
     QUEUE_NAME_FIELD_NUMBER: _ClassVar[int]
     HOSTNAME_FIELD_NUMBER: _ClassVar[int]
     WORKER_TYPE_FIELD_NUMBER: _ClassVar[int]
@@ -284,7 +285,7 @@ class RegisterWorkerRequest(_message.Message):
     max_concurrency: int
     version: str
     metadata: _containers.ScalarMap[str, str]
-    def __init__(self, queue_name: _Optional[str] = ..., hostname: _Optional[str] = ..., worker_type: _Optional[str] = ..., max_concurrency: _Optional[int] = ..., version: _Optional[str] = ..., metadata: _Optional[_Mapping[str, str]] = ...) -> None: ...
+    def __init__(self, queue_name: str | None = ..., hostname: str | None = ..., worker_type: str | None = ..., max_concurrency: int | None = ..., version: str | None = ..., metadata: _Mapping[str, str] | None = ...) -> None: ...
 
 class RegisterWorkerResponse(_message.Message):
     __slots__ = ("worker_id", "lease_duration_secs", "heartbeat_interval_secs")
@@ -294,7 +295,7 @@ class RegisterWorkerResponse(_message.Message):
     worker_id: str
     lease_duration_secs: int
     heartbeat_interval_secs: int
-    def __init__(self, worker_id: _Optional[str] = ..., lease_duration_secs: _Optional[int] = ..., heartbeat_interval_secs: _Optional[int] = ...) -> None: ...
+    def __init__(self, worker_id: str | None = ..., lease_duration_secs: int | None = ..., heartbeat_interval_secs: int | None = ...) -> None: ...
 
 class HeartbeatRequest(_message.Message):
     __slots__ = ("worker_id", "current_jobs", "status", "metadata")
@@ -304,7 +305,7 @@ class HeartbeatRequest(_message.Message):
         VALUE_FIELD_NUMBER: _ClassVar[int]
         key: str
         value: str
-        def __init__(self, key: _Optional[str] = ..., value: _Optional[str] = ...) -> None: ...
+        def __init__(self, key: str | None = ..., value: str | None = ...) -> None: ...
     WORKER_ID_FIELD_NUMBER: _ClassVar[int]
     CURRENT_JOBS_FIELD_NUMBER: _ClassVar[int]
     STATUS_FIELD_NUMBER: _ClassVar[int]
@@ -313,7 +314,7 @@ class HeartbeatRequest(_message.Message):
     current_jobs: int
     status: str
     metadata: _containers.ScalarMap[str, str]
-    def __init__(self, worker_id: _Optional[str] = ..., current_jobs: _Optional[int] = ..., status: _Optional[str] = ..., metadata: _Optional[_Mapping[str, str]] = ...) -> None: ...
+    def __init__(self, worker_id: str | None = ..., current_jobs: int | None = ..., status: str | None = ..., metadata: _Mapping[str, str] | None = ...) -> None: ...
 
 class HeartbeatResponse(_message.Message):
     __slots__ = ("acknowledged", "should_drain")
@@ -327,7 +328,7 @@ class DeregisterRequest(_message.Message):
     __slots__ = ("worker_id",)
     WORKER_ID_FIELD_NUMBER: _ClassVar[int]
     worker_id: str
-    def __init__(self, worker_id: _Optional[str] = ...) -> None: ...
+    def __init__(self, worker_id: str | None = ...) -> None: ...
 
 class DeregisterResponse(_message.Message):
     __slots__ = ("success",)

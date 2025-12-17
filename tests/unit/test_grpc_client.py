@@ -7,12 +7,24 @@ from pydantic import ValidationError as PydanticValidationError
 
 from spooled.grpc.client import (
     GrpcCompleteRequest as CompleteRequest,
+)
+from spooled.grpc.client import (
     GrpcDequeueRequest as DequeueRequest,
+)
+from spooled.grpc.client import (
     GrpcEnqueueRequest as EnqueueRequest,
+)
+from spooled.grpc.client import (
     GrpcFailRequest as FailRequest,
-    GrpcJob,
-    GrpcRegisterWorkerRequest as RegisterWorkerRequest,
+)
+from spooled.grpc.client import (
     GrpcHeartbeatRequest as WorkerHeartbeatRequest,
+)
+from spooled.grpc.client import (
+    GrpcJob,
+)
+from spooled.grpc.client import (
+    GrpcRegisterWorkerRequest as RegisterWorkerRequest,
 )
 
 

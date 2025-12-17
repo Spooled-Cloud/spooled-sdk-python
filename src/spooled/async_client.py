@@ -259,10 +259,7 @@ class AsyncSpooledClient:
                 use_tls = True
 
             # Extract host and use default gRPC port
-            if ":" in grpc_url:
-                host = grpc_url.split(":")[0]
-            else:
-                host = grpc_url
+            host = grpc_url.split(":")[0] if ":" in grpc_url else grpc_url
             grpc_port = 50051
             grpc_url = f"{host}:{grpc_port}"
 
