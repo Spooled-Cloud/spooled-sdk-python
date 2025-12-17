@@ -1584,7 +1584,7 @@ def test_grpc(client: SpooledClient) -> None:
             use_tls=False,
         )
         ready = grpc_client.wait_for_ready(timeout=5)
-        assert_(ready, "gRPC should be ready")
+        assert_true(ready, "gRPC should be ready")
         log(f"gRPC connected, state: {grpc_client.get_state()}")
 
     run_test("Connect to gRPC server", test_connect)
@@ -1605,7 +1605,7 @@ def test_grpc(client: SpooledClient) -> None:
         )
         worker_id = result.worker_id
         assert_defined(result.worker_id, "worker id")
-        assert_(result.heartbeat_interval_secs > 0, "heartbeat interval should be positive")
+        assert_true(result.heartbeat_interval_secs > 0, "heartbeat interval should be positive")
         log(f"Registered worker: {worker_id}")
 
     run_test("gRPC: Register worker", test_grpc_register)
@@ -1639,7 +1639,7 @@ def test_grpc(client: SpooledClient) -> None:
     def test_grpc_get_queue_stats() -> None:
         result = grpc_client.queue.get_queue_stats(queue_name)
         assert_equal(result.queue_name, queue_name, "queue name")
-        assert_(result.pending >= 0, "pending should be non-negative")
+        assert_true(result.pending >= 0, "pending should be non-negative")
         log(f"Queue stats: pending={result.pending}, total={result.total}")
 
     run_test("gRPC: Get queue stats", test_grpc_get_queue_stats)
@@ -1791,7 +1791,7 @@ def test_websocket_realtime(client: SpooledClient) -> None:
             received_events.append(event)
             log(f"Event received: {event.type}")
 
-        assert_("job.created" in ws_client._event_handlers, "handler registered")
+        assert_true("job.created" in ws_client._event_handlers, "handler registered")
 
     run_test("WebSocket: Register event handler", test_ws_event_handler)
 
@@ -1803,7 +1803,7 @@ def test_websocket_realtime(client: SpooledClient) -> None:
             states.append(state)
 
         ws_client._set_state(ConnectionState.CONNECTING)
-        assert_(len(states) >= 1, "state handler called")
+        assert_true(len(states) >= 1, "state handler called")
         ws_client._set_state(ConnectionState.DISCONNECTED)
 
     run_test("WebSocket: State change handler", test_ws_state_handler)
@@ -1826,8 +1826,8 @@ def test_websocket_realtime(client: SpooledClient) -> None:
 
     def test_ws_build_url() -> None:
         url = ws_client._build_ws_url()
-        assert_("api/v1/ws" in url, "URL contains ws path")
-        assert_("token=" in url, "URL contains token")
+        assert_true("api/v1/ws" in url, "URL contains ws path")
+        assert_true("token=" in url, "URL contains token")
 
     run_test("WebSocket: URL building", test_ws_build_url)
 
@@ -1869,7 +1869,7 @@ def test_grpc_advanced(client: SpooledClient) -> None:
             use_tls=False,
         )
         ready = grpc_client.wait_for_ready(timeout=5)
-        assert_(ready, "gRPC should be ready")
+        assert_true(ready, "gRPC should be ready")
 
     run_test("gRPC Advanced: Connect", test_connect)
 
@@ -1896,7 +1896,7 @@ def test_grpc_advanced(client: SpooledClient) -> None:
     def test_grpc_get_queue_stats() -> None:
         result = grpc_client.queue.get_queue_stats(queue_name)
         assert_equal(result.queue_name, queue_name, "queue name")
-        assert_(result.pending >= 0 or result.total >= 0, "has stats")
+        assert_true(result.pending >= 0 or result.total >= 0, "has stats")
         log(f"Queue stats: pending={result.pending}, total={result.total}")
 
     run_test("gRPC Advanced: Queue stats", test_grpc_get_queue_stats)
@@ -1929,7 +1929,7 @@ def test_grpc_advanced(client: SpooledClient) -> None:
             worker_id=worker_id,
             batch_size=3,
         )
-        assert_(len(result.jobs) > 0, "should dequeue jobs")
+        assert_true(len(result.jobs) > 0, "should dequeue jobs")
         log(f"Dequeued {len(result.jobs)} jobs in batch")
 
     run_test("gRPC Advanced: Batch dequeue", test_grpc_dequeue_batch)
@@ -2032,7 +2032,7 @@ def test_grpc_error_handling(client: SpooledClient) -> None:
             use_tls=False,
         )
         ready = grpc_client.wait_for_ready(timeout=5)
-        assert_(ready, "gRPC should be ready")
+        assert_true(ready, "gRPC should be ready")
 
     run_test("gRPC Error: Connect", test_connect)
 
@@ -2243,10 +2243,10 @@ def test_email_login(client: SpooledClient) -> None:
         test_email = f"test-{int(time.time())}@example.com"
         try:
             result = client.auth.start_email_login(test_email)
-            if result.success:
-                log("Email login initiated (would send email in production)")
+            if result.message:
+                log(f"Email login: {result.message}")
             else:
-                log(f"Email login: {getattr(result, 'message', 'unknown response')}")
+                log("Email login initiated (would send email in production)")
         except SpooledError as e:
             if e.status_code == 404:
                 log("Email login not enabled")

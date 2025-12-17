@@ -73,7 +73,8 @@ class StartEmailLoginResponse(BaseModel):
     """Response from starting email login."""
 
     message: str
-    expires_in: int  # seconds
+    expires_in: int | None = None  # seconds
+    email_to: str | None = None  # masked email
 
 
 class CheckEmailResponse(BaseModel):

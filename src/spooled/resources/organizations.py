@@ -74,7 +74,7 @@ class OrganizationsResource(BaseResource):
 
     def generate_slug(self, name: str) -> GenerateSlugResponse:
         """Generate a slug from a name."""
-        data = self._http.get("/organizations/generate-slug", params={"name": name})
+        data = self._http.post("/organizations/generate-slug", body={"name": name})
         return GenerateSlugResponse.model_validate(data)
 
     def get_webhook_token(self) -> WebhookTokenResponse:
@@ -146,7 +146,7 @@ class AsyncOrganizationsResource(AsyncBaseResource):
 
     async def generate_slug(self, name: str) -> GenerateSlugResponse:
         """Generate a slug from a name."""
-        data = await self._http.get("/organizations/generate-slug", params={"name": name})
+        data = await self._http.post("/organizations/generate-slug", body={"name": name})
         return GenerateSlugResponse.model_validate(data)
 
     async def get_webhook_token(self) -> WebhookTokenResponse:

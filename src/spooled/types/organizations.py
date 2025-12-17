@@ -153,7 +153,8 @@ class CheckSlugResponse(BaseModel):
     """Response from checking slug availability."""
 
     available: bool
-    slug: str
+    valid: bool = True
+    slug: str | None = None
 
 
 class GenerateSlugResponse(BaseModel):
