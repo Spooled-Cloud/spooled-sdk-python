@@ -4,13 +4,11 @@ from __future__ import annotations
 
 from datetime import datetime
 
-import pytest
-
 from spooled.realtime.events import (
+    SERVER_EVENT_MAP,
     PingCommand,
     RealtimeEvent,
     RealtimeEventType,
-    SERVER_EVENT_MAP,
     SubscribeCommand,
     UnsubscribeCommand,
 )

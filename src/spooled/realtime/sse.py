@@ -4,8 +4,10 @@ Server-Sent Events (SSE) client for real-time events.
 
 from __future__ import annotations
 
+import contextlib
 import json
-from typing import Any, Generator
+from collections.abc import Generator
+from typing import Any
 
 import httpx
 
@@ -135,20 +137,16 @@ class SSEClient:
         self._closed = True
 
         if self._response:
-            try:
+            with contextlib.suppress(Exception):
                 self._response.close()
-            except Exception:
-                pass
             self._response = None
 
         if self._client:
-            try:
+            with contextlib.suppress(Exception):
                 self._client.close()
-            except Exception:
-                pass
             self._client = None
 
-    def __enter__(self) -> "SSEClient":
+    def __enter__(self) -> SSEClient:
         self.connect()
         return self
 
@@ -263,20 +261,16 @@ class AsyncSSEClient:
         self._closed = True
 
         if self._response:
-            try:
+            with contextlib.suppress(Exception):
                 await self._response.aclose()
-            except Exception:
-                pass
             self._response = None
 
         if self._client:
-            try:
+            with contextlib.suppress(Exception):
                 await self._client.aclose()
-            except Exception:
-                pass
             self._client = None
 
-    async def __aenter__(self) -> "AsyncSSEClient":
+    async def __aenter__(self) -> AsyncSSEClient:
         await self.connect()
         return self
 

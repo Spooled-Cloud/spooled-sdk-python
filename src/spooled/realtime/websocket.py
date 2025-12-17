@@ -4,9 +4,11 @@ WebSocket client for real-time events.
 
 from __future__ import annotations
 
+import contextlib
 import json
 import threading
-from typing import Any, Callable
+from collections.abc import Callable
+from typing import Any
 
 from spooled.realtime.events import (
     PingCommand,
@@ -170,10 +172,8 @@ class WebSocketClient:
         self._connected = False
 
         if self._ws:
-            try:
+            with contextlib.suppress(Exception):
                 self._ws.close()
-            except Exception:
-                pass
             self._ws = None
 
         if self._on_close:
@@ -206,10 +206,8 @@ class WebSocketClient:
             # Call handlers
             handlers = self._event_handlers.get(event.type, [])
             for handler in handlers:
-                try:
+                with contextlib.suppress(Exception):
                     handler(event)
-                except Exception:
-                    pass
 
         except json.JSONDecodeError:
             pass
@@ -327,10 +325,8 @@ class AsyncWebSocketClient:
         self._connected = False
 
         if self._ws:
-            try:
+            with contextlib.suppress(Exception):
                 await self._ws.close()
-            except Exception:
-                pass
             self._ws = None
 
         if self._on_close:
@@ -354,10 +350,8 @@ class AsyncWebSocketClient:
                     # Call handlers
                     handlers = self._event_handlers.get(event.type, [])
                     for handler in handlers:
-                        try:
+                        with contextlib.suppress(Exception):
                             handler(event)
-                        except Exception:
-                            pass
                     yield event
         except Exception as e:
             self._connected = False
@@ -376,7 +370,7 @@ class AsyncWebSocketClient:
         except json.JSONDecodeError:
             return None
 
-    async def __aenter__(self) -> "AsyncWebSocketClient":
+    async def __aenter__(self) -> AsyncWebSocketClient:
         await self.connect()
         return self
 

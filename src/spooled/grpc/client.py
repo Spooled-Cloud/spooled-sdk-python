@@ -6,7 +6,8 @@ Note: Requires the 'grpc' extra: pip install spooled[grpc]
 
 from __future__ import annotations
 
-from typing import Any, Generator
+from collections.abc import Generator
+from typing import Any
 
 from pydantic import BaseModel, Field
 
@@ -309,7 +310,7 @@ class SpooledGrpcClient:
         """Close the gRPC channel."""
         self._channel.close()
 
-    def __enter__(self) -> "SpooledGrpcClient":
+    def __enter__(self) -> SpooledGrpcClient:
         return self
 
     def __exit__(self, *args: Any) -> None:

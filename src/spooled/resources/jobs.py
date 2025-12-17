@@ -12,7 +12,6 @@ from spooled.types.jobs import (
     BoostPriorityResponse,
     BulkEnqueueParams,
     BulkEnqueueResponse,
-    ClaimedJob,
     ClaimJobsParams,
     ClaimJobsResponse,
     CompleteJobParams,

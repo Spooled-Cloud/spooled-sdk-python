@@ -9,7 +9,6 @@ import pytest
 
 from spooled import AsyncSpooledClient
 
-
 # Skip integration tests if no API key is set
 pytestmark = pytest.mark.skipif(
     not os.environ.get("SPOOLED_API_KEY"),

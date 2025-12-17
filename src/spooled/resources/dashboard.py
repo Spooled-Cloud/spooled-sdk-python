@@ -4,14 +4,8 @@ Dashboard resource for Spooled SDK.
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING
-
 from spooled.resources.base import AsyncBaseResource, BaseResource
 from spooled.types.dashboard import DashboardData
-
-if TYPE_CHECKING:
-    from spooled.utils.async_http import AsyncHttpClient
-    from spooled.utils.http import HttpClient
 
 
 class DashboardResource(BaseResource):

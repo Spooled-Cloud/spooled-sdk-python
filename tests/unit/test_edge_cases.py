@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import json
 import threading
 import time
 from concurrent.futures import ThreadPoolExecutor
@@ -11,16 +10,14 @@ import httpx
 import pytest
 import respx
 
-from spooled import SpooledClient, AsyncSpooledClient, SpooledClientConfig
-from spooled.config import CircuitBreakerConfig, RetryConfig, resolve_config
+from spooled import AsyncSpooledClient, SpooledClient, SpooledClientConfig
+from spooled.config import CircuitBreakerConfig, RetryConfig
 from spooled.errors import (
     CircuitBreakerOpenError,
-    RateLimitError,
     ServerError,
     ValidationError,
 )
 from spooled.utils.circuit_breaker import CircuitBreaker
-
 
 API_KEY = "sk_test_xxxxxxxxxxxxxxxxxxxx"
 BASE_URL = "http://localhost:8080"
@@ -469,7 +466,6 @@ class TestNetworkConditions:
             base_url=BASE_URL,
             retry=RetryConfig(max_retries=0),
             circuit_breaker=CircuitBreakerConfig(enabled=False),
-        ) as client:
-            with pytest.raises(ServerError):
-                client.jobs.list()
+        ) as client, pytest.raises(ServerError):
+            client.jobs.list()
 

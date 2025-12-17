@@ -48,7 +48,7 @@ class RealtimeEvent(BaseModel):
     timestamp: datetime | None = None
 
     @classmethod
-    def from_server_event(cls, server_type: str, data: dict[str, Any]) -> "RealtimeEvent":
+    def from_server_event(cls, server_type: str, data: dict[str, Any]) -> RealtimeEvent:
         """Create event from server event format."""
         event_type = SERVER_EVENT_MAP.get(server_type, "error")
         return cls(

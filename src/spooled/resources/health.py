@@ -4,14 +4,8 @@ Health resource for Spooled SDK.
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING
-
 from spooled.resources.base import AsyncBaseResource, BaseResource
 from spooled.types.health import HealthResponse
-
-if TYPE_CHECKING:
-    from spooled.utils.async_http import AsyncHttpClient
-    from spooled.utils.http import HttpClient
 
 
 class HealthResource(BaseResource):

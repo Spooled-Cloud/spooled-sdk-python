@@ -30,8 +30,8 @@ from spooled.resources.schedules import SchedulesResource
 from spooled.resources.webhooks import WebhooksResource
 from spooled.resources.workers import WorkersResource
 from spooled.resources.workflows import WorkflowsResource
-from spooled.utils.circuit_breaker import CircuitBreaker, create_circuit_breaker
-from spooled.utils.http import HttpClient, create_http_client
+from spooled.utils.circuit_breaker import create_circuit_breaker
+from spooled.utils.http import create_http_client
 
 
 class SpooledClient:
@@ -280,7 +280,7 @@ class SpooledClient:
         """Close the client and release resources."""
         self._http.close()
 
-    def __enter__(self) -> "SpooledClient":
+    def __enter__(self) -> SpooledClient:
         return self
 
     def __exit__(self, *args: Any) -> None:

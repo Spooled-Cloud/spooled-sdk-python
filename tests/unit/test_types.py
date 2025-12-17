@@ -7,64 +7,31 @@ from datetime import datetime
 import pytest
 from pydantic import ValidationError as PydanticValidationError
 
+from spooled.types.auth import (
+    LoginParams,
+)
 from spooled.types.jobs import (
-    BatchJobStatus,
     BulkEnqueueParams,
     BulkJobItem,
-    ClaimedJob,
     ClaimJobsParams,
-    CompleteJobParams,
     CreateJobParams,
-    CreateJobResponse,
-    FailJobParams,
     Job,
-    JobHeartbeatParams,
-    JobStats,
-    JobSummary,
-    ListDlqParams,
-    ListJobsParams,
-    PurgeDlqParams,
-    RetryDlqParams,
 )
-from spooled.types.queues import (
-    PauseQueueResponse,
-    QueueConfig,
-    QueueConfigSummary,
-    QueueStats,
-    UpdateQueueConfigParams,
-)
-from spooled.types.workers import (
-    RegisterWorkerParams,
-    RegisterWorkerResponse,
-    Worker,
-    WorkerHeartbeatParams,
-    WorkerSummary,
+from spooled.types.organizations import (
+    CreateOrganizationParams,
 )
 from spooled.types.schedules import (
     CreateScheduleParams,
-    Schedule,
-    UpdateScheduleParams,
+)
+from spooled.types.webhooks import (
+    CreateOutgoingWebhookParams,
+)
+from spooled.types.workers import (
+    RegisterWorkerParams,
 )
 from spooled.types.workflows import (
     CreateWorkflowParams,
     WorkflowJobDefinition,
-)
-from spooled.types.webhooks import (
-    CreateOutgoingWebhookParams,
-    OutgoingWebhook,
-)
-from spooled.types.organizations import (
-    CreateOrganizationParams,
-    Organization,
-)
-from spooled.types.api_keys import (
-    CreateApiKeyParams,
-    ApiKey,
-)
-from spooled.types.auth import (
-    LoginParams,
-    LoginResponse,
-    RefreshParams,
 )
 
 

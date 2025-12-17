@@ -2,8 +2,6 @@
 
 from __future__ import annotations
 
-import pytest
-
 from spooled.utils.casing import (
     convert_keys,
     convert_query_params,

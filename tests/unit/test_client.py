@@ -7,7 +7,7 @@ import pytest
 import respx
 
 from spooled import SpooledClient, SpooledClientConfig
-from spooled.errors import AuthenticationError, NotFoundError, ValidationError
+from spooled.errors import NotFoundError
 
 
 class TestSpooledClient:
@@ -113,9 +113,8 @@ class TestJobsResource:
         with SpooledClient(
             api_key="sk_test_xxxxxxxxxxxxxxxxxxxx",
             base_url="http://localhost:8080",
-        ) as client:
-            with pytest.raises(NotFoundError):
-                client.jobs.get("nonexistent")
+        ) as client, pytest.raises(NotFoundError):
+            client.jobs.get("nonexistent")
 
     @respx.mock
     def test_list_jobs(self) -> None:

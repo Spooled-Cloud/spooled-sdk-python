@@ -4,15 +4,14 @@ from __future__ import annotations
 
 import asyncio
 import os
-from typing import AsyncGenerator, Generator
+from collections.abc import AsyncGenerator, Generator
 
 import pytest
 import pytest_asyncio
 import respx
 
-from spooled import SpooledClient, AsyncSpooledClient
-from spooled.config import RetryConfig, CircuitBreakerConfig
-
+from spooled import AsyncSpooledClient, SpooledClient
+from spooled.config import CircuitBreakerConfig, RetryConfig
 
 # Test API key
 TEST_API_KEY = "sk_test_xxxxxxxxxxxxxxxxxxxx"

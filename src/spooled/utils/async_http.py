@@ -4,7 +4,8 @@ Asynchronous HTTP client using httpx.
 
 from __future__ import annotations
 
-from typing import Any, Awaitable, Callable, TypeVar
+from collections.abc import Awaitable, Callable
+from typing import Any, TypeVar
 
 import httpx
 
@@ -79,9 +80,7 @@ class AsyncHttpClient:
     ) -> str:
         """Build full URL with query parameters."""
         # Ensure path starts with /api/v1 unless explicitly skipped
-        if skip_api_prefix:
-            full_path = path
-        elif path.startswith("/api/"):
+        if skip_api_prefix or path.startswith("/api/"):
             full_path = path
         else:
             full_path = f"{API_BASE_PATH}{path}"
@@ -377,7 +376,7 @@ class AsyncHttpClient:
             await self._client.aclose()
             self._client = None
 
-    async def __aenter__(self) -> "AsyncHttpClient":
+    async def __aenter__(self) -> AsyncHttpClient:
         return self
 
     async def __aexit__(self, *args: Any) -> None:

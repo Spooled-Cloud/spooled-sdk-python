@@ -14,15 +14,13 @@ from spooled.config import (
 )
 from spooled.errors import (
     AuthenticationError,
-    NetworkError,
     NotFoundError,
     RateLimitError,
     ServerError,
-    TimeoutError,
     ValidationError,
 )
 from spooled.utils.circuit_breaker import create_circuit_breaker
-from spooled.utils.http import HttpClient, create_http_client
+from spooled.utils.http import HttpClient
 
 
 class TestHttpClientBasics:

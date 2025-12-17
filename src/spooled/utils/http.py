@@ -4,7 +4,8 @@ Synchronous HTTP client using httpx.
 
 from __future__ import annotations
 
-from typing import Any, Callable, TypeVar
+from collections.abc import Callable
+from typing import Any, TypeVar
 
 import httpx
 
@@ -75,9 +76,7 @@ class HttpClient:
     ) -> str:
         """Build full URL with query parameters."""
         # Ensure path starts with /api/v1 unless explicitly skipped
-        if skip_api_prefix:
-            full_path = path
-        elif path.startswith("/api/"):
+        if skip_api_prefix or path.startswith("/api/"):
             full_path = path
         else:
             full_path = f"{API_BASE_PATH}{path}"
@@ -354,7 +353,7 @@ class HttpClient:
         """Close the HTTP client."""
         self._client.close()
 
-    def __enter__(self) -> "HttpClient":
+    def __enter__(self) -> HttpClient:
         return self
 
     def __exit__(self, *args: Any) -> None:

@@ -8,8 +8,9 @@ from __future__ import annotations
 
 import asyncio
 import socket
+from collections.abc import Callable, Coroutine
 from dataclasses import dataclass
-from typing import TYPE_CHECKING, Any, Callable, Coroutine
+from typing import TYPE_CHECKING, Any
 
 from spooled.types.jobs import ClaimedJob
 from spooled.worker.types import (

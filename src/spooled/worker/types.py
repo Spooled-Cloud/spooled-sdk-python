@@ -4,12 +4,12 @@ Worker types for Spooled SDK.
 
 from __future__ import annotations
 
-from dataclasses import dataclass, field
+from collections.abc import Callable
+from dataclasses import dataclass
 from threading import Event
-from typing import Any, Callable, Literal, Protocol
+from typing import Any, Literal
 
 from pydantic import BaseModel, Field
-
 
 # Worker states
 WorkerState = Literal["idle", "starting", "running", "stopping", "stopped", "error"]

@@ -6,17 +6,16 @@ import pytest
 from pydantic import ValidationError as PydanticValidationError
 
 from spooled.config import (
-    CircuitBreakerConfig,
-    ResolvedConfig,
-    RetryConfig,
-    SpooledClientConfig,
-    resolve_config,
-    validate_config,
+    API_BASE_PATH,
     DEFAULT_BASE_URL,
     DEFAULT_GRPC_ADDRESS,
     DEFAULT_TIMEOUT,
     DEFAULT_USER_AGENT,
-    API_BASE_PATH,
+    CircuitBreakerConfig,
+    RetryConfig,
+    SpooledClientConfig,
+    resolve_config,
+    validate_config,
 )
 
 

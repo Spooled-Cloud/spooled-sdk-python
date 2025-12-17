@@ -7,8 +7,6 @@ import pytest
 import respx
 
 from spooled import SpooledClient
-from spooled.errors import NotFoundError, ValidationError
-
 
 # Test constants
 API_KEY = "sk_test_xxxxxxxxxxxxxxxxxxxx"

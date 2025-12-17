@@ -4,7 +4,7 @@ Organizations resource for Spooled SDK.
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, Any
+from typing import Any
 
 from spooled.resources.base import AsyncBaseResource, BaseResource
 from spooled.types.organizations import (
@@ -19,10 +19,6 @@ from spooled.types.organizations import (
     UsageInfo,
     WebhookTokenResponse,
 )
-
-if TYPE_CHECKING:
-    from spooled.utils.async_http import AsyncHttpClient
-    from spooled.utils.http import HttpClient
 
 
 class OrganizationsResource(BaseResource):
