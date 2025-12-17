@@ -4,6 +4,7 @@ Workflows resource for Spooled SDK.
 
 from __future__ import annotations
 
+import builtins
 from typing import TYPE_CHECKING, Any
 
 from spooled.resources.base import AsyncBaseResource, BaseResource
@@ -40,7 +41,7 @@ class WorkflowJobsResource:
         data = self._http.get(f"/workflows/{workflow_id}/jobs/{job_id}")
         return WorkflowJob.model_validate(data)
 
-    def get_status(self, workflow_id: str) -> list[WorkflowJobStatus]:
+    def get_status(self, workflow_id: str) -> builtins.list[WorkflowJobStatus]:
         """Get the status of all jobs in a workflow."""
         data = self._http.get(f"/workflows/{workflow_id}/jobs/status")
         return [WorkflowJobStatus.model_validate(item) for item in data]
@@ -78,7 +79,7 @@ class AsyncWorkflowJobsResource:
         data = await self._http.get(f"/workflows/{workflow_id}/jobs/{job_id}")
         return WorkflowJob.model_validate(data)
 
-    async def get_status(self, workflow_id: str) -> list[WorkflowJobStatus]:
+    async def get_status(self, workflow_id: str) -> builtins.list[WorkflowJobStatus]:
         """Get the status of all jobs in a workflow."""
         data = await self._http.get(f"/workflows/{workflow_id}/jobs/status")
         return [WorkflowJobStatus.model_validate(item) for item in data]

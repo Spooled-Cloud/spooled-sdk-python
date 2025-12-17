@@ -250,13 +250,13 @@ class SSEClient:
             handlers = list(self._event_handlers.get(event.type, []))
             all_handlers = list(self._all_events_handlers)
 
-        for handler in handlers:
+        for event_handler in handlers:
             with contextlib.suppress(Exception):
-                handler(event.data)
+                event_handler(event.data)
 
-        for handler in all_handlers:
+        for generic_handler in all_handlers:
             with contextlib.suppress(Exception):
-                handler(event)
+                generic_handler(event)
 
     # ─────────────────────────────────────────────────────────────────────────
     # Connection Management
@@ -541,13 +541,13 @@ class AsyncSSEClient:
         handlers = list(self._event_handlers.get(event.type, []))
         all_handlers = list(self._all_events_handlers)
 
-        for handler in handlers:
+        for event_handler in handlers:
             with contextlib.suppress(Exception):
-                handler(event.data)
+                event_handler(event.data)
 
-        for handler in all_handlers:
+        for generic_handler in all_handlers:
             with contextlib.suppress(Exception):
-                handler(event)
+                generic_handler(event)
 
     # ─────────────────────────────────────────────────────────────────────────
     # Connection Management

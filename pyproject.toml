@@ -91,7 +91,7 @@ strict = true
 warn_return_any = true
 warn_unused_configs = true
 warn_unused_ignores = false
-exclude = ["tests", "examples"]
+exclude = ["tests", "examples", "src/spooled/grpc/stubs"]
 ignore_missing_imports = true
 plugins = ["pydantic.mypy"]
 
@@ -105,6 +105,10 @@ module = [
     "httpx",
 ]
 ignore_missing_imports = true
+
+[[tool.mypy.overrides]]
+module = "spooled.grpc.stubs.*"
+ignore_errors = true
 
 [tool.ruff]
 target-version = "py310"

@@ -232,7 +232,8 @@ def _struct_to_dict(struct: struct_pb2.Struct | None) -> dict[str, Any] | None:
     # MessageToDict preserves all nested structures
     from google.protobuf.json_format import MessageToDict
 
-    return MessageToDict(struct)
+    result: dict[str, Any] = MessageToDict(struct)
+    return result
 
 
 def _timestamp_to_datetime(ts: timestamp_pb2.Timestamp | None) -> datetime | None:
@@ -1051,11 +1052,11 @@ class SpooledGrpcClient:
         else:
             self._channel = grpc.insecure_channel(address, options=channel_options)
 
-        # Create service stubs
+        # Create service stubs (generated code without type annotations)
         from spooled.grpc.stubs import QueueServiceStub, WorkerServiceStub
 
-        self._queue_stub = QueueServiceStub(self._channel)
-        self._worker_stub = WorkerServiceStub(self._channel)
+        self._queue_stub = QueueServiceStub(self._channel)  # type: ignore[no-untyped-call]
+        self._worker_stub = WorkerServiceStub(self._channel)  # type: ignore[no-untyped-call]
 
         # Create service instances
         self._queue = GrpcQueueService(self._queue_stub, self._metadata)

@@ -634,14 +634,14 @@ class SpooledRealtime:
         """Emit event to handlers."""
         # Specific handlers
         handlers = self._event_handlers.get(event.type, [])
-        for handler in handlers:
+        for event_handler in handlers:
             with contextlib.suppress(Exception):
-                handler(event.data)
+                event_handler(event.data)
 
         # All-events handlers
-        for handler in self._all_events_handlers:
+        for generic_handler in self._all_events_handlers:
             with contextlib.suppress(Exception):
-                handler(event)
+                generic_handler(event)
 
     def _handle_disconnect(self) -> None:
         """Handle disconnection and attempt reconnect."""
