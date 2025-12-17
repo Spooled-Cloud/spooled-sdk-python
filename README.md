@@ -172,11 +172,11 @@ The SDK includes a high-performance gRPC client for high-throughput worker scena
 ```python
 from spooled.grpc import SpooledGrpcClient
 
-# Optimized for Cloudflare Tunnel (no internal TLS overhead)
+# Connect to Spooled Cloud gRPC (TLS required for Cloudflare Tunnel)
 client = SpooledGrpcClient(
     address="grpc.spooled.cloud:443", 
     api_key="sk_live_...",
-    use_tls=True  # TLS terminated at Cloudflare edge
+    use_tls=True  # Required for production (Cloudflare Tunnel needs HTTPS for HTTP/2)
 )
 
 # Enqueue a job
