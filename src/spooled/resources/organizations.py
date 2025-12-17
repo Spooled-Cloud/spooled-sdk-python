@@ -89,7 +89,7 @@ class OrganizationsResource(BaseResource):
 
     def clear_webhook_token(self) -> None:
         """Clear the webhook token."""
-        self._http.post("/organizations/webhook-token/clear")
+        self._http.post("/organizations/webhook-token/clear", body={"confirm": True})
 
 
 class AsyncOrganizationsResource(AsyncBaseResource):
@@ -161,6 +161,6 @@ class AsyncOrganizationsResource(AsyncBaseResource):
 
     async def clear_webhook_token(self) -> None:
         """Clear the webhook token."""
-        await self._http.post("/organizations/webhook-token/clear")
+        await self._http.post("/organizations/webhook-token/clear", body={"confirm": True})
 
 

@@ -937,6 +937,83 @@ def test_workflow_execution(client: SpooledClient) -> None:
         pass
 
 
+def test_workflow_jobs(client: SpooledClient) -> None:
+    """Test workflow jobs sub-resource."""
+    print("\n📋 Workflow Jobs Sub-resource")
+    print("─" * 60)
+
+    queue_name = f"{test_prefix}-wf-jobs-queue"
+    workflow_id = ""
+    job_id = ""
+
+    def test_create_workflow_for_jobs() -> None:
+        nonlocal workflow_id, job_id
+        result = client.workflows.create({
+            "name": f"{test_prefix}-jobs-test",
+            "jobs": [
+                {"key": "job-a", "queue_name": queue_name, "payload": {"step": "A"}},
+                {"key": "job-b", "queue_name": queue_name, "payload": {"step": "B"}, "depends_on": ["job-a"]},
+                {"key": "job-c", "queue_name": queue_name, "payload": {"step": "C"}, "depends_on": ["job-a"]},
+            ],
+        })
+        assert_defined(result.workflow_id, "workflow id")
+        workflow_id = result.workflow_id
+        for j in result.job_ids:
+            if j.key == "job-a":
+                job_id = j.job_id
+                break
+        log(f"Created workflow {workflow_id} with {len(result.job_ids)} jobs")
+
+    run_test("Create workflow for jobs testing", test_create_workflow_for_jobs)
+
+    def test_list_workflow_jobs() -> None:
+        try:
+            jobs = client.workflows.jobs.list(workflow_id)
+            if len(jobs) != 3:
+                raise AssertionError(f"Expected 3 jobs, got {len(jobs)}")
+            log(f"Listed {len(jobs)} jobs: {', '.join(j.key for j in jobs)}")
+        except SpooledError as e:
+            if e.status_code == 404:
+                log("Workflow jobs list endpoint not available")
+            else:
+                raise
+
+    run_test("GET /api/v1/workflows/{id}/jobs - List workflow jobs", test_list_workflow_jobs)
+
+    def test_get_workflow_job() -> None:
+        try:
+            job = client.workflows.jobs.get(workflow_id, job_id)
+            assert_defined(job.id, "job id")
+            log(f"Got job {job.key} with status {job.status}")
+        except SpooledError as e:
+            if e.status_code == 404:
+                log("Workflow job get endpoint not available")
+            else:
+                raise
+
+    run_test("GET /api/v1/workflows/{id}/jobs/{job_id} - Get specific job", test_get_workflow_job)
+
+    def test_get_workflow_jobs_status() -> None:
+        try:
+            statuses = client.workflows.jobs.get_status(workflow_id)
+            if len(statuses) != 3:
+                raise AssertionError(f"Expected 3 job statuses, got {len(statuses)}")
+            log(f"Workflow jobs status: {len(statuses)} jobs")
+        except SpooledError as e:
+            if e.status_code == 404:
+                log("Workflow jobs status endpoint not available")
+            else:
+                raise
+
+    run_test("GET /api/v1/workflows/{id}/jobs/status - Get all jobs status", test_get_workflow_jobs_status)
+
+    # Cleanup
+    try:
+        client.workflows.cancel(workflow_id)
+    except Exception:
+        pass
+
+
 def test_api_keys(client: SpooledClient) -> None:
     print("\n🔑 API Keys")
     print("─" * 60)
@@ -1006,6 +1083,61 @@ def test_organization(client: SpooledClient) -> None:
         log(f"Jobs today: {usage.usage.jobs_today.current if usage.usage else 0}")
 
     run_test("GET /api/v1/organizations/usage - Get usage", test_get_usage)
+
+
+def test_organization_webhook_token(client: SpooledClient) -> None:
+    """Test organization webhook token management."""
+    print("\n🔐 Organization Webhook Token")
+    print("─" * 60)
+
+    initial_token: str | None = None
+
+    def test_get_webhook_token() -> None:
+        nonlocal initial_token
+        try:
+            result = client.organizations.get_webhook_token()
+            token = result.webhook_token
+            if token:
+                initial_token = token
+                log(f"Webhook token (first 8 chars): {token[:8]}...")
+            else:
+                log("Webhook token not set (may have been cleared previously)")
+        except SpooledError as e:
+            if e.status_code == 404:
+                log("Webhook token not set yet (expected for new orgs)")
+            else:
+                raise
+
+    run_test("GET /api/v1/organizations/webhook-token - Get webhook token", test_get_webhook_token)
+
+    def test_regenerate_webhook_token() -> None:
+        nonlocal initial_token
+        try:
+            result = client.organizations.regenerate_webhook_token()
+            token = result.webhook_token
+            assert_defined(token, "regenerated webhook token")
+            log(f"New token (first 8 chars): {token[:8]}...")
+            if initial_token and token == initial_token:
+                raise AssertionError("Token should be different after regeneration")
+        except SpooledError as e:
+            if e.status_code == 404:
+                log("Regenerate webhook token endpoint not available")
+            else:
+                raise
+
+    run_test("POST /api/v1/organizations/webhook-token/regenerate - Regenerate token", test_regenerate_webhook_token)
+
+    def test_clear_webhook_token() -> None:
+        try:
+            client.organizations.clear_webhook_token()
+            log("Webhook token cleared successfully")
+        except SpooledError as e:
+            if e.status_code == 404:
+                log("Clear webhook token endpoint not available")
+            else:
+                raise
+
+    run_test("POST /api/v1/organizations/webhook-token/clear - Clear token", test_clear_webhook_token)
 
 
 def test_billing(client: SpooledClient) -> None:
@@ -2430,12 +2562,14 @@ def main() -> None:
         # Workflows
         test_workflows(client)
         test_workflow_execution(client)
+        test_workflow_jobs(client)
 
         # API Keys
         test_api_keys(client)
 
         # Organizations
         test_organization(client)
+        test_organization_webhook_token(client)
 
         # Billing
         test_billing(client)

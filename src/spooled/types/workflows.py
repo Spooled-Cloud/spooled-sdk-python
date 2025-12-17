@@ -112,3 +112,28 @@ class AddDependenciesResponse(BaseModel):
     added_count: int
 
 
+class WorkflowJob(BaseModel):
+    """A job within a workflow."""
+
+    id: str
+    key: str
+    queue_name: str
+    status: str
+    payload: dict[str, Any]
+    priority: int = 0
+    depends_on: list[str] | None = None
+    dependency_mode: Literal["all", "any"] | None = None
+    created_at: datetime | None = None
+    started_at: datetime | None = None
+    completed_at: datetime | None = None
+
+
+class WorkflowJobStatus(BaseModel):
+    """Status summary of a job within a workflow."""
+
+    key: str
+    job_id: str
+    status: str
+    progress: float | None = None
+
+

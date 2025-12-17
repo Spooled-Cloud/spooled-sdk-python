@@ -14,6 +14,8 @@ from spooled.types.workflows import (
     CreateWorkflowResponse,
     JobWithDependencies,
     ListWorkflowsParams,
+    WorkflowJob,
+    WorkflowJobStatus,
     WorkflowResponse,
 )
 
@@ -27,6 +29,21 @@ class WorkflowJobsResource:
 
     def __init__(self, http: HttpClient) -> None:
         self._http = http
+
+    def list(self, workflow_id: str) -> list[WorkflowJob]:
+        """List all jobs in a workflow."""
+        data = self._http.get(f"/workflows/{workflow_id}/jobs")
+        return [WorkflowJob.model_validate(item) for item in data]
+
+    def get(self, workflow_id: str, job_id: str) -> WorkflowJob:
+        """Get a specific job within a workflow."""
+        data = self._http.get(f"/workflows/{workflow_id}/jobs/{job_id}")
+        return WorkflowJob.model_validate(data)
+
+    def get_status(self, workflow_id: str) -> list[WorkflowJobStatus]:
+        """Get the status of all jobs in a workflow."""
+        data = self._http.get(f"/workflows/{workflow_id}/jobs/status")
+        return [WorkflowJobStatus.model_validate(item) for item in data]
 
     def get_dependencies(self, job_id: str) -> JobWithDependencies:
         """Get job dependencies."""
@@ -50,6 +67,21 @@ class AsyncWorkflowJobsResource:
 
     def __init__(self, http: AsyncHttpClient) -> None:
         self._http = http
+
+    async def list(self, workflow_id: str) -> list[WorkflowJob]:
+        """List all jobs in a workflow."""
+        data = await self._http.get(f"/workflows/{workflow_id}/jobs")
+        return [WorkflowJob.model_validate(item) for item in data]
+
+    async def get(self, workflow_id: str, job_id: str) -> WorkflowJob:
+        """Get a specific job within a workflow."""
+        data = await self._http.get(f"/workflows/{workflow_id}/jobs/{job_id}")
+        return WorkflowJob.model_validate(data)
+
+    async def get_status(self, workflow_id: str) -> list[WorkflowJobStatus]:
+        """Get the status of all jobs in a workflow."""
+        data = await self._http.get(f"/workflows/{workflow_id}/jobs/status")
+        return [WorkflowJobStatus.model_validate(item) for item in data]
 
     async def get_dependencies(self, job_id: str) -> JobWithDependencies:
         """Get job dependencies."""
