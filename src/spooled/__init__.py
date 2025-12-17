@@ -70,7 +70,7 @@ __all__ = [
 ]
 
 
-def __getattr__(name: str):
+def __getattr__(name: str) -> type:
     """Lazy import for clients and workers."""
     if name == "SpooledClient":
         from spooled.client import SpooledClient

@@ -122,7 +122,7 @@ class SpooledWorker:
         self._lock = threading.Lock()
 
         # Event handlers
-        self._event_handlers: dict[WorkerEvent, list[Callable]] = {}
+        self._event_handlers: dict[WorkerEvent, list[Callable[..., Any]]] = {}
 
         # Debug function from client
         config = client.get_config()
@@ -161,7 +161,7 @@ class SpooledWorker:
         self._handler = handler
         return handler
 
-    def on(self, event: WorkerEvent, handler: Callable | None = None) -> Callable:
+    def on(self, event: WorkerEvent, handler: Callable[..., Any] | None = None) -> Callable[..., Any]:
         """
         Register event handler (decorator).
 
@@ -171,7 +171,7 @@ class SpooledWorker:
             ...     print(f"Job {event.job_id} completed")
         """
 
-        def decorator(fn: Callable) -> Callable:
+        def decorator(fn: Callable[..., Any]) -> Callable[..., Any]:
             if event not in self._event_handlers:
                 self._event_handlers[event] = []
             self._event_handlers[event].append(fn)

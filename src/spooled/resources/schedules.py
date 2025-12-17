@@ -4,6 +4,7 @@ Schedules resource for Spooled SDK.
 
 from __future__ import annotations
 
+import builtins
 from typing import Any
 
 from spooled.resources.base import AsyncBaseResource, BaseResource
@@ -21,7 +22,7 @@ from spooled.types.schedules import (
 class SchedulesResource(BaseResource):
     """Schedules resource (sync)."""
 
-    def list(self, params: ListSchedulesParams | dict[str, Any] | None = None) -> list[Schedule]:
+    def list(self, params: ListSchedulesParams | dict[str, Any] | None = None) -> builtins.list[Schedule]:
         """List schedules."""
         if isinstance(params, dict):
             params = ListSchedulesParams.model_validate(params)
@@ -73,7 +74,7 @@ class SchedulesResource(BaseResource):
         data = self._http.post(f"/schedules/{schedule_id}/trigger")
         return TriggerScheduleResponse.model_validate(data)
 
-    def get_history(self, schedule_id: str, limit: int = 10) -> list[ScheduleRun]:
+    def get_history(self, schedule_id: str, limit: int = 10) -> builtins.list[ScheduleRun]:
         """Get schedule execution history."""
         data = self._http.get(f"/schedules/{schedule_id}/history", params={"limit": limit})
         return [ScheduleRun.model_validate(item) for item in data]
@@ -84,7 +85,7 @@ class AsyncSchedulesResource(AsyncBaseResource):
 
     async def list(
         self, params: ListSchedulesParams | dict[str, Any] | None = None
-    ) -> list[Schedule]:
+    ) -> builtins.list[Schedule]:
         """List schedules."""
         if isinstance(params, dict):
             params = ListSchedulesParams.model_validate(params)
@@ -138,7 +139,7 @@ class AsyncSchedulesResource(AsyncBaseResource):
         data = await self._http.post(f"/schedules/{schedule_id}/trigger")
         return TriggerScheduleResponse.model_validate(data)
 
-    async def get_history(self, schedule_id: str, limit: int = 10) -> list[ScheduleRun]:
+    async def get_history(self, schedule_id: str, limit: int = 10) -> builtins.list[ScheduleRun]:
         """Get schedule execution history."""
         data = await self._http.get(
             f"/schedules/{schedule_id}/history", params={"limit": limit}

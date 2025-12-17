@@ -39,8 +39,8 @@ class ActiveJob:
     job: ClaimedJob
     started_at: float
     abort_event: asyncio.Event
-    heartbeat_task: asyncio.Task | None = None
-    process_task: asyncio.Task | None = None
+    heartbeat_task: asyncio.Task[None] | None = None
+    process_task: asyncio.Task[None] | None = None
 
 
 class AsyncSpooledWorker:
@@ -111,13 +111,13 @@ class AsyncSpooledWorker:
         self._worker_id: str | None = None
         self._handler: AsyncJobHandler | None = None
         self._active_jobs: dict[str, ActiveJob] = {}
-        self._poll_task: asyncio.Task | None = None
-        self._worker_heartbeat_task: asyncio.Task | None = None
+        self._poll_task: asyncio.Task[None] | None = None
+        self._worker_heartbeat_task: asyncio.Task[None] | None = None
         self._shutdown_event: asyncio.Event | None = None
         self._semaphore: asyncio.Semaphore | None = None
 
         # Event handlers
-        self._event_handlers: dict[WorkerEvent, list[Callable]] = {}
+        self._event_handlers: dict[WorkerEvent, list[Callable[..., Any]]] = {}
 
         # Debug function from client
         config = client.get_config()
@@ -154,7 +154,7 @@ class AsyncSpooledWorker:
         self._handler = handler
         return handler
 
-    def on(self, event: WorkerEvent, handler: Callable | None = None) -> Callable:
+    def on(self, event: WorkerEvent, handler: Callable[..., Any] | None = None) -> Callable[..., Any]:
         """
         Register event handler (decorator).
 
@@ -164,7 +164,7 @@ class AsyncSpooledWorker:
             ...     print(f"Job {event.job_id} completed")
         """
 
-        def decorator(fn: Callable) -> Callable:
+        def decorator(fn: Callable[..., Any]) -> Callable[..., Any]:
             if event not in self._event_handlers:
                 self._event_handlers[event] = []
             self._event_handlers[event].append(fn)

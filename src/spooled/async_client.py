@@ -257,7 +257,7 @@ class AsyncSpooledClient:
         """Get current configuration (read-only)."""
         return self._config
 
-    def get_circuit_breaker_stats(self) -> dict:
+    def get_circuit_breaker_stats(self) -> dict[str, Any]:
         """Get circuit breaker statistics."""
         return self._circuit_breaker.get_stats()
 

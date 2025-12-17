@@ -4,6 +4,7 @@ Jobs resource for Spooled SDK.
 
 from __future__ import annotations
 
+import builtins
 from typing import TYPE_CHECKING, Any
 
 from spooled.resources.base import AsyncBaseResource, BaseResource
@@ -43,7 +44,7 @@ class DlqResource:
     def __init__(self, http: HttpClient) -> None:
         self._http = http
 
-    def list(self, params: ListDlqParams | dict[str, Any] | None = None) -> list[JobSummary]:
+    def list(self, params: ListDlqParams | dict[str, Any] | None = None) -> builtins.list[JobSummary]:
         """List jobs in dead-letter queue."""
         if isinstance(params, dict):
             params = ListDlqParams.model_validate(params)
@@ -72,7 +73,7 @@ class AsyncDlqResource:
     def __init__(self, http: AsyncHttpClient) -> None:
         self._http = http
 
-    async def list(self, params: ListDlqParams | dict[str, Any] | None = None) -> list[JobSummary]:
+    async def list(self, params: ListDlqParams | dict[str, Any] | None = None) -> builtins.list[JobSummary]:
         """List jobs in dead-letter queue."""
         if isinstance(params, dict):
             params = ListDlqParams.model_validate(params)
@@ -119,7 +120,7 @@ class JobsResource(BaseResource):
         result = self.create(params)
         return self.get(result.id)
 
-    def list(self, params: ListJobsParams | dict[str, Any] | None = None) -> list[JobSummary]:
+    def list(self, params: ListJobsParams | dict[str, Any] | None = None) -> builtins.list[JobSummary]:
         """List jobs with optional filtering."""
         if isinstance(params, dict):
             params = ListJobsParams.model_validate(params)
@@ -151,7 +152,7 @@ class JobsResource(BaseResource):
         data = self._http.get("/jobs/stats")
         return JobStats.model_validate(data)
 
-    def batch_status(self, job_ids: list[str]) -> list[BatchJobStatus]:
+    def batch_status(self, job_ids: builtins.list[str]) -> builtins.list[BatchJobStatus]:
         """Get status of multiple jobs at once."""
         if not job_ids:
             return []
@@ -229,7 +230,7 @@ class AsyncJobsResource(AsyncBaseResource):
 
     async def list(
         self, params: ListJobsParams | dict[str, Any] | None = None
-    ) -> list[JobSummary]:
+    ) -> builtins.list[JobSummary]:
         """List jobs with optional filtering."""
         if isinstance(params, dict):
             params = ListJobsParams.model_validate(params)
@@ -261,7 +262,7 @@ class AsyncJobsResource(AsyncBaseResource):
         data = await self._http.get("/jobs/stats")
         return JobStats.model_validate(data)
 
-    async def batch_status(self, job_ids: list[str]) -> list[BatchJobStatus]:
+    async def batch_status(self, job_ids: builtins.list[str]) -> builtins.list[BatchJobStatus]:
         """Get status of multiple jobs at once."""
         if not job_ids:
             return []

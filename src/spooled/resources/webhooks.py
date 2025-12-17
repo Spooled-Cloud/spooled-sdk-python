@@ -4,6 +4,7 @@ Webhooks resource for Spooled SDK.
 
 from __future__ import annotations
 
+import builtins
 from typing import Any
 
 from spooled.resources.base import AsyncBaseResource, BaseResource
@@ -21,7 +22,7 @@ from spooled.types.webhooks import (
 class WebhooksResource(BaseResource):
     """Outgoing webhooks resource (sync)."""
 
-    def list(self) -> list[OutgoingWebhook]:
+    def list(self) -> builtins.list[OutgoingWebhook]:
         """List all outgoing webhooks."""
         data = self._http.get("/outgoing-webhooks")
         return [OutgoingWebhook.model_validate(item) for item in data]
@@ -62,7 +63,7 @@ class WebhooksResource(BaseResource):
 
     def get_deliveries(
         self, webhook_id: str, params: ListDeliveriesParams | dict[str, Any] | None = None
-    ) -> list[OutgoingWebhookDelivery]:
+    ) -> builtins.list[OutgoingWebhookDelivery]:
         """Get webhook delivery history."""
         if isinstance(params, dict):
             params = ListDeliveriesParams.model_validate(params)
@@ -81,7 +82,7 @@ class WebhooksResource(BaseResource):
 class AsyncWebhooksResource(AsyncBaseResource):
     """Outgoing webhooks resource (async)."""
 
-    async def list(self) -> list[OutgoingWebhook]:
+    async def list(self) -> builtins.list[OutgoingWebhook]:
         """List all outgoing webhooks."""
         data = await self._http.get("/outgoing-webhooks")
         return [OutgoingWebhook.model_validate(item) for item in data]
@@ -122,7 +123,7 @@ class AsyncWebhooksResource(AsyncBaseResource):
 
     async def get_deliveries(
         self, webhook_id: str, params: ListDeliveriesParams | dict[str, Any] | None = None
-    ) -> list[OutgoingWebhookDelivery]:
+    ) -> builtins.list[OutgoingWebhookDelivery]:
         """Get webhook delivery history."""
         if isinstance(params, dict):
             params = ListDeliveriesParams.model_validate(params)

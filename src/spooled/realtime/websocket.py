@@ -7,7 +7,7 @@ from __future__ import annotations
 import contextlib
 import json
 import threading
-from collections.abc import Callable
+from collections.abc import AsyncGenerator, Callable
 from typing import Any
 
 from spooled.realtime.events import (
@@ -26,8 +26,8 @@ try:
     HAS_WEBSOCKETS = True
 except ImportError:
     HAS_WEBSOCKETS = False
-    websockets = None  # type: ignore
-    sync_ws = None  # type: ignore
+    websockets = None
+    sync_ws = None
 
 
 class WebSocketClient:
@@ -88,7 +88,7 @@ class WebSocketClient:
         self,
         event_type: RealtimeEventType,
         handler: Callable[[RealtimeEvent], None] | None = None,
-    ) -> Callable:
+    ) -> Callable[..., Any]:
         """
         Register event handler (decorator).
 
@@ -264,7 +264,7 @@ class AsyncWebSocketClient:
         self,
         event_type: RealtimeEventType,
         handler: Callable[[RealtimeEvent], None] | None = None,
-    ) -> Callable:
+    ) -> Callable[..., Any]:
         """Register event handler (decorator)."""
 
         def decorator(fn: Callable[[RealtimeEvent], None]) -> Callable[[RealtimeEvent], None]:
@@ -332,7 +332,7 @@ class AsyncWebSocketClient:
         if self._on_close:
             self._on_close(1000, "Client disconnected")
 
-    async def events(self):
+    async def events(self) -> AsyncGenerator[RealtimeEvent, None]:
         """
         Async generator that yields events.
 

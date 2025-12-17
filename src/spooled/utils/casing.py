@@ -5,6 +5,7 @@ Case conversion utilities for snake_case <-> camelCase.
 from __future__ import annotations
 
 import re
+from collections.abc import Callable
 from typing import Any
 
 
@@ -22,7 +23,7 @@ def to_camel_case(s: str) -> str:
     return components[0] + "".join(x.title() for x in components[1:])
 
 
-def convert_keys(data: Any, converter: callable) -> Any:
+def convert_keys(data: Any, converter: Callable[[str], str]) -> Any:
     """Recursively convert dictionary keys using the given converter function."""
     if isinstance(data, dict):
         return {converter(k): convert_keys(v, converter) for k, v in data.items()}

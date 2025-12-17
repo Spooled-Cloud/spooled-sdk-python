@@ -8,7 +8,7 @@ import threading
 import time
 from collections.abc import Callable
 from enum import Enum
-from typing import TypeVar
+from typing import Any, TypeVar
 
 from spooled.config import CircuitBreakerConfig
 from spooled.errors import CircuitBreakerOpenError, SpooledError
@@ -124,7 +124,7 @@ class CircuitBreaker:
             self.record_failure(e)
             raise
 
-    def get_stats(self) -> dict:
+    def get_stats(self) -> dict[str, Any]:
         """Get circuit breaker statistics."""
         with self._lock:
             return {

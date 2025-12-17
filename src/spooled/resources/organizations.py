@@ -4,6 +4,7 @@ Organizations resource for Spooled SDK.
 
 from __future__ import annotations
 
+import builtins
 from typing import Any
 
 from spooled.resources.base import AsyncBaseResource, BaseResource
@@ -33,7 +34,7 @@ class OrganizationsResource(BaseResource):
         data = self._http.post("/organizations", params.model_dump(exclude_none=True))
         return CreateOrganizationResponse.model_validate(data)
 
-    def list(self) -> list[OrganizationSummary]:
+    def list(self) -> builtins.list[OrganizationSummary]:
         """List organizations."""
         data = self._http.get("/organizations")
         return [OrganizationSummary.model_validate(item) for item in data]
@@ -61,7 +62,7 @@ class OrganizationsResource(BaseResource):
         data = self._http.get("/organizations/usage")
         return UsageInfo.model_validate(data)
 
-    def get_members(self, org_id: str) -> list[OrganizationMember]:
+    def get_members(self, org_id: str) -> builtins.list[OrganizationMember]:
         """Get organization members."""
         data = self._http.get(f"/organizations/{org_id}/members")
         return [OrganizationMember.model_validate(item) for item in data]
@@ -103,7 +104,7 @@ class AsyncOrganizationsResource(AsyncBaseResource):
         data = await self._http.post("/organizations", params.model_dump(exclude_none=True))
         return CreateOrganizationResponse.model_validate(data)
 
-    async def list(self) -> list[OrganizationSummary]:
+    async def list(self) -> builtins.list[OrganizationSummary]:
         """List organizations."""
         data = await self._http.get("/organizations")
         return [OrganizationSummary.model_validate(item) for item in data]
@@ -133,7 +134,7 @@ class AsyncOrganizationsResource(AsyncBaseResource):
         data = await self._http.get("/organizations/usage")
         return UsageInfo.model_validate(data)
 
-    async def get_members(self, org_id: str) -> list[OrganizationMember]:
+    async def get_members(self, org_id: str) -> builtins.list[OrganizationMember]:
         """Get organization members."""
         data = await self._http.get(f"/organizations/{org_id}/members")
         return [OrganizationMember.model_validate(item) for item in data]

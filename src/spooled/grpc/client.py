@@ -18,7 +18,7 @@ try:
     HAS_GRPC = True
 except ImportError:
     HAS_GRPC = False
-    grpc = None  # type: ignore
+    grpc = None
 
 
 class EnqueueRequest(BaseModel):

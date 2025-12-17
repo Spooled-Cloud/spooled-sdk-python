@@ -6,7 +6,7 @@ from __future__ import annotations
 
 import contextlib
 import json
-from collections.abc import Generator
+from collections.abc import AsyncGenerator, Generator
 from typing import Any
 
 import httpx
@@ -20,7 +20,7 @@ try:
     HAS_SSE = True
 except ImportError:
     HAS_SSE = False
-    sseclient = None  # type: ignore
+    sseclient = None
 
 
 class SSEClient:
@@ -214,7 +214,7 @@ class AsyncSSEClient:
             },
         ).__aenter__()
 
-    async def events(self):
+    async def events(self) -> AsyncGenerator[RealtimeEvent, None]:
         """
         Async generator that yields events from the SSE stream.
 
@@ -229,6 +229,7 @@ class AsyncSSEClient:
             current_event = ""
             current_data = ""
 
+            assert self._response is not None
             async for line in self._response.aiter_lines():
                 if self._closed:
                     break

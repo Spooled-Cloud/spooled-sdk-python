@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "spooled"
-version = "1.0.1"
+version = "1.0.2"
 description = "Official Python SDK for Spooled Cloud job queue service"
 readme = "README.md"
 license = "Apache-2.0"
@@ -91,6 +91,19 @@ strict = true
 warn_return_any = true
 warn_unused_configs = true
 exclude = ["tests", "examples"]
+ignore_missing_imports = true
+plugins = ["pydantic.mypy"]
+
+[[tool.mypy.overrides]]
+module = [
+    "grpc",
+    "grpc.*",
+    "websockets",
+    "websockets.*",
+    "sseclient",
+    "httpx",
+]
+ignore_missing_imports = true
 
 [tool.ruff]
 target-version = "py310"
