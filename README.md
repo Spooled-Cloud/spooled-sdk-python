@@ -165,6 +165,54 @@ print(f"Schedule created: {schedule.id}")
 print(f"Next run: {schedule.next_run_at}")
 ```
 
+## gRPC Support (High Performance)
+
+The SDK includes a high-performance gRPC client for high-throughput worker scenarios.
+
+```python
+from spooled.grpc import SpooledGrpcClient
+
+# Optimized for Cloudflare Tunnel (no internal TLS overhead)
+client = SpooledGrpcClient(
+    address="grpc.spooled.cloud:443", 
+    api_key="sk_live_...",
+    use_tls=True  # TLS terminated at Cloudflare edge
+)
+
+# Enqueue a job
+response = client.queue.enqueue(
+    queue_name="high-throughput",
+    payload={"data": "value"}
+)
+print(f"Job enqueued: {response.job_id}")
+
+# Get queue stats
+stats = client.queue.get_queue_stats("high-throughput")
+print(f"Pending jobs: {stats.pending}")
+
+client.close()
+```
+
+### When to use gRPC?
+
+- **High Throughput**: 3x faster than HTTP API for enqueue/dequeue operations.
+- **Streaming**: Supports real-time job streaming.
+- **Efficiency**: Uses persistent HTTP/2 connections with keepalives.
+
+## Real-time Events (SSE/WebSocket)
+
+Listen for real-time updates:
+
+```python
+from spooled import SpooledClient
+
+client = SpooledClient(api_key="sk_live_...")
+
+# Subscribe to job updates
+for event in client.realtime.subscribe("jobs:updates"):
+    print(f"Event: {event.type} - {event.data}")
+```
+
 ## Configuration
 
 ```python
