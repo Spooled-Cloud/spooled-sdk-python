@@ -303,6 +303,3 @@ class TestConstants:
     def test_default_user_agent(self) -> None:
         """Test default user agent contains sdk name."""
         assert "spooled-python" in DEFAULT_USER_AGENT
-
-
-

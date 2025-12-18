@@ -68,5 +68,3 @@ class UpdateApiKeyParams(BaseModel):
     is_active: bool | None = None
 
     model_config = {"extra": "forbid"}
-
-

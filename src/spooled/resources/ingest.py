@@ -78,5 +78,3 @@ class AsyncIngestResource(AsyncBaseResource):
             headers=headers if headers else None,
         )
         return CustomWebhookResponse.model_validate(data)
-
-

@@ -76,5 +76,3 @@ class WorkerHeartbeatParams(BaseModel):
     metadata: dict[str, Any] | None = None
 
     model_config = {"extra": "forbid"}
-
-

@@ -287,5 +287,3 @@ class PurgeDlqResponse(BaseModel):
     """Response from purging DLQ jobs."""
 
     purged_count: int
-
-

@@ -581,4 +581,3 @@ class TestMessageParsing:
             })
             data = json.loads(message)
             assert data["type"] in response_types
-

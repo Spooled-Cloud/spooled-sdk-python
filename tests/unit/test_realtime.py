@@ -154,5 +154,3 @@ class TestRealtimeEventTypes:
         for t in valid_types:
             event = RealtimeEvent(type=t, data={})
             assert event.type == t
-
-

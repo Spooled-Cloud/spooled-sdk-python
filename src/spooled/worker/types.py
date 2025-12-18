@@ -172,6 +172,3 @@ class SpooledWorkerOptions(BaseModel):
     auto_start: bool = Field(default=False)
 
     model_config = {"extra": "forbid"}
-
-
-

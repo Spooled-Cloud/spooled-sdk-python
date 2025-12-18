@@ -228,6 +228,3 @@ class TestCreateCircuitBreaker:
         breaker = create_circuit_breaker(config)
         assert isinstance(breaker, CircuitBreaker)
         assert breaker.config == config
-
-
-

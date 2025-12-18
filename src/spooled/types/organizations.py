@@ -168,5 +168,3 @@ class WebhookTokenResponse(BaseModel):
 
     webhook_token: str | None = None
     webhook_url: str | None = None
-
-

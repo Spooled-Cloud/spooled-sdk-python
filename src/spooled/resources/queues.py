@@ -103,5 +103,3 @@ class AsyncQueuesResource(AsyncBaseResource):
     async def delete(self, name: str) -> None:
         """Delete a queue."""
         await self._http.delete(f"/queues/{name}")
-
-

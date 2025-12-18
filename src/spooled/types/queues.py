@@ -75,6 +75,3 @@ class ResumeQueueResponse(BaseModel):
     queue_name: str
     resumed: bool
     paused_duration_secs: int
-
-
-

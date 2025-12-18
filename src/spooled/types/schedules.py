@@ -107,5 +107,3 @@ class TriggerScheduleResponse(BaseModel):
 
     job_id: str
     triggered_at: datetime
-
-

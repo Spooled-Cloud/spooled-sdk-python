@@ -144,5 +144,3 @@ class CircuitBreaker:
 def create_circuit_breaker(config: CircuitBreakerConfig) -> CircuitBreaker:
     """Create a circuit breaker instance."""
     return CircuitBreaker(config)
-
-

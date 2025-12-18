@@ -25,5 +25,3 @@ class AsyncMetricsResource(AsyncBaseResource):
             "/metrics", skip_api_prefix=True, skip_response_conversion=True
         )
         return str(data)
-
-

@@ -211,6 +211,3 @@ class AsyncAdminResource(AsyncBaseResource):
         """List all plan tiers and limits."""
         data = await self._http.get("/admin/plans", headers=self._get_headers())
         return [PlanInfo.model_validate(item) for item in data]
-
-
-

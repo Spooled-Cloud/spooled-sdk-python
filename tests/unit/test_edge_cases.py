@@ -468,4 +468,3 @@ class TestNetworkConditions:
             circuit_breaker=CircuitBreakerConfig(enabled=False),
         ) as client, pytest.raises(ServerError):
             client.jobs.list()
-

@@ -24,6 +24,3 @@ __all__ = [
     "calculate_delay",
     "should_retry",
 ]
-
-
-

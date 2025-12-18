@@ -109,5 +109,3 @@ class PingCommand(BaseModel):
     def to_dict(self) -> dict[str, Any]:
         """Convert to dict for sending."""
         return {"type": "ping"}
-
-

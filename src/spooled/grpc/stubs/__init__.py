@@ -65,5 +65,3 @@ __all__ = [
     "QueueServiceStub",
     "WorkerServiceStub",
 ]
-
-

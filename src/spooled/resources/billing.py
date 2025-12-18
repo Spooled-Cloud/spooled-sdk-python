@@ -48,5 +48,3 @@ class AsyncBillingResource(AsyncBaseResource):
             params = CreatePortalParams.model_validate(params)
         data = await self._http.post("/billing/portal", params.model_dump(exclude_none=True))
         return CreatePortalResponse.model_validate(data)
-
-

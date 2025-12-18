@@ -334,6 +334,3 @@ class TestHttpClientNonJsonResponse:
 
         result = http_client.get("/metrics", skip_api_prefix=True)
         assert "spooled_jobs_total" in result
-
-
-

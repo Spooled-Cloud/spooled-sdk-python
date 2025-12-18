@@ -29,6 +29,3 @@ __all__ = [
     "JobCompletedEventData",
     "JobFailedEventData",
 ]
-
-
-

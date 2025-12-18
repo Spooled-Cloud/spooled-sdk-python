@@ -141,5 +141,3 @@ class AsyncWebhooksResource(AsyncBaseResource):
             f"/outgoing-webhooks/{webhook_id}/deliveries/{delivery_id}/retry"
         )
         return RetryDeliveryResponse.model_validate(data)
-
-

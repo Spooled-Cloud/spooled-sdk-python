@@ -142,5 +142,3 @@ def validate_config(config: ResolvedConfig) -> None:
     """Validate that configuration has required authentication."""
     if not config.api_key and not config.access_token:
         raise ValueError("Either api_key or access_token must be provided")
-
-

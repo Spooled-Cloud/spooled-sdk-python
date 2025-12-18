@@ -101,5 +101,3 @@ def __getattr__(name: str) -> type:
 
         return SpooledRealtime
     raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
-
-

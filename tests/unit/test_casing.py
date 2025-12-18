@@ -208,6 +208,3 @@ class TestConvertQueryParams:
         """Test empty dictionary."""
         result = convert_query_params({})
         assert result == {}
-
-
-

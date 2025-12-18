@@ -32,5 +32,3 @@ class CreatePortalResponse(BaseModel):
     """Response from creating a billing portal session."""
 
     url: str
-
-

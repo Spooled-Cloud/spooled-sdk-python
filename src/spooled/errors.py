@@ -323,6 +323,3 @@ def create_error_from_response(
         details=details,
         request_id=request_id,
     )
-
-
-

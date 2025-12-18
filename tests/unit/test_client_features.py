@@ -588,4 +588,3 @@ class TestAsyncSSEClientEventHandlers:
 
         assert sse.state == SSEConnectionState.DISCONNECTED
         assert sse.get_state() == SSEConnectionState.DISCONNECTED
-

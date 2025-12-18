@@ -15,6 +15,3 @@ class HealthResponse(BaseModel):
     database: bool | None = None
     cache: bool | None = None
     uptime_seconds: int | None = None
-
-
-

@@ -96,6 +96,3 @@ class TestAsyncSpooledClient:
             queues = await client.queues.list()
             assert len(queues) == 1
             assert queues[0].queue_name == "emails"
-
-
-

@@ -479,5 +479,3 @@ def create_client(
         >>> client = create_client(api_key="sk_live_...")
     """
     return SpooledClient(api_key=api_key, **kwargs)
-
-

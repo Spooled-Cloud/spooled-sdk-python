@@ -22,6 +22,3 @@ class PaginationParams(BaseModel):
     order_dir: str | None = Field(default=None, pattern="^(asc|desc)$")
 
     model_config = {"extra": "forbid"}
-
-
-

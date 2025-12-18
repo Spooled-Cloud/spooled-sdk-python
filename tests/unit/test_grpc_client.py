@@ -203,5 +203,3 @@ class TestSpooledGrpcClientImport:
         # This test verifies the import guard exists
         # In a real test environment with grpc, this would pass
         pass
-
-

@@ -673,5 +673,3 @@ class AsyncSSEClient:
 
     async def __aexit__(self, *args: Any) -> None:
         await self.close()
-
-

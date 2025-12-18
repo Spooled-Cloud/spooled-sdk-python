@@ -84,5 +84,3 @@ class AsyncApiKeysResource(AsyncBaseResource):
     async def delete(self, key_id: str) -> None:
         """Revoke an API key."""
         await self._http.delete(f"/api-keys/{key_id}")
-
-

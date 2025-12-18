@@ -162,5 +162,3 @@ class AsyncOrganizationsResource(AsyncBaseResource):
     async def clear_webhook_token(self) -> None:
         """Clear the webhook token."""
         await self._http.post("/organizations/webhook-token/clear", body={"confirm": True})
-
-

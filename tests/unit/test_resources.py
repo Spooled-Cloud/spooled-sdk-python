@@ -630,5 +630,3 @@ class TestAuthResourceComplete:
             result = client.auth.me()
             assert result.organization_id == "org_1"
             assert "emails" in result.queues
-
-

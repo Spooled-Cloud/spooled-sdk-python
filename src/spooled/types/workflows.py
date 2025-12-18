@@ -135,5 +135,3 @@ class WorkflowJobStatus(BaseModel):
     job_id: str
     status: str
     progress: float | None = None
-
-

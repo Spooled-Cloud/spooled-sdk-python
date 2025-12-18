@@ -471,5 +471,3 @@ async def create_async_client(
         >>> client = await create_async_client(api_key="sk_live_...")
     """
     return AsyncSpooledClient(api_key=api_key, **kwargs)
-
-

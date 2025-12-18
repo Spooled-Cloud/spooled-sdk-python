@@ -388,5 +388,3 @@ def create_async_http_client(
 ) -> AsyncHttpClient:
     """Create an async HTTP client instance."""
     return AsyncHttpClient(config, circuit_breaker)
-
-

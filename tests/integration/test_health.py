@@ -32,6 +32,3 @@ class TestHealthIntegration:
         """Test readiness probe."""
         is_ready = client.health.readiness()
         assert isinstance(is_ready, bool)
-
-
-

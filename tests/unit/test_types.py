@@ -410,5 +410,3 @@ class TestSerializationModes:
         # Present values included
         assert "queue_name" in data
         assert "payload" in data
-
-

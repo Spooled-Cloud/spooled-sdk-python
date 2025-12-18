@@ -195,5 +195,3 @@ class AsyncWorkflowsResource(AsyncBaseResource):
         """Retry a failed workflow."""
         data = await self._http.post(f"/workflows/{workflow_id}/retry")
         return WorkflowResponse.model_validate(data)
-
-

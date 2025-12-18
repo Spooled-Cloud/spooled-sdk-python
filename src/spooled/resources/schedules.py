@@ -145,5 +145,3 @@ class AsyncSchedulesResource(AsyncBaseResource):
             f"/schedules/{schedule_id}/history", params={"limit": limit}
         )
         return [ScheduleRun.model_validate(item) for item in data]
-
-

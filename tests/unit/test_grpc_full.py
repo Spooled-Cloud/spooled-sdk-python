@@ -595,5 +595,3 @@ class TestGrpcExports:
         assert SpooledGrpcClient is not None
         assert GrpcQueueService is not None
         assert GrpcWorkersService is not None
-
-

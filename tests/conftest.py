@@ -100,4 +100,3 @@ def fast_circuit_breaker() -> CircuitBreakerConfig:
         success_threshold=1,
         timeout=0.1,  # 100ms
     )
-

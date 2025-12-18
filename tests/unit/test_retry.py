@@ -208,6 +208,3 @@ class TestWithRetry:
         fn = MagicMock(return_value=[1, 2, 3])
         result = with_retry(fn, config)
         assert result == [1, 2, 3]
-
-
-

@@ -316,4 +316,3 @@ class AsyncJobsResource(AsyncBaseResource):
         if isinstance(params, dict):
             params = JobHeartbeatParams.model_validate(params)
         await self._http.post(f"/jobs/{job_id}/heartbeat", params.model_dump(exclude_none=True))
-

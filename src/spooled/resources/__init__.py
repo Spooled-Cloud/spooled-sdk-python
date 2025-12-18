@@ -52,6 +52,3 @@ __all__ = [
     "AsyncMetricsResource",
     "AsyncIngestResource",
 ]
-
-
-

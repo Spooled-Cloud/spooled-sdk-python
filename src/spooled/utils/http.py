@@ -363,5 +363,3 @@ class HttpClient:
 def create_http_client(config: ResolvedConfig, circuit_breaker: CircuitBreaker) -> HttpClient:
     """Create an HTTP client instance."""
     return HttpClient(config, circuit_breaker)
-
-

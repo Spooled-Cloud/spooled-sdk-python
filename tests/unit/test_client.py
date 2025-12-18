@@ -261,6 +261,3 @@ class TestHealthResource:
         ) as client:
             is_alive = client.health.liveness()
             assert is_alive is True
-
-
-

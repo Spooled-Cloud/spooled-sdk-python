@@ -518,5 +518,3 @@ class SpooledWorker:
             except Exception as e:
                 if self._debug:
                     self._debug(f"Event handler error for {event}: {e}", None)
-
-

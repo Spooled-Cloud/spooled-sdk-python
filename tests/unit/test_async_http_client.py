@@ -186,6 +186,3 @@ class TestCreateAsyncHttpClient:
         breaker = create_circuit_breaker(resolved.circuit_breaker)
         client = create_async_http_client(resolved, breaker)
         assert isinstance(client, AsyncHttpClient)
-
-
-

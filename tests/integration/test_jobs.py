@@ -69,6 +69,3 @@ class TestJobsIntegration:
         for succeeded in result.succeeded:
             if succeeded.job_id:
                 client.jobs.cancel(succeeded.job_id)
-
-
-

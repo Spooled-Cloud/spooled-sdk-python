@@ -106,5 +106,3 @@ class AsyncAuthResource(AsyncBaseResource):
         """Check if email exists."""
         data = await self._http.get("/auth/email/check", params={"email": email})
         return CheckEmailResponse.model_validate(data)
-
-

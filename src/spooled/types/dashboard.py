@@ -66,6 +66,3 @@ class DashboardData(BaseModel):
     queues: list[QueueSummaryInfo]
     workers: WorkerSummaryInfo
     recent_activity: RecentActivity
-
-
-

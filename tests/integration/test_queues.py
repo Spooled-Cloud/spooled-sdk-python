@@ -40,6 +40,3 @@ class TestQueuesIntegration:
             stats = client.queues.get_stats(queue_name)
             assert stats.queue_name == queue_name
             assert stats.pending_jobs >= 0
-
-
-

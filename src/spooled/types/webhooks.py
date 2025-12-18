@@ -103,6 +103,3 @@ class RetryDeliveryResponse(BaseModel):
 
     delivery_id: str
     status: str
-
-
-

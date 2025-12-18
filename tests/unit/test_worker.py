@@ -393,4 +393,3 @@ class TestAsyncJobContext:
         # Should not raise
         await ctx.log("info", "Test message")
         await ctx.log("debug", "Debug", {"key": "value"})
-

@@ -68,5 +68,3 @@ def convert_query_params(params: dict[str, Any]) -> dict[str, str]:
         else:
             result[snake_key] = str(value)
     return result
-
-

@@ -86,5 +86,3 @@ class AsyncWorkersResource(AsyncBaseResource):
     async def deregister(self, worker_id: str) -> None:
         """Deregister a worker."""
         await self._http.post(f"/workers/{worker_id}/deregister")
-
-

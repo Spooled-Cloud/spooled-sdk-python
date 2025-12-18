@@ -56,5 +56,3 @@ class AsyncHealthResource(AsyncBaseResource):
             return True
         except Exception:
             return False
-
-

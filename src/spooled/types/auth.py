@@ -82,5 +82,3 @@ class CheckEmailResponse(BaseModel):
 
     exists: bool
     has_organizations: bool | None = None
-
-

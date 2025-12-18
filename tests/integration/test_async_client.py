@@ -53,6 +53,3 @@ class TestAsyncClientIntegration:
         )
 
         assert len(results) == 3
-
-
-

@@ -23,6 +23,3 @@ class AsyncBaseResource:
 
     def __init__(self, http: AsyncHttpClient) -> None:
         self._http = http
-
-
-

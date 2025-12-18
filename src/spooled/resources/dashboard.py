@@ -24,5 +24,3 @@ class AsyncDashboardResource(AsyncBaseResource):
         """Get aggregated dashboard data."""
         data = await self._http.get("/dashboard")
         return DashboardData.model_validate(data)
-
-
