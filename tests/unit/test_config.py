@@ -125,7 +125,7 @@ class TestSpooledClientConfig:
 
     def test_default_values(self) -> None:
         """Test default client config values."""
-        config = SpooledClientConfig(api_key="sk_test_xxxxxxxxxxxxxxxxxxxx")
+        config = SpooledClientConfig(api_key="sp_test_xxxxxxxxxxxxxxxxxxxx")
         assert config.base_url == DEFAULT_BASE_URL
         assert config.grpc_address == DEFAULT_GRPC_ADDRESS
         assert config.timeout == DEFAULT_TIMEOUT
@@ -152,7 +152,7 @@ class TestSpooledClientConfig:
     def test_custom_base_url(self) -> None:
         """Test custom base URL."""
         config = SpooledClientConfig(
-            api_key="sk_test_xxxxxxxxxxxxxxxxxxxx",
+            api_key="sp_test_xxxxxxxxxxxxxxxxxxxx",
             base_url="https://custom.api.com",
         )
         assert config.base_url == "https://custom.api.com"
@@ -160,7 +160,7 @@ class TestSpooledClientConfig:
     def test_custom_timeout(self) -> None:
         """Test custom timeout values."""
         config = SpooledClientConfig(
-            api_key="sk_test_xxxxxxxxxxxxxxxxxxxx",
+            api_key="sp_test_xxxxxxxxxxxxxxxxxxxx",
             timeout=60.0,
             connect_timeout=5.0,
         )
@@ -171,14 +171,14 @@ class TestSpooledClientConfig:
         """Test timeout must be positive."""
         with pytest.raises(PydanticValidationError):
             SpooledClientConfig(
-                api_key="sk_test_xxxxxxxxxxxxxxxxxxxx",
+                api_key="sp_test_xxxxxxxxxxxxxxxxxxxx",
                 timeout=0,
             )
 
     def test_custom_headers(self) -> None:
         """Test custom headers."""
         config = SpooledClientConfig(
-            api_key="sk_test_xxxxxxxxxxxxxxxxxxxx",
+            api_key="sp_test_xxxxxxxxxxxxxxxxxxxx",
             headers={"X-Custom-Header": "value"},
         )
         assert config.headers == {"X-Custom-Header": "value"}
@@ -187,14 +187,14 @@ class TestSpooledClientConfig:
         """Test extra fields are not allowed."""
         with pytest.raises(PydanticValidationError):
             SpooledClientConfig(
-                api_key="sk_test_xxxxxxxxxxxxxxxxxxxx",
+                api_key="sp_test_xxxxxxxxxxxxxxxxxxxx",
                 unknown_field="value",
             )
 
     def test_get_ws_url_from_https(self) -> None:
         """Test WebSocket URL derivation from HTTPS."""
         config = SpooledClientConfig(
-            api_key="sk_test_xxxxxxxxxxxxxxxxxxxx",
+            api_key="sp_test_xxxxxxxxxxxxxxxxxxxx",
             base_url="https://api.example.com",
         )
         assert config.get_ws_url() == "wss://api.example.com"
@@ -202,7 +202,7 @@ class TestSpooledClientConfig:
     def test_get_ws_url_from_http(self) -> None:
         """Test WebSocket URL derivation from HTTP."""
         config = SpooledClientConfig(
-            api_key="sk_test_xxxxxxxxxxxxxxxxxxxx",
+            api_key="sp_test_xxxxxxxxxxxxxxxxxxxx",
             base_url="http://localhost:8080",
         )
         assert config.get_ws_url() == "ws://localhost:8080"
@@ -210,7 +210,7 @@ class TestSpooledClientConfig:
     def test_get_ws_url_custom(self) -> None:
         """Test custom WebSocket URL."""
         config = SpooledClientConfig(
-            api_key="sk_test_xxxxxxxxxxxxxxxxxxxx",
+            api_key="sp_test_xxxxxxxxxxxxxxxxxxxx",
             ws_url="wss://ws.example.com",
         )
         assert config.get_ws_url() == "wss://ws.example.com"
@@ -221,10 +221,10 @@ class TestResolveConfig:
 
     def test_basic_resolution(self) -> None:
         """Test basic config resolution."""
-        config = SpooledClientConfig(api_key="sk_test_xxxxxxxxxxxxxxxxxxxx")
+        config = SpooledClientConfig(api_key="sp_test_xxxxxxxxxxxxxxxxxxxx")
         resolved = resolve_config(config)
 
-        assert resolved.api_key == "sk_test_xxxxxxxxxxxxxxxxxxxx"
+        assert resolved.api_key == "sp_test_xxxxxxxxxxxxxxxxxxxx"
         assert resolved.base_url == DEFAULT_BASE_URL.rstrip("/")
         assert resolved.ws_url.startswith("wss://")
         assert resolved.debug_fn is None
@@ -232,7 +232,7 @@ class TestResolveConfig:
     def test_debug_mode(self) -> None:
         """Test debug mode enables debug function."""
         config = SpooledClientConfig(
-            api_key="sk_test_xxxxxxxxxxxxxxxxxxxx",
+            api_key="sp_test_xxxxxxxxxxxxxxxxxxxx",
             debug=True,
         )
         resolved = resolve_config(config)
@@ -245,7 +245,7 @@ class TestResolveConfig:
     def test_strips_trailing_slash(self) -> None:
         """Test trailing slashes are stripped from URLs."""
         config = SpooledClientConfig(
-            api_key="sk_test_xxxxxxxxxxxxxxxxxxxx",
+            api_key="sp_test_xxxxxxxxxxxxxxxxxxxx",
             base_url="https://api.example.com/",
         )
         resolved = resolve_config(config)
@@ -258,7 +258,7 @@ class TestValidateConfig:
 
     def test_valid_api_key(self) -> None:
         """Test validation passes with API key."""
-        config = SpooledClientConfig(api_key="sk_test_xxxxxxxxxxxxxxxxxxxx")
+        config = SpooledClientConfig(api_key="sp_test_xxxxxxxxxxxxxxxxxxxx")
         resolved = resolve_config(config)
         validate_config(resolved)  # Should not raise
 

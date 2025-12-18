@@ -30,7 +30,7 @@ class TestHttpClientBasics:
     def http_client(self) -> HttpClient:
         """Create an HTTP client for tests."""
         config = SpooledClientConfig(
-            api_key="sk_test_xxxxxxxxxxxxxxxxxxxx",
+            api_key="sp_test_xxxxxxxxxxxxxxxxxxxx",
             base_url="http://localhost:8080",
         )
         resolved = resolve_config(config)
@@ -78,7 +78,7 @@ class TestHttpClientBasics:
     def test_context_manager(self) -> None:
         """Test HTTP client as context manager."""
         config = SpooledClientConfig(
-            api_key="sk_test_xxxxxxxxxxxxxxxxxxxx",
+            api_key="sp_test_xxxxxxxxxxxxxxxxxxxx",
             base_url="http://localhost:8080",
         )
         resolved = resolve_config(config)
@@ -97,7 +97,7 @@ class TestHttpClientRequests:
     def http_client(self) -> HttpClient:
         """Create an HTTP client for tests."""
         config = SpooledClientConfig(
-            api_key="sk_test_xxxxxxxxxxxxxxxxxxxx",
+            api_key="sp_test_xxxxxxxxxxxxxxxxxxxx",
             base_url=self.BASE_URL,
             retry=RetryConfig(max_retries=0),  # Disable retries for unit tests
             circuit_breaker=CircuitBreakerConfig(enabled=False),
@@ -188,7 +188,7 @@ class TestHttpClientErrors:
     def http_client(self) -> HttpClient:
         """Create an HTTP client for tests."""
         config = SpooledClientConfig(
-            api_key="sk_test_xxxxxxxxxxxxxxxxxxxx",
+            api_key="sp_test_xxxxxxxxxxxxxxxxxxxx",
             base_url=self.BASE_URL,
             retry=RetryConfig(max_retries=0),
             circuit_breaker=CircuitBreakerConfig(enabled=False),
@@ -312,7 +312,7 @@ class TestHttpClientNonJsonResponse:
     def http_client(self) -> HttpClient:
         """Create an HTTP client for tests."""
         config = SpooledClientConfig(
-            api_key="sk_test_xxxxxxxxxxxxxxxxxxxx",
+            api_key="sp_test_xxxxxxxxxxxxxxxxxxxx",
             base_url=self.BASE_URL,
             retry=RetryConfig(max_retries=0),
             circuit_breaker=CircuitBreakerConfig(enabled=False),

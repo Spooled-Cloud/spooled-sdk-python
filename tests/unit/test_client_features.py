@@ -27,7 +27,7 @@ class TestWithOptions:
 
     def test_with_options_creates_new_client(self) -> None:
         """Test that with_options creates a new client instance."""
-        client = SpooledClient(api_key="sk_live_test")
+        client = SpooledClient(api_key="sp_test_test_key")
         new_client = client.with_options(debug=True)
 
         assert new_client is not client
@@ -38,12 +38,12 @@ class TestWithOptions:
     def test_with_options_preserves_existing_config(self) -> None:
         """Test that with_options preserves existing configuration."""
         client = SpooledClient(
-            api_key="sk_live_test",
+            api_key="sp_test_test_key",
             base_url="https://custom.api.com",
         )
         new_client = client.with_options(debug=True)
 
-        assert new_client.get_config().api_key == "sk_live_test"
+        assert new_client.get_config().api_key == "sp_test_test_key"
         assert new_client.get_config().base_url == "https://custom.api.com"
         assert new_client.get_config().debug_fn is not None
         client.close()
@@ -51,16 +51,16 @@ class TestWithOptions:
 
     def test_with_options_overrides_api_key(self) -> None:
         """Test that with_options can override API key."""
-        client = SpooledClient(api_key="sk_live_original")
-        new_client = client.with_options(api_key="sk_live_new")
+        client = SpooledClient(api_key="sp_test_original_key")
+        new_client = client.with_options(api_key="sp_test_new_key")
 
-        assert new_client.get_config().api_key == "sk_live_new"
+        assert new_client.get_config().api_key == "sp_test_new_key"
         client.close()
         new_client.close()
 
     def test_with_options_overrides_base_url(self) -> None:
         """Test that with_options can override base URL."""
-        client = SpooledClient(api_key="sk_live_test")
+        client = SpooledClient(api_key="sp_test_test_key")
         new_client = client.with_options(base_url="https://staging.api.com")
 
         assert new_client.get_config().base_url == "https://staging.api.com"
@@ -69,7 +69,7 @@ class TestWithOptions:
 
     def test_with_options_overrides_timeout(self) -> None:
         """Test that with_options can override timeout."""
-        client = SpooledClient(api_key="sk_live_test", timeout=30.0)
+        client = SpooledClient(api_key="sp_test_test_key", timeout=30.0)
         new_client = client.with_options(timeout=60.0)
 
         assert new_client.get_config().timeout == 60.0
@@ -78,7 +78,7 @@ class TestWithOptions:
 
     def test_async_client_with_options(self) -> None:
         """Test that AsyncSpooledClient also has with_options."""
-        client = AsyncSpooledClient(api_key="sk_live_test")
+        client = AsyncSpooledClient(api_key="sp_test_test_key")
         new_client = client.with_options(debug=True)
 
         assert new_client is not client
@@ -96,7 +96,7 @@ class TestGrpcProperty:
 
     def test_grpc_client_attribute_init(self) -> None:
         """Test that grpc client is not created on client init."""
-        client = SpooledClient(api_key="sk_live_test")
+        client = SpooledClient(api_key="sp_test_test_key")
 
         # The _grpc attribute should exist but be None initially
         assert hasattr(client, "_grpc")
@@ -106,7 +106,7 @@ class TestGrpcProperty:
 
     def test_grpc_is_lazy_loaded(self) -> None:
         """Test that gRPC client is created lazily."""
-        client = SpooledClient(api_key="sk_live_test")
+        client = SpooledClient(api_key="sp_test_test_key")
 
         # gRPC client should not exist initially
         assert client._grpc is None
@@ -115,7 +115,7 @@ class TestGrpcProperty:
 
     def test_grpc_created_on_access(self) -> None:
         """Test that gRPC client is created on first access."""
-        client = SpooledClient(api_key="sk_live_test", base_url="https://api.spooled.cloud")
+        client = SpooledClient(api_key="sp_test_test_key", base_url="https://api.spooled.cloud")
 
         # Access the grpc property - will raise ImportError if grpc not installed
         try:
@@ -140,7 +140,7 @@ class TestRealtimeFactory:
 
     def test_realtime_creates_websocket_by_default(self) -> None:
         """Test that realtime() creates WebSocket client by default."""
-        client = SpooledClient(api_key="sk_live_test", access_token="test_token")
+        client = SpooledClient(api_key="sp_test_test_key", access_token="test_token")
 
         try:
             realtime = client.realtime()
@@ -154,7 +154,7 @@ class TestRealtimeFactory:
 
     def test_realtime_creates_sse_when_specified(self) -> None:
         """Test that realtime() creates SSE client when specified."""
-        client = SpooledClient(api_key="sk_live_test", access_token="test_token")
+        client = SpooledClient(api_key="sp_test_test_key", access_token="test_token")
 
         try:
             realtime = client.realtime(type="sse")
@@ -166,7 +166,7 @@ class TestRealtimeFactory:
 
     def test_realtime_passes_reconnect_options(self) -> None:
         """Test that realtime() passes reconnection options."""
-        client = SpooledClient(api_key="sk_live_test", access_token="test_token")
+        client = SpooledClient(api_key="sp_test_test_key", access_token="test_token")
 
         try:
             realtime = client.realtime(

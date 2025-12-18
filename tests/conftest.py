@@ -13,8 +13,8 @@ import respx
 from spooled import AsyncSpooledClient, SpooledClient
 from spooled.config import CircuitBreakerConfig, RetryConfig
 
-# Test API key
-TEST_API_KEY = "sk_test_xxxxxxxxxxxxxxxxxxxx"
+# Test API key (use sp_test_ prefix to avoid GitHub secret scanning false positives)
+TEST_API_KEY = "sp_test_xxxxxxxxxxxxxxxxxxxx"
 TEST_BASE_URL = "http://localhost:8080"
 
 

@@ -26,7 +26,7 @@ class TestAsyncHttpClientBasics:
     def http_client(self) -> AsyncHttpClient:
         """Create an async HTTP client for tests."""
         config = SpooledClientConfig(
-            api_key="sk_test_xxxxxxxxxxxxxxxxxxxx",
+            api_key="sp_test_xxxxxxxxxxxxxxxxxxxx",
             base_url=self.BASE_URL,
             retry=RetryConfig(max_retries=0),
             circuit_breaker=CircuitBreakerConfig(enabled=False),
@@ -44,7 +44,7 @@ class TestAsyncHttpClientBasics:
     async def test_context_manager(self) -> None:
         """Test async context manager."""
         config = SpooledClientConfig(
-            api_key="sk_test_xxxxxxxxxxxxxxxxxxxx",
+            api_key="sp_test_xxxxxxxxxxxxxxxxxxxx",
             base_url=self.BASE_URL,
         )
         resolved = resolve_config(config)
@@ -63,7 +63,7 @@ class TestAsyncHttpClientRequests:
     def http_client(self) -> AsyncHttpClient:
         """Create an async HTTP client for tests."""
         config = SpooledClientConfig(
-            api_key="sk_test_xxxxxxxxxxxxxxxxxxxx",
+            api_key="sp_test_xxxxxxxxxxxxxxxxxxxx",
             base_url=self.BASE_URL,
             retry=RetryConfig(max_retries=0),
             circuit_breaker=CircuitBreakerConfig(enabled=False),
@@ -135,7 +135,7 @@ class TestAsyncHttpClientErrors:
     def http_client(self) -> AsyncHttpClient:
         """Create an async HTTP client for tests."""
         config = SpooledClientConfig(
-            api_key="sk_test_xxxxxxxxxxxxxxxxxxxx",
+            api_key="sp_test_xxxxxxxxxxxxxxxxxxxx",
             base_url=self.BASE_URL,
             retry=RetryConfig(max_retries=0),
             circuit_breaker=CircuitBreakerConfig(enabled=False),
@@ -179,7 +179,7 @@ class TestCreateAsyncHttpClient:
     def test_creates_client(self) -> None:
         """Test factory creates async HTTP client."""
         config = SpooledClientConfig(
-            api_key="sk_test_xxxxxxxxxxxxxxxxxxxx",
+            api_key="sp_test_xxxxxxxxxxxxxxxxxxxx",
             base_url="http://localhost:8080",
         )
         resolved = resolve_config(config)

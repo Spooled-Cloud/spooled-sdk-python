@@ -15,9 +15,9 @@ class TestAsyncSpooledClient:
     @pytest.mark.asyncio
     async def test_client_initialization(self) -> None:
         """Test async client initialization."""
-        async with AsyncSpooledClient(api_key="sk_test_xxxxxxxxxxxxxxxxxxxx") as client:
+        async with AsyncSpooledClient(api_key="sp_test_xxxxxxxxxxxxxxxxxxxx") as client:
             assert client is not None
-            assert client.get_config().api_key == "sk_test_xxxxxxxxxxxxxxxxxxxx"
+            assert client.get_config().api_key == "sp_test_xxxxxxxxxxxxxxxxxxxx"
 
     @pytest.mark.asyncio
     @respx.mock
@@ -31,7 +31,7 @@ class TestAsyncSpooledClient:
         )
 
         async with AsyncSpooledClient(
-            api_key="sk_test_xxxxxxxxxxxxxxxxxxxx",
+            api_key="sp_test_xxxxxxxxxxxxxxxxxxxx",
             base_url="http://localhost:8080",
         ) as client:
             result = await client.jobs.create({
@@ -64,7 +64,7 @@ class TestAsyncSpooledClient:
         )
 
         async with AsyncSpooledClient(
-            api_key="sk_test_xxxxxxxxxxxxxxxxxxxx",
+            api_key="sp_test_xxxxxxxxxxxxxxxxxxxx",
             base_url="http://localhost:8080",
         ) as client:
             job = await client.jobs.get("job_123")
@@ -90,7 +90,7 @@ class TestAsyncSpooledClient:
         )
 
         async with AsyncSpooledClient(
-            api_key="sk_test_xxxxxxxxxxxxxxxxxxxx",
+            api_key="sp_test_xxxxxxxxxxxxxxxxxxxx",
             base_url="http://localhost:8080",
         ) as client:
             queues = await client.queues.list()

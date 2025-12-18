@@ -15,9 +15,9 @@ class TestSpooledClient:
 
     def test_client_initialization(self) -> None:
         """Test client initialization."""
-        client = SpooledClient(api_key="sk_test_xxxxxxxxxxxxxxxxxxxx")
+        client = SpooledClient(api_key="sp_test_xxxxxxxxxxxxxxxxxxxx")
         assert client is not None
-        assert client.get_config().api_key == "sk_test_xxxxxxxxxxxxxxxxxxxx"
+        assert client.get_config().api_key == "sp_test_xxxxxxxxxxxxxxxxxxxx"
         client.close()
 
     def test_client_requires_auth(self) -> None:
@@ -27,13 +27,13 @@ class TestSpooledClient:
 
     def test_client_context_manager(self) -> None:
         """Test client as context manager."""
-        with SpooledClient(api_key="sk_test_xxxxxxxxxxxxxxxxxxxx") as client:
+        with SpooledClient(api_key="sp_test_xxxxxxxxxxxxxxxxxxxx") as client:
             assert client is not None
 
     def test_client_with_config_object(self) -> None:
         """Test client with config object."""
         config = SpooledClientConfig(
-            api_key="sk_test_xxxxxxxxxxxxxxxxxxxx",
+            api_key="sp_test_xxxxxxxxxxxxxxxxxxxx",
             base_url="https://custom.api.com",
             timeout=60.0,
         )
@@ -57,7 +57,7 @@ class TestJobsResource:
         )
 
         with SpooledClient(
-            api_key="sk_test_xxxxxxxxxxxxxxxxxxxx",
+            api_key="sp_test_xxxxxxxxxxxxxxxxxxxx",
             base_url="http://localhost:8080",
         ) as client:
             result = client.jobs.create({
@@ -89,7 +89,7 @@ class TestJobsResource:
         )
 
         with SpooledClient(
-            api_key="sk_test_xxxxxxxxxxxxxxxxxxxx",
+            api_key="sp_test_xxxxxxxxxxxxxxxxxxxx",
             base_url="http://localhost:8080",
         ) as client:
             job = client.jobs.get("job_123")
@@ -111,7 +111,7 @@ class TestJobsResource:
         )
 
         with SpooledClient(
-            api_key="sk_test_xxxxxxxxxxxxxxxxxxxx",
+            api_key="sp_test_xxxxxxxxxxxxxxxxxxxx",
             base_url="http://localhost:8080",
         ) as client, pytest.raises(NotFoundError):
             client.jobs.get("nonexistent")
@@ -144,7 +144,7 @@ class TestJobsResource:
         )
 
         with SpooledClient(
-            api_key="sk_test_xxxxxxxxxxxxxxxxxxxx",
+            api_key="sp_test_xxxxxxxxxxxxxxxxxxxx",
             base_url="http://localhost:8080",
         ) as client:
             jobs = client.jobs.list()
@@ -160,7 +160,7 @@ class TestJobsResource:
         )
 
         with SpooledClient(
-            api_key="sk_test_xxxxxxxxxxxxxxxxxxxx",
+            api_key="sp_test_xxxxxxxxxxxxxxxxxxxx",
             base_url="http://localhost:8080",
         ) as client:
             # Should not raise
@@ -186,7 +186,7 @@ class TestJobsResource:
         )
 
         with SpooledClient(
-            api_key="sk_test_xxxxxxxxxxxxxxxxxxxx",
+            api_key="sp_test_xxxxxxxxxxxxxxxxxxxx",
             base_url="http://localhost:8080",
         ) as client:
             stats = client.jobs.get_stats()
@@ -215,7 +215,7 @@ class TestQueuesResource:
         )
 
         with SpooledClient(
-            api_key="sk_test_xxxxxxxxxxxxxxxxxxxx",
+            api_key="sp_test_xxxxxxxxxxxxxxxxxxxx",
             base_url="http://localhost:8080",
         ) as client:
             queues = client.queues.list()
@@ -241,7 +241,7 @@ class TestHealthResource:
         )
 
         with SpooledClient(
-            api_key="sk_test_xxxxxxxxxxxxxxxxxxxx",
+            api_key="sp_test_xxxxxxxxxxxxxxxxxxxx",
             base_url="http://localhost:8080",
         ) as client:
             health = client.health.get()
@@ -256,7 +256,7 @@ class TestHealthResource:
         )
 
         with SpooledClient(
-            api_key="sk_test_xxxxxxxxxxxxxxxxxxxx",
+            api_key="sp_test_xxxxxxxxxxxxxxxxxxxx",
             base_url="http://localhost:8080",
         ) as client:
             is_alive = client.health.liveness()

@@ -19,7 +19,7 @@ from spooled.errors import (
 )
 from spooled.utils.circuit_breaker import CircuitBreaker
 
-API_KEY = "sk_test_xxxxxxxxxxxxxxxxxxxx"
+API_KEY = "sp_test_xxxxxxxxxxxxxxxxxxxx"
 BASE_URL = "http://localhost:8080"
 
 
