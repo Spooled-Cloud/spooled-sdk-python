@@ -188,3 +188,4 @@ class TestCreateAsyncHttpClient:
         assert isinstance(client, AsyncHttpClient)
 
 
+

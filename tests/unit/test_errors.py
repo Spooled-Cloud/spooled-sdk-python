@@ -398,3 +398,4 @@ class TestCreateErrorFromResponse:
         assert error.details == {"field": "queue_name", "reason": "required"}
 
 
+

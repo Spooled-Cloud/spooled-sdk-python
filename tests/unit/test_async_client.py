@@ -98,3 +98,4 @@ class TestAsyncSpooledClient:
             assert queues[0].queue_name == "emails"
 
 
+

@@ -336,3 +336,4 @@ class TestHttpClientNonJsonResponse:
         assert "spooled_jobs_total" in result
 
 
+
