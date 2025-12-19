@@ -67,6 +67,7 @@ print(job.id, job.status, job.payload)
 jobs = client.jobs.list({
     "queue_name": "my-queue",
     "status": "pending",
+    "tag": "billing",  # Optional: filter by a single tag
     "limit": 50,
     "offset": 0,
 })

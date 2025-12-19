@@ -110,6 +110,8 @@ class ListJobsParams(BaseModel):
 
     queue_name: str | None = None
     status: JobStatus | None = None
+    tag: str | None = Field(default=None, max_length=64)
+    """Filter by a single tag (matches Postgres `tags ? tag` semantics)."""
     limit: int = Field(default=50, ge=1, le=100)
     offset: int = Field(default=0, ge=0)
     order_by: str | None = None
