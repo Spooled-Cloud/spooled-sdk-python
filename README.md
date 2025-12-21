@@ -2,6 +2,8 @@
 
 Official Python SDK for [Spooled Cloud](https://spooled.cloud) — a modern, scalable job queue and task scheduler.
 
+[**Live Demo (SpriteForge)**](https://example.spooled.cloud) • [Documentation](https://spooled.cloud/docs)
+
 ## Features
 
 - **Full API Coverage** — Access all Spooled API endpoints
