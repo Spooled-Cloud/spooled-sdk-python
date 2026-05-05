@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import asyncio
 import socket
+import time
 from collections.abc import Callable, Coroutine
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any
@@ -347,7 +348,7 @@ class AsyncSpooledWorker:
             abort_event = asyncio.Event()
             active = ActiveJob(
                 job=job,
-                started_at=asyncio.get_event_loop().time(),
+                started_at=time.time(),
                 abort_event=abort_event,
             )
 

@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "spooled"
-version = "1.0.12"
+version = "1.0.13"
 description = "Official Python SDK for Spooled Cloud job queue service"
 readme = "README.md"
 license = "Apache-2.0"
@@ -59,6 +59,7 @@ dev = [
     "pytest-cov>=4.1.0",
     "respx>=0.21.0",
     "mypy>=1.8.0",
+    "types-protobuf>=4.25.0",
     "ruff>=0.1.0",
     "pre-commit>=3.6.0",
 ]

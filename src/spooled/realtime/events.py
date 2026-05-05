@@ -4,7 +4,7 @@ Real-time event types for Spooled SDK.
 
 from __future__ import annotations
 
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Any, Literal
 
 from pydantic import BaseModel
@@ -67,7 +67,7 @@ class RealtimeEvent(BaseModel):
         return cls(
             type=event_type,
             data=data,
-            timestamp=datetime.now(),
+            timestamp=datetime.now(timezone.utc),
         )
 
 
