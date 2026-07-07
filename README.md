@@ -41,7 +41,7 @@ pip install spooled[all]
 ```python
 from spooled import SpooledClient
 
-client = SpooledClient(api_key="sk_live_...")
+client = SpooledClient(api_key="sp_live_...")
 
 # Create a job
 result = client.jobs.create({
@@ -69,7 +69,7 @@ client.close()
 from spooled import SpooledClient
 from spooled.worker import SpooledWorker
 
-client = SpooledClient(api_key="sk_live_...")
+client = SpooledClient(api_key="sp_live_...")
 worker = SpooledWorker(client, queue_name="emails", concurrency=10)
 
 @worker.process
@@ -107,7 +107,7 @@ import asyncio
 from spooled import AsyncSpooledClient
 
 async def main():
-    async with AsyncSpooledClient(api_key="sk_live_...") as client:
+    async with AsyncSpooledClient(api_key="sp_live_...") as client:
         # Create multiple jobs concurrently
         tasks = [
             client.jobs.create({"queue_name": "tasks", "payload": {"n": i}})
@@ -124,7 +124,7 @@ asyncio.run(main())
 ```python
 from spooled import SpooledClient
 
-client = SpooledClient(api_key="sk_live_...")
+client = SpooledClient(api_key="sp_live_...")
 
 # Create a workflow with dependencies
 workflow = client.workflows.create({
@@ -158,7 +158,7 @@ print(f"Workflow created: {workflow.workflow_id}")
 ```python
 from spooled import SpooledClient
 
-client = SpooledClient(api_key="sk_live_...")
+client = SpooledClient(api_key="sp_live_...")
 
 # Create a scheduled job
 schedule = client.schedules.create({
@@ -183,7 +183,7 @@ from spooled.grpc import SpooledGrpcClient
 # Connect to Spooled Cloud gRPC (TLS required for Cloudflare Tunnel)
 client = SpooledGrpcClient(
     address="grpc.spooled.cloud:443", 
-    api_key="sk_live_...",
+    api_key="sp_live_...",
     use_tls=True  # Required for production (Cloudflare Tunnel needs HTTPS for HTTP/2)
 )
 
@@ -213,11 +213,16 @@ Listen for real-time updates:
 
 ```python
 from spooled import SpooledClient
+from spooled.realtime.unified import SubscriptionFilter
 
-client = SpooledClient(api_key="sk_live_...")
+client = SpooledClient(api_key="sp_live_...")
 
-# Subscribe to job updates
-for event in client.realtime.subscribe("jobs:updates"):
+# Subscribe to job updates for a queue, then iterate events
+realtime = client.realtime(type="websocket")
+realtime.connect()
+realtime.subscribe(SubscriptionFilter(queue="my-queue"))
+
+for event in realtime.events():
     print(f"Event: {event.type} - {event.data}")
 ```
 
@@ -228,7 +233,7 @@ from spooled import SpooledClient, SpooledClientConfig, RetryConfig
 
 # Full configuration
 config = SpooledClientConfig(
-    api_key="sk_live_...",
+    api_key="sp_live_...",
     base_url="https://api.spooled.cloud",
     timeout=30.0,
     retry=RetryConfig(
@@ -253,7 +258,7 @@ from spooled.errors import (
     RateLimitError,
 )
 
-client = SpooledClient(api_key="sk_live_...")
+client = SpooledClient(api_key="sp_live_...")
 
 try:
     job = client.jobs.get("nonexistent")
