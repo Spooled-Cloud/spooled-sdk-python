@@ -2,6 +2,20 @@
 
 All notable changes to the Spooled Python SDK are documented here.
 
+## [1.0.14] - 2026-07-07
+
+### Security
+
+- Raised the `protobuf` security floor to 5.29.6.
+
+### Changed
+
+- Commit `uv.lock` so installs are reproducible.
+
+### Documentation
+
+- Corrected the API key prefix and the realtime example in the README.
+
 ## [1.0.13] - 2026-05-05
 
 ### Fixed
