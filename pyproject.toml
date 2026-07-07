@@ -43,7 +43,10 @@ dependencies = [
 grpc = [
     "grpcio>=1.60.0",
     "grpcio-tools>=1.60.0",
-    "protobuf>=4.25.0",
+    # Security floor: CVE-2026-0994 (JSON recursion depth bypass) is fixed in
+    # protobuf 5.29.6 (and 6.33.5 on the 6.x line); older floors permitted
+    # vulnerable releases.
+    "protobuf>=5.29.6",
 ]
 realtime = [
     "websockets>=12.0",
@@ -59,7 +62,7 @@ dev = [
     "pytest-cov>=4.1.0",
     "respx>=0.21.0",
     "mypy>=1.8.0",
-    "types-protobuf>=4.25.0",
+    "types-protobuf>=5.29.0",
     "ruff>=0.1.0",
     "pre-commit>=3.6.0",
 ]
