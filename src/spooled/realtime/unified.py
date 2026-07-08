@@ -84,6 +84,12 @@ class SpooledRealtimeOptions:
     reconnect_delay: float = 1.0
     max_reconnect_delay: float = 30.0
     debug: Callable[[str, Any], None] | None = None
+    # Optional callable that mints a fresh token for each (re)connect. When set,
+    # it is invoked before every connection attempt and its result replaces
+    # ``token``. The client's implementation caches the JWT, so this does not
+    # re-login on every reconnect -- it only refreshes once the token nears
+    # expiry. When None, ``token`` is reused verbatim.
+    token_provider: Callable[[], str] | None = None
 
 
 @dataclass
@@ -401,6 +407,24 @@ class SpooledRealtime:
     # WebSocket Implementation
     # ─────────────────────────────────────────────────────────────────────────
 
+    def _refresh_token(self) -> None:
+        """Refresh the connection token from the provider, if one is configured.
+
+        Runs before every (re)connect. The provider caches the JWT, so this is a
+        cheap no-op until the token nears expiry; on failure the last known token
+        is kept and the normal connect/backoff path handles the error.
+        """
+        provider = self._options.token_provider
+        if provider is None:
+            return
+        try:
+            token = provider()
+        except Exception as e:  # noqa: BLE001 - keep the old token and let connect retry
+            self._debug(f"Token provider failed: {e}", None)
+            return
+        if token:
+            self._options.token = token
+
     def _connect_websocket(self) -> None:
         """Connect via WebSocket."""
         if not HAS_WEBSOCKETS:
@@ -408,6 +432,7 @@ class SpooledRealtime:
                 "websockets package required. Install with: pip install spooled[realtime]"
             )
 
+        self._refresh_token()
         ws_url = self._build_ws_url()
         self._debug(f"Connecting to WebSocket: {ws_url}", None)
 
@@ -489,6 +514,7 @@ class SpooledRealtime:
                 "httpx package required. Install with: pip install spooled[realtime]"
             )
 
+        self._refresh_token()
         url = self._build_sse_url(filter)
         self._debug(f"Connecting to SSE: {url}", None)
 

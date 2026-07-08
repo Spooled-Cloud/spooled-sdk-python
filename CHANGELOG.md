@@ -2,6 +2,20 @@
 
 All notable changes to the Spooled Python SDK are documented here.
 
+## [1.0.17] - 2026-07-08
+
+### Fixed
+
+- Realtime no longer exchanges the API key for a JWT via `POST /auth/login` on
+  every (re)connect. The exchanged token is now cached on the client (sync and
+  async) and reused across reconnects until it nears expiry, so reconnect storms
+  no longer trip the login rate limiter and realtime can recover. The `exp`
+  claim is read from the token (base64url-decoded, signature not verified) and
+  refreshed ~60s early; a statically configured `access_token` is still used
+  verbatim. The synchronous realtime client mints tokens through this cache on
+  each (re)connect via a token provider, and `get_jwt_token(force_refresh=True)`
+  forces a re-login when the server rejects the current token.
+
 ## [1.0.16] - 2026-07-08
 
 ### Fixed

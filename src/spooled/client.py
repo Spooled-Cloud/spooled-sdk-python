@@ -6,6 +6,8 @@ Main entry point for the Spooled SDK.
 
 from __future__ import annotations
 
+import threading
+import time
 from typing import TYPE_CHECKING, Any, Literal
 
 from spooled.config import (
@@ -32,6 +34,7 @@ from spooled.resources.workers import WorkersResource
 from spooled.resources.workflows import WorkflowsResource
 from spooled.utils.circuit_breaker import create_circuit_breaker
 from spooled.utils.http import create_http_client
+from spooled.utils.jwt import decode_jwt_exp, jwt_needs_refresh
 
 if TYPE_CHECKING:
     from spooled.grpc.client import SpooledGrpcClient
@@ -118,6 +121,14 @@ class SpooledClient:
         # Token refresh state
         self._refresh_promise: str | None = None
         self._token_expires_at: float | None = None
+
+        # Cached realtime JWT (exchanged from an API key). Reused across
+        # (re)connects until near expiry so reconnect storms don't hammer the
+        # login endpoint. Guarded by a lock because realtime reconnects run on
+        # background threads.
+        self._jwt_lock = threading.Lock()
+        self._cached_jwt: str | None = None
+        self._cached_jwt_exp: float | None = None
 
         # Set up token refresh if using JWT
         if (
@@ -329,7 +340,7 @@ class SpooledClient:
                 "Realtime packages required. Install with: pip install spooled[realtime]"
             ) from e
 
-        # Get JWT token for realtime authentication
+        # Get an initial JWT (fails fast on auth errors at call time).
         token = self.get_jwt_token()
 
         options = SpooledRealtimeOptions(
@@ -341,6 +352,10 @@ class SpooledClient:
             reconnect_delay=reconnect_delay,
             max_reconnect_delay=max_reconnect_delay,
             debug=self._config.debug_fn,
+            # Each (re)connect mints a token via the cached exchange rather than
+            # reusing the short-lived one captured above, so long-lived streams
+            # survive token expiry without re-logging-in on every reconnect.
+            token_provider=self.get_jwt_token,
         )
 
         return SpooledRealtime(options)
@@ -404,22 +419,41 @@ class SpooledClient:
 
     # Token management
 
-    def get_jwt_token(self) -> str:
-        """Get or acquire a JWT token for realtime connections."""
-        # If we have an access token, use it
+    def get_jwt_token(self, *, force_refresh: bool = False) -> str:
+        """Get or acquire a JWT token for realtime connections.
+
+        A statically configured ``access_token`` is returned verbatim -- we never
+        expire or replace it, since there may be no API key to re-login with.
+
+        When only an API key is available, the JWT obtained from ``/auth/login``
+        is cached and reused across (re)connects until it is near expiry (decoded
+        from the token's ``exp`` claim, refreshed ~60s early). This keeps
+        reconnect storms from repeatedly hitting the login rate limiter. Pass
+        ``force_refresh=True`` to bypass the cache, e.g. after the server rejects
+        the current token on a WebSocket handshake.
+        """
+        # A user-supplied static access token is used as-is.
         if self._config.access_token:
             return self._config.access_token
 
-        # If we only have an API key, exchange it for a JWT
-        if self._config.api_key:
+        if not self._config.api_key:
+            raise AuthenticationError("No authentication method available")
+
+        with self._jwt_lock:
+            if (
+                not force_refresh
+                and self._cached_jwt is not None
+                and not jwt_needs_refresh(self._cached_jwt_exp, time.time())
+            ):
+                return self._cached_jwt
+
             response = self.auth.login({"api_key": self._config.api_key})
             self._http.set_auth_token(response.access_token)
-            # Update config with new tokens
-            self._config.access_token = response.access_token
+            # Keep the refresh token for the HTTP layer's auto-refresh path.
             self._config.refresh_token = response.refresh_token
-            return response.access_token
-
-        raise AuthenticationError("No authentication method available")
+            self._cached_jwt = response.access_token
+            self._cached_jwt_exp = decode_jwt_exp(response.access_token)
+            return self._cached_jwt
 
     def _refresh_access_token(self) -> str:
         """Refresh the access token."""
