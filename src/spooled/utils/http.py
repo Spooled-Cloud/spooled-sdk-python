@@ -4,8 +4,10 @@ Synchronous HTTP client using httpx.
 
 from __future__ import annotations
 
+import threading
 from collections.abc import Callable
 from typing import Any, TypeVar
+from urllib.parse import urlencode
 
 import httpx
 
@@ -16,6 +18,38 @@ from spooled.utils.circuit_breaker import CircuitBreaker
 from spooled.utils.retry import with_retry
 
 T = TypeVar("T")
+
+# HTTP methods that are safe to retry automatically because replaying them has
+# no additional side effect. POST/PATCH are excluded unless the caller supplies
+# an idempotency key (see ``_is_idempotent``).
+IDEMPOTENT_METHODS = frozenset({"GET", "HEAD", "PUT", "DELETE", "OPTIONS"})
+
+
+def _is_idempotent(
+    method: str,
+    body: Any = None,
+    headers: dict[str, str] | None = None,
+) -> bool:
+    """Decide whether a request is safe to auto-retry.
+
+    GET/PUT/DELETE/HEAD/OPTIONS are idempotent by definition. Non-idempotent
+    methods (POST/PATCH) are only considered safe to replay when an idempotency
+    key is supplied — either via an ``Idempotency-Key`` header or an
+    ``idempotency_key`` field in the request body — so the backend can
+    de-duplicate a replayed write (e.g. avoid creating duplicate jobs).
+    """
+    if method.upper() in IDEMPOTENT_METHODS:
+        return True
+
+    if headers:
+        for key, value in headers.items():
+            if key.lower() == "idempotency-key" and value:
+                return True
+
+    if isinstance(body, dict):
+        return bool(body.get("idempotency_key"))
+
+    return False
 
 
 class HttpClient:
@@ -40,6 +74,9 @@ class HttpClient:
         self.circuit_breaker = circuit_breaker
         self._auth_token: str | None = config.access_token or config.api_key
         self._refresh_token_fn: Callable[[], str] | None = None
+        # Serializes token refreshes so concurrent 401s trigger a single refresh.
+        self._refresh_lock = threading.Lock()
+        self._is_refreshing = False
 
         # Create httpx client
         self._client = httpx.Client(
@@ -86,7 +123,9 @@ class HttpClient:
         if params:
             converted_params = convert_query_params(params)
             if converted_params:
-                query_string = "&".join(f"{k}={v}" for k, v in converted_params.items())
+                # urlencode percent-escapes reserved characters so values
+                # containing '=', '&', '+', spaces, etc. survive intact.
+                query_string = urlencode(converted_params)
                 url = f"{url}?{query_string}"
 
         return url
@@ -105,6 +144,27 @@ class HttpClient:
 
         return headers
 
+    def _try_refresh_token(self, token_before: str | None) -> bool:
+        """Refresh the auth token once, guarding against concurrent refreshes.
+
+        Returns True if a usable (possibly already-refreshed) token is
+        available afterwards, False if refresh failed.
+        """
+        if self._refresh_token_fn is None:
+            return False
+        with self._refresh_lock:
+            # Another thread may have refreshed while we waited for the lock.
+            if self._auth_token != token_before:
+                return True
+            try:
+                self._is_refreshing = True
+                self._refresh_token_fn()
+                return True
+            except Exception:
+                return False
+            finally:
+                self._is_refreshing = False
+
     def _execute_request(
         self,
         method: str,
@@ -116,8 +176,10 @@ class HttpClient:
         timeout: float | None = None,
         skip_request_conversion: bool = False,
         skip_response_conversion: bool = False,
+        _allow_refresh: bool = True,
     ) -> Any:
         """Execute a single HTTP request (no retry)."""
+        auth_before = self._auth_token
         request_headers = self._build_headers(headers)
 
         # Prepare request body
@@ -127,9 +189,7 @@ class HttpClient:
         if raw_body is not None:
             content = raw_body
         elif body is not None:
-            if not skip_request_conversion:
-                body = convert_request(body)
-            json_body = body
+            json_body = convert_request(body) if not skip_request_conversion else body
 
         if self.config.debug_fn:
             self.config.debug_fn(f"{method} {url}", {"has_body": body is not None})
@@ -141,7 +201,9 @@ class HttpClient:
                 headers=request_headers,
                 json=json_body if json_body is not None else None,
                 content=content if content is not None else None,
-                timeout=timeout,
+                # Passing timeout=None to httpx disables timeouts entirely; use
+                # the client-level default instead so requests can never hang.
+                timeout=timeout if timeout is not None else httpx.USE_CLIENT_DEFAULT,
             )
         except httpx.TimeoutException as e:
             raise TimeoutError(
@@ -156,13 +218,35 @@ class HttpClient:
 
         # Handle non-OK responses
         if not response.is_success:
+            # On 401, attempt a one-time token refresh and replay the request.
+            if (
+                response.status_code == 401
+                and _allow_refresh
+                and self._refresh_token_fn is not None
+                and not self._is_refreshing
+                and self._try_refresh_token(auth_before)
+            ):
+                return self._execute_request(
+                    method,
+                    url,
+                    body=body,
+                    raw_body=raw_body,
+                    headers=headers,
+                    timeout=timeout,
+                    skip_request_conversion=skip_request_conversion,
+                    skip_response_conversion=skip_response_conversion,
+                    _allow_refresh=False,
+                )
+
             try:
                 error_body = response.json()
             except Exception:
                 error_body = None
 
             request_id = response.headers.get("X-Request-Id")
-            raise create_error_from_response(response.status_code, error_body, request_id)
+            raise create_error_from_response(
+                response.status_code, error_body, request_id, response.headers
+            )
 
         # Parse response body
         if response.status_code == 204:
@@ -220,7 +304,12 @@ class HttpClient:
                     {"error": str(error)},
                 )
 
-        return with_retry(execute, self.config.retry, on_retry)
+        return with_retry(
+            execute,
+            self.config.retry,
+            on_retry,
+            idempotent=_is_idempotent(method, body, headers),
+        )
 
     def get(
         self,

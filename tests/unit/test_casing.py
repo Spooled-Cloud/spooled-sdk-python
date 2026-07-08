@@ -159,6 +159,37 @@ class TestConvertRequest:
         result = convert_request(data)
         assert result == {"queue_name": "test", "max_retries": 3}
 
+    def test_preserves_opaque_payload_verbatim(self) -> None:
+        """Test user payload keys are NEVER case-converted (opaque JSON)."""
+        data = {
+            "queueName": "emails",
+            "payload": {"userId": 7, "orderRef": "A-1", "HTMLBody": "<b>x</b>"},
+        }
+        result = convert_request(data)
+        # Envelope key converted, payload keys preserved byte-for-byte.
+        assert result["queue_name"] == "emails"
+        assert result["payload"] == {
+            "userId": 7,
+            "orderRef": "A-1",
+            "HTMLBody": "<b>x</b>",
+        }
+
+    def test_preserves_metadata_and_result_verbatim(self) -> None:
+        """Test metadata/result opaque fields are preserved verbatim."""
+        data = {
+            "metadata": {"traceId": "abc", "nested": {"camelKey": 1}},
+            "result": {"okFlag": True},
+        }
+        result = convert_request(data)
+        assert result["metadata"] == {"traceId": "abc", "nested": {"camelKey": 1}}
+        assert result["result"] == {"okFlag": True}
+
+    def test_preserves_payload_template_verbatim(self) -> None:
+        """Test payloadTemplate (schedule) is preserved verbatim."""
+        data = {"payloadTemplate": {"toAddr": "x@y.z"}}
+        result = convert_request(data)
+        assert result["payload_template"] == {"toAddr": "x@y.z"}
+
 
 class TestConvertResponse:
     """Tests for convert_response function."""

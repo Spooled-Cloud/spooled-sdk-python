@@ -60,14 +60,61 @@ class RealtimeEvent(BaseModel):
     data: dict[str, Any]
     timestamp: datetime | None = None
 
+    @staticmethod
+    def _parse_timestamp(value: Any) -> datetime | None:
+        """Best-effort parse of a server-provided timestamp value."""
+        if value is None:
+            return None
+        if isinstance(value, datetime):
+            return value
+        if isinstance(value, (int, float)):
+            try:
+                return datetime.fromtimestamp(value, tz=timezone.utc)
+            except (OverflowError, OSError, ValueError):
+                return None
+        if isinstance(value, str):
+            text = value.strip()
+            if not text:
+                return None
+            # Accept RFC 3339 with a trailing 'Z'.
+            normalized = text[:-1] + "+00:00" if text.endswith("Z") else text
+            try:
+                return datetime.fromisoformat(normalized)
+            except ValueError:
+                return None
+        return None
+
     @classmethod
-    def from_server_event(cls, server_type: str, data: dict[str, Any]) -> RealtimeEvent:
-        """Create event from server event format."""
-        event_type = SERVER_EVENT_MAP.get(server_type, "error")
+    def from_server_event(
+        cls,
+        server_type: str,
+        data: dict[str, Any],
+        *,
+        timestamp: Any = None,
+    ) -> RealtimeEvent | None:
+        """Create event from server event format.
+
+        Returns ``None`` for unrecognized server event types so that new or
+        unknown event kinds are dropped rather than being misrouted to
+        consumers as spurious ``error`` events. The ``error`` type is reserved
+        for the server's actual ``Error``/``error`` events.
+
+        The server-provided timestamp (passed explicitly or carried in the
+        event data) is preserved when present, falling back to the local
+        receive time only when the server does not supply one.
+        """
+        event_type = SERVER_EVENT_MAP.get(server_type)
+        if event_type is None:
+            return None
+
+        parsed_ts = cls._parse_timestamp(timestamp)
+        if parsed_ts is None and isinstance(data, dict):
+            parsed_ts = cls._parse_timestamp(data.get("timestamp"))
+
         return cls(
             type=event_type,
             data=data,
-            timestamp=datetime.now(timezone.utc),
+            timestamp=parsed_ts or datetime.now(timezone.utc),
         )
 
 

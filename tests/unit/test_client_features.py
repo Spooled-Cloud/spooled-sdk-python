@@ -362,6 +362,86 @@ class TestSpooledRealtimeUnified:
         except ImportError:
             pytest.skip("realtime module not available")
 
+    def test_dispatch_delivers_to_handlers_and_events_queue(self) -> None:
+        """A single received event reaches both handlers and events() drainers."""
+        try:
+            from spooled.realtime.events import RealtimeEvent
+            from spooled.realtime.unified import (
+                SpooledRealtime,
+                SpooledRealtimeOptions,
+            )
+        except ImportError:
+            pytest.skip("realtime module not available")
+
+        realtime = SpooledRealtime(
+            SpooledRealtimeOptions(base_url="https://api.spooled.cloud", token="t")
+        )
+
+        received: list[dict[str, Any]] = []
+        realtime.on("job.created", lambda data: received.append(data))
+
+        # Simulate events() being active (queue lazily created on first use).
+        import queue as _queue
+
+        realtime._event_queue = _queue.Queue(maxsize=100)
+
+        event = RealtimeEvent(type="job.created", data={"job_id": "j1"})
+        realtime._dispatch_event(event)
+
+        # Handler saw it AND it is queued for events(): no double-consume.
+        assert received == [{"job_id": "j1"}]
+        assert realtime._event_queue.get_nowait() is event
+
+    def test_handler_only_usage_does_not_buffer(self) -> None:
+        """Without events(), dispatched events are not buffered (no leak)."""
+        try:
+            from spooled.realtime.events import RealtimeEvent
+            from spooled.realtime.unified import (
+                SpooledRealtime,
+                SpooledRealtimeOptions,
+            )
+        except ImportError:
+            pytest.skip("realtime module not available")
+
+        realtime = SpooledRealtime(
+            SpooledRealtimeOptions(base_url="https://api.spooled.cloud", token="t")
+        )
+        realtime.on("job.created", lambda data: None)
+
+        realtime._dispatch_event(RealtimeEvent(type="job.created", data={}))
+
+        # No events() consumer => no queue allocated => nothing buffered.
+        assert realtime._event_queue is None
+
+    def test_sse_subscription_retained_after_disconnect(self) -> None:
+        """SSE filter survives disconnect so auto-reconnect keeps the filter."""
+        try:
+            from spooled.realtime.unified import (
+                SpooledRealtime,
+                SpooledRealtimeOptions,
+                SubscriptionFilter,
+            )
+        except ImportError:
+            pytest.skip("realtime module not available")
+
+        realtime = SpooledRealtime(
+            SpooledRealtimeOptions(
+                base_url="https://api.spooled.cloud", token="t", type="sse"
+            )
+        )
+
+        realtime.subscribe(SubscriptionFilter(queue="emails"))
+        assert len(realtime._subscriptions) == 1
+
+        realtime.disconnect()
+
+        # Subscription retained, and a fresh (filter-less) connect rebuilds the
+        # filtered URL from the retained subscription rather than /events (all).
+        assert len(realtime._subscriptions) == 1
+        assert realtime._build_sse_url() == (
+            "https://api.spooled.cloud/api/v1/events/queues/emails"
+        )
+
 
 # ─────────────────────────────────────────────────────────────────────────────
 # Test SSE Client Event Handlers

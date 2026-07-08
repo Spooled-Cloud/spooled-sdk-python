@@ -4,9 +4,11 @@ Server-Sent Events (SSE) client for real-time events.
 
 from __future__ import annotations
 
+import asyncio
 import contextlib
 import json
 import threading
+import time
 from collections.abc import AsyncGenerator, Callable, Generator
 from enum import Enum
 from typing import Any
@@ -325,6 +327,10 @@ class SSEClient:
         """
         Generator that yields events from the SSE stream.
 
+        When ``auto_reconnect`` is enabled (the default), a dropped or
+        server-closed stream is transparently re-established with exponential
+        backoff, up to ``max_reconnect_attempts`` consecutive failures.
+
         Example:
             >>> for event in sse.events():
             ...     print(event)
@@ -332,19 +338,64 @@ class SSEClient:
         if not self._sse_client:
             self.connect()
 
-        try:
-            for event in self._sse_client.events():
-                if self._closed:
-                    break
+        while not self._closed:
+            try:
+                for event in self._sse_client.events():
+                    if self._closed:
+                        return
 
-                if event.data:
-                    parsed = self._parse_event(event.event, event.data)
-                    if parsed:
-                        self._emit_event(parsed)
-                        yield parsed
-        except Exception:
-            if not self._closed:
-                raise
+                    if event.data:
+                        parsed = self._parse_event(event.event, event.data)
+                        if parsed:
+                            self._emit_event(parsed)
+                            yield parsed
+                # Stream ended without error (server closed the connection).
+                if self._closed or not self._reconnect():
+                    return
+            except Exception:
+                if self._closed:
+                    return
+                if not self._reconnect():
+                    raise
+
+    def _reconnect(self) -> bool:
+        """Attempt to re-establish a dropped stream with backoff.
+
+        Returns True once reconnected, False when reconnection is disabled or
+        the attempt budget is exhausted.
+        """
+        while (
+            self._auto_reconnect
+            and not self._closed
+            and self._reconnect_attempts < self._max_reconnect_attempts
+        ):
+            self._reconnect_attempts += 1
+            delay = self._reconnect_delay * (2 ** (self._reconnect_attempts - 1))
+            self._set_state(SSEConnectionState.RECONNECTING)
+            time.sleep(delay)
+            if self._closed:
+                return False
+            try:
+                self._reopen()
+                return True
+            except Exception:
+                continue
+        return False
+
+    def _reopen(self) -> None:
+        """Tear down the dead connection and open a fresh one (keeps filters)."""
+        if self._response is not None:
+            with contextlib.suppress(Exception):
+                self._response.close()
+            self._response = None
+        if self._client is not None:
+            with contextlib.suppress(Exception):
+                self._client.close()
+            self._client = None
+        self._sse_client = None
+        # Reset state so connect() does not early-return as already connected.
+        self._state = SSEConnectionState.DISCONNECTED
+        self.connect()
 
     def _parse_event(self, event_type: str, data: str) -> RealtimeEvent | None:
         """Parse SSE event to RealtimeEvent."""
@@ -612,6 +663,10 @@ class AsyncSSEClient:
         """
         Async generator that yields events from the SSE stream.
 
+        When ``auto_reconnect`` is enabled (the default), a dropped or
+        server-closed stream is transparently re-established with exponential
+        backoff, up to ``max_reconnect_attempts`` consecutive failures.
+
         Example:
             >>> async for event in sse.events():
             ...     print(event)
@@ -619,29 +674,73 @@ class AsyncSSEClient:
         if not self._response:
             await self.connect()
 
-        try:
-            current_event = ""
-            current_data = ""
+        while not self._closed:
+            try:
+                current_event = ""
+                current_data = ""
 
-            assert self._response is not None
-            async for line in self._response.aiter_lines():
+                assert self._response is not None
+                async for line in self._response.aiter_lines():
+                    if self._closed:
+                        return
+
+                    if line.startswith("event:"):
+                        current_event = line[6:].strip()
+                    elif line.startswith("data:"):
+                        current_data = line[5:].strip()
+                    elif line == "" and current_data:
+                        parsed = self._parse_event(current_event, current_data)
+                        if parsed:
+                            self._emit_event(parsed)
+                            yield parsed
+                        current_event = ""
+                        current_data = ""
+                # Stream ended without error (server closed the connection).
+                if self._closed or not await self._reconnect():
+                    return
+            except Exception:
                 if self._closed:
-                    break
+                    return
+                if not await self._reconnect():
+                    raise
 
-                if line.startswith("event:"):
-                    current_event = line[6:].strip()
-                elif line.startswith("data:"):
-                    current_data = line[5:].strip()
-                elif line == "" and current_data:
-                    parsed = self._parse_event(current_event, current_data)
-                    if parsed:
-                        self._emit_event(parsed)
-                        yield parsed
-                    current_event = ""
-                    current_data = ""
-        except Exception:
-            if not self._closed:
-                raise
+    async def _reconnect(self) -> bool:
+        """Attempt to re-establish a dropped stream with backoff.
+
+        Returns True once reconnected, False when reconnection is disabled or
+        the attempt budget is exhausted.
+        """
+        while (
+            self._auto_reconnect
+            and not self._closed
+            and self._reconnect_attempts < self._max_reconnect_attempts
+        ):
+            self._reconnect_attempts += 1
+            delay = self._reconnect_delay * (2 ** (self._reconnect_attempts - 1))
+            self._set_state(SSEConnectionState.RECONNECTING)
+            await asyncio.sleep(delay)
+            if self._closed:
+                return False
+            try:
+                await self._reopen()
+                return True
+            except Exception:
+                continue
+        return False
+
+    async def _reopen(self) -> None:
+        """Tear down the dead connection and open a fresh one (keeps filters)."""
+        if self._response is not None:
+            with contextlib.suppress(Exception):
+                await self._response.aclose()
+            self._response = None
+        if self._client is not None:
+            with contextlib.suppress(Exception):
+                await self._client.aclose()
+            self._client = None
+        # Reset state so connect() does not early-return as already connected.
+        self._state = SSEConnectionState.DISCONNECTED
+        await self.connect()
 
     def _parse_event(self, event_type: str, data: str) -> RealtimeEvent | None:
         """Parse SSE event to RealtimeEvent."""

@@ -58,6 +58,26 @@ class TestShouldRetry:
         error = ServerError()
         assert should_retry(error, 1, config) is False
 
+    def test_non_idempotent_not_retried_on_server_error(self, config: RetryConfig) -> None:
+        """Test non-idempotent request is NOT retried on 5xx (avoid dup writes)."""
+        error = ServerError()
+        assert should_retry(error, 1, config, idempotent=False) is False
+
+    def test_non_idempotent_not_retried_on_network_error(self, config: RetryConfig) -> None:
+        """Test non-idempotent request is NOT retried on network error."""
+        error = NetworkError()
+        assert should_retry(error, 1, config, idempotent=False) is False
+
+    def test_non_idempotent_still_retried_on_rate_limit(self, config: RetryConfig) -> None:
+        """Test 429 is always safe to retry (request rejected, not processed)."""
+        error = RateLimitError()
+        assert should_retry(error, 1, config, idempotent=False) is True
+
+    def test_idempotent_retried_on_server_error(self, config: RetryConfig) -> None:
+        """Test idempotent request IS retried on 5xx."""
+        error = ServerError()
+        assert should_retry(error, 1, config, idempotent=True) is True
+
 
 class TestCalculateDelay:
     """Tests for calculate_delay function."""

@@ -276,7 +276,7 @@ class AsyncSpooledClient:
 
         return self._grpc
 
-    def realtime(
+    async def realtime(
         self,
         type: Literal["websocket", "sse"] = "websocket",
         auto_reconnect: bool = True,
@@ -301,7 +301,7 @@ class AsyncSpooledClient:
             SpooledRealtime client instance
 
         Example:
-            >>> realtime = client.realtime(type="websocket")
+            >>> realtime = await client.realtime(type="websocket")
             >>>
             >>> @realtime.on("job.created")
             ... def on_job_created(data):
@@ -320,9 +320,10 @@ class AsyncSpooledClient:
                 "Realtime packages required. Install with: pip install spooled[realtime]"
             ) from e
 
-        # For async client, we need to synchronously get token
-        # The caller should have already authenticated
-        token = self._config.access_token or self._config.api_key or ""
+        # The realtime WebSocket endpoint requires a JWT in ?token=; exchange an
+        # API key for one first rather than forwarding the raw key (which the
+        # server rejects on the WS handshake).
+        token = await self.get_jwt_token()
 
         options = SpooledRealtimeOptions(
             base_url=self._config.base_url,

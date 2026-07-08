@@ -5,8 +5,27 @@ Case conversion utilities for snake_case <-> camelCase.
 from __future__ import annotations
 
 import re
-from collections.abc import Callable
+from collections.abc import Callable, Iterable
 from typing import Any
+
+# Keys whose values are opaque user-defined JSON and must be sent/received
+# byte-for-byte, without deep key-case conversion. Mirrors the Node SDK's
+# SKIP_CONVERSION_KEYS so all SDKs preserve user payloads identically.
+SKIP_CONVERSION_KEYS: frozenset[str] = frozenset(
+    {
+        "payload",
+        "result",
+        "metadata",
+        "tags",
+        "settings",
+        "details",
+        "extra",
+        "payloadTemplate",
+        "payload_template",
+        "customLimits",
+        "custom_limits",
+    }
+)
 
 
 def to_snake_case(s: str) -> str:
@@ -23,12 +42,34 @@ def to_camel_case(s: str) -> str:
     return components[0] + "".join(x.title() for x in components[1:])
 
 
-def convert_keys(data: Any, converter: Callable[[str], str]) -> Any:
-    """Recursively convert dictionary keys using the given converter function."""
+def convert_keys(
+    data: Any,
+    converter: Callable[[str], str],
+    skip_keys: Iterable[str] | None = None,
+) -> Any:
+    """Recursively convert dictionary keys using the given converter function.
+
+    When ``skip_keys`` is provided, any key that matches (before or after
+    conversion) has its value preserved verbatim without recursing into it.
+    This keeps opaque user JSON (job payloads, results, metadata, ...)
+    byte-for-byte identical to what the caller supplied.
+    """
+    skip: frozenset[str] = (
+        skip_keys if isinstance(skip_keys, frozenset) else frozenset(skip_keys or ())
+    )
+
     if isinstance(data, dict):
-        return {converter(k): convert_keys(v, converter) for k, v in data.items()}
+        result: dict[str, Any] = {}
+        for key, value in data.items():
+            new_key = converter(key)
+            if skip and (key in skip or new_key in skip):
+                # Opaque user data: preserve value exactly as provided.
+                result[new_key] = value
+            else:
+                result[new_key] = convert_keys(value, converter, skip)
+        return result
     if isinstance(data, list):
-        return [convert_keys(item, converter) for item in data]
+        return [convert_keys(item, converter, skip) for item in data]
     return data
 
 
@@ -37,10 +78,12 @@ def convert_request(data: Any) -> Any:
     Convert request body keys to snake_case for API.
 
     Note: The Spooled API uses snake_case, so we convert from camelCase
-    (if the user provides it) to snake_case.
+    (if the user provides it) to snake_case. Values under
+    ``SKIP_CONVERSION_KEYS`` (opaque user JSON such as job payloads) are
+    sent verbatim and never key-case-converted.
     """
     # API uses snake_case, so we ensure keys are snake_case
-    return convert_keys(data, to_snake_case)
+    return convert_keys(data, to_snake_case, SKIP_CONVERSION_KEYS)
 
 
 def convert_response(data: Any) -> Any:

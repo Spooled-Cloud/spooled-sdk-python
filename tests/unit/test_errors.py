@@ -355,6 +355,40 @@ class TestCreateErrorFromResponse:
         error = create_error_from_response(429, {"message": "Too many requests"})
         assert isinstance(error, RateLimitError)
 
+    def test_429_honors_retry_after_header(self) -> None:
+        """Test 429 reads the Retry-After header into retry_after."""
+        error = create_error_from_response(
+            429,
+            {"message": "Too many requests"},
+            None,
+            {"Retry-After": "17"},
+        )
+        assert isinstance(error, RateLimitError)
+        assert error.retry_after == 17
+
+    def test_429_reads_rate_limit_headers(self) -> None:
+        """Test 429 reads X-RateLimit-* headers."""
+        error = create_error_from_response(
+            429,
+            {"message": "slow down"},
+            None,
+            {
+                "Retry-After": "5",
+                "X-RateLimit-Limit": "100",
+                "X-RateLimit-Remaining": "0",
+            },
+        )
+        assert isinstance(error, RateLimitError)
+        assert error.retry_after == 5
+        assert error.limit == 100
+        assert error.remaining == 0
+
+    def test_429_defaults_retry_after_without_header(self) -> None:
+        """Test 429 keeps the default retry_after when no header is present."""
+        error = create_error_from_response(429, {"message": "Too many requests"})
+        assert isinstance(error, RateLimitError)
+        assert error.retry_after == 60
+
     def test_500_server_error(self) -> None:
         """Test 500 creates ServerError."""
         error = create_error_from_response(500, {"message": "Internal error"})

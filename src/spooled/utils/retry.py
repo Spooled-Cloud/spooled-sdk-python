@@ -16,14 +16,30 @@ from spooled.errors import RateLimitError, SpooledError
 T = TypeVar("T")
 
 
-def should_retry(error: Exception, attempt: int, config: RetryConfig) -> bool:
-    """Determine if a request should be retried based on the error."""
+def should_retry(
+    error: Exception,
+    attempt: int,
+    config: RetryConfig,
+    idempotent: bool = True,
+) -> bool:
+    """Determine if a request should be retried based on the error.
+
+    ``idempotent`` indicates whether replaying the request is safe. A rate
+    limit (429) is always safe to retry because the server rejected the request
+    before processing it. For every other retryable condition (5xx, network,
+    timeout) a non-idempotent request is NOT retried, so a write that may have
+    already reached the server is never silently duplicated.
+    """
     if attempt > config.max_retries:
         return False
 
-    # Always retry rate limit errors
+    # Always retry rate limit errors — the request was rejected, not processed.
     if isinstance(error, RateLimitError):
         return True
+
+    # Do not replay non-idempotent requests on ambiguous failures.
+    if not idempotent:
+        return False
 
     # Retry retryable errors
     if isinstance(error, SpooledError):
@@ -59,6 +75,7 @@ def with_retry(
     fn: Callable[[], T],
     config: RetryConfig,
     on_retry: Callable[[int, Exception, float], None] | None = None,
+    idempotent: bool = True,
 ) -> T:
     """
     Execute a function with retry logic.
@@ -67,6 +84,7 @@ def with_retry(
         fn: Function to execute
         config: Retry configuration
         on_retry: Optional callback called before each retry with (attempt, error, delay)
+        idempotent: Whether the operation is safe to replay (see ``should_retry``)
 
     Returns:
         The result of the function
@@ -82,7 +100,7 @@ def with_retry(
         except Exception as e:
             last_error = e
 
-            if not should_retry(e, attempt, config):
+            if not should_retry(e, attempt, config, idempotent):
                 raise
 
             # Get retry_after from rate limit error
@@ -107,6 +125,7 @@ async def with_retry_async(
     fn: Callable[[], Awaitable[T]],
     config: RetryConfig,
     on_retry: Callable[[int, Exception, float], None] | None = None,
+    idempotent: bool = True,
 ) -> T:
     """
     Execute an async function with retry logic.
@@ -115,6 +134,7 @@ async def with_retry_async(
         fn: Async function to execute
         config: Retry configuration
         on_retry: Optional callback called before each retry with (attempt, error, delay)
+        idempotent: Whether the operation is safe to replay (see ``should_retry``)
 
     Returns:
         The result of the function
@@ -130,7 +150,7 @@ async def with_retry_async(
         except Exception as e:
             last_error = e
 
-            if not should_retry(e, attempt, config):
+            if not should_retry(e, attempt, config, idempotent):
                 raise
 
             # Get retry_after from rate limit error

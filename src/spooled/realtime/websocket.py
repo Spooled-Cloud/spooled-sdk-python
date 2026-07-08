@@ -380,7 +380,13 @@ class WebSocketClient:
 
             # Handle as event
             event_data = data.get("data", {})
-            event = RealtimeEvent.from_server_event(msg_type, event_data)
+            event = RealtimeEvent.from_server_event(
+                msg_type, event_data, timestamp=data.get("timestamp")
+            )
+            if event is None:
+                # Unrecognized server event type; drop it rather than misroute.
+                self._debug(f"Ignoring unknown event type: {msg_type}", event_data)
+                return
 
             self._debug(f"Received event: {event.type}", event_data)
 
@@ -774,7 +780,9 @@ class AsyncWebSocketClient:
                 return None
 
             event_data = data.get("data", {})
-            return RealtimeEvent.from_server_event(msg_type, event_data)
+            return RealtimeEvent.from_server_event(
+                msg_type, event_data, timestamp=data.get("timestamp")
+            )
         except json.JSONDecodeError:
             return None
 

@@ -2,6 +2,24 @@
 
 All notable changes to the Spooled Python SDK are documented here.
 
+## [1.0.15] - 2026-07-08
+
+### Fixed
+
+- **Requests could hang forever**: a per-request `timeout=None` disabled the client
+  timeout; the client-level timeout now always applies (sync + async).
+- **Opaque job payloads were mangled**: request key-case conversion recursed into
+  user `payload`/`result`/`metadata`; those subtrees are now preserved verbatim.
+- **Realtime WebSocket auth** exchanges the API key for a JWT and connects with
+  `?token=`; standalone SSE clients honor `auto_reconnect`; SSE `disconnect()` no
+  longer wipes queue/job filters; the unified client no longer double-consumes the
+  socket.
+- Auto token-refresh on 401 is now wired (was dead code).
+- `Retry-After` is honored on 429; query params are URL-encoded; non-idempotent
+  POSTs are not retried unless an idempotency key is present.
+- Unknown server event types are dropped instead of misrouted as errors; the
+  server-provided event timestamp is preserved.
+
 ## [1.0.14] - 2026-07-07
 
 ### Security

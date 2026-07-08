@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import contextlib
 import json
+import queue
 import random
 import threading
 import time
@@ -159,6 +160,11 @@ class SpooledRealtime:
         self._receive_thread: threading.Thread | None = None
         self._stop_event = threading.Event()
         self._lock = threading.Lock()
+        # Lazily created when events() is first used: the single receive thread
+        # feeds this queue and events() drains it, so the socket is never read
+        # by two consumers at once. It stays None for handler-only usage so
+        # events are not buffered (and leaked) when nobody drains them.
+        self._event_queue: queue.Queue[RealtimeEvent] | None = None
 
     @property
     def state(self) -> ConnectionState:
@@ -295,7 +301,9 @@ class SpooledRealtime:
             self._disconnect_websocket()
 
         self._set_state(ConnectionState.DISCONNECTED)
-        self._subscriptions.clear()
+        # Subscriptions are intentionally retained so an auto-reconnect (or an
+        # explicit reconnect) restores the same queue/job filter instead of
+        # silently falling back to the unfiltered "all events" stream.
 
     def reconnect(self, filter: SubscriptionFilter | None = None) -> None:
         """
@@ -363,20 +371,31 @@ class SpooledRealtime:
         """
         Generator that yields events.
 
-        This is an alternative to using event handlers.
+        This is an alternative to using event handlers. Both mechanisms are fed
+        by the single background receive thread, so using ``events()`` and
+        registering handlers at the same time delivers every event to both;
+        neither steals frames from the other.
 
         Example:
             >>> realtime.connect()
             >>> for event in realtime.events():
             ...     print(f"Event: {event.type}")
         """
+        # Enable buffering for this consumer before (re)connecting so the
+        # receive thread starts feeding the queue.
+        if self._event_queue is None:
+            self._event_queue = queue.Queue(maxsize=10000)
+        event_queue = self._event_queue
+
         if self._state != ConnectionState.CONNECTED:
             self.connect()
 
-        if self._options.type == "sse":
-            yield from self._sse_events()
-        else:
-            yield from self._ws_events()
+        while not self._stop_event.is_set():
+            try:
+                event = event_queue.get(timeout=1.0)
+            except queue.Empty:
+                continue
+            yield event
 
     # ─────────────────────────────────────────────────────────────────────────
     # WebSocket Implementation
@@ -422,11 +441,10 @@ class SpooledRealtime:
             self._ws = None
 
     def _ws_receive_loop(self) -> None:
-        """Receive messages from WebSocket."""
+        """Receive messages from WebSocket (the sole reader of the socket)."""
         while not self._stop_event.is_set() and self._ws:
             try:
                 message = self._ws.recv(timeout=1.0)
-                self._handle_message(message)
             except TimeoutError:
                 continue
             except Exception as e:
@@ -434,20 +452,9 @@ class SpooledRealtime:
                     self._debug(f"WebSocket receive error: {e}", None)
                     self._handle_disconnect()
                 break
-
-    def _ws_events(self) -> Generator[RealtimeEvent, None, None]:
-        """Generator for WebSocket events."""
-        while not self._stop_event.is_set() and self._ws:
-            try:
-                message = self._ws.recv(timeout=1.0)
-                event = self._parse_message(message)
-                if event:
-                    yield event
-            except TimeoutError:
-                continue
-            except Exception:
-                if not self._stop_event.is_set():
-                    break
+            event = self._parse_message(message)
+            if event is not None:
+                self._dispatch_event(event)
 
     def _build_ws_url(self) -> str:
         """Build WebSocket URL."""
@@ -531,7 +538,7 @@ class SpooledRealtime:
         self._sse_client = None
 
     def _sse_receive_loop(self) -> None:
-        """Receive events from SSE."""
+        """Receive events from SSE (the sole reader of the stream)."""
         if not self._sse_client:
             return
 
@@ -543,29 +550,11 @@ class SpooledRealtime:
                 if event.data:
                     parsed = self._parse_sse_event(event.event, event.data)
                     if parsed:
-                        self._emit_event(parsed)
+                        self._dispatch_event(parsed)
         except Exception as e:
             if not self._stop_event.is_set():
                 self._debug(f"SSE receive error: {e}", None)
                 self._handle_disconnect()
-
-    def _sse_events(self) -> Generator[RealtimeEvent, None, None]:
-        """Generator for SSE events."""
-        if not self._sse_client:
-            return
-
-        try:
-            for event in self._sse_client.events():
-                if self._stop_event.is_set():
-                    break
-
-                if event.data:
-                    parsed = self._parse_sse_event(event.event, event.data)
-                    if parsed:
-                        yield parsed
-        except Exception:
-            if not self._stop_event.is_set():
-                pass
 
     def _build_sse_url(self, filter: SubscriptionFilter | None = None) -> str:
         """Build SSE endpoint URL."""
@@ -585,9 +574,30 @@ class SpooledRealtime:
         """Parse SSE event."""
         try:
             event_data = json.loads(data)
-            return RealtimeEvent.from_server_event(event_type or "message", event_data)
         except json.JSONDecodeError:
             return None
+        server_timestamp = (
+            event_data.get("timestamp") if isinstance(event_data, dict) else None
+        )
+        return RealtimeEvent.from_server_event(
+            event_type or "message", event_data, timestamp=server_timestamp
+        )
+
+    def _dispatch_event(self, event: RealtimeEvent) -> None:
+        """Deliver an event to handlers and, if in use, the events() queue."""
+        self._emit_event(event)
+        event_queue = self._event_queue
+        if event_queue is None:
+            return
+        try:
+            event_queue.put_nowait(event)
+        except queue.Full:
+            # Consumer is falling behind; drop the oldest event to stay live
+            # rather than growing without bound.
+            with contextlib.suppress(queue.Empty):
+                event_queue.get_nowait()
+            with contextlib.suppress(queue.Full):
+                event_queue.put_nowait(event)
 
     # ─────────────────────────────────────────────────────────────────────────
     # Common Helpers
@@ -602,33 +612,25 @@ class SpooledRealtime:
                     handler(state)
 
     def _handle_message(self, message: str) -> None:
-        """Handle incoming WebSocket message."""
-        try:
-            data = json.loads(message)
-            msg_type = data.get("type", "")
-
-            # Skip command responses
-            if msg_type in ("subscribed", "unsubscribed", "error", "pong"):
-                return
-
-            event = RealtimeEvent.from_server_event(msg_type, data.get("data", {}))
-            self._emit_event(event)
-
-        except json.JSONDecodeError:
-            pass
+        """Handle incoming WebSocket message (deliver to handlers + queue)."""
+        event = self._parse_message(message)
+        if event is not None:
+            self._dispatch_event(event)
 
     def _parse_message(self, message: str) -> RealtimeEvent | None:
         """Parse WebSocket message to event."""
         try:
             data = json.loads(message)
-            msg_type = data.get("type", "")
-
-            if msg_type in ("subscribed", "unsubscribed", "error", "pong"):
-                return None
-
-            return RealtimeEvent.from_server_event(msg_type, data.get("data", {}))
         except json.JSONDecodeError:
             return None
+
+        msg_type = data.get("type", "")
+        if msg_type in ("subscribed", "unsubscribed", "error", "pong"):
+            return None
+
+        return RealtimeEvent.from_server_event(
+            msg_type, data.get("data", {}), timestamp=data.get("timestamp")
+        )
 
     def _emit_event(self, event: RealtimeEvent) -> None:
         """Emit event to handlers."""

@@ -4,7 +4,9 @@ Custom exception classes for Spooled SDK.
 
 from __future__ import annotations
 
-from datetime import datetime
+from collections.abc import Mapping
+from datetime import datetime, timezone
+from email.utils import parsedate_to_datetime
 from typing import Any
 
 
@@ -271,10 +273,65 @@ def is_spooled_error(error: Exception) -> bool:
     return isinstance(error, SpooledError)
 
 
+def _header_get(headers: Mapping[str, str] | None, name: str) -> str | None:
+    """Case-insensitively read a header value from any mapping."""
+    if not headers:
+        return None
+    # httpx.Headers is already case-insensitive; fall back to a manual scan
+    # for plain dicts.
+    try:
+        value = headers.get(name)  # type: ignore[call-arg]
+    except TypeError:
+        value = None
+    if value is not None:
+        return value
+    lowered = name.lower()
+    for key, val in headers.items():
+        if key.lower() == lowered:
+            return val
+    return None
+
+
+def _parse_retry_after(value: str | None) -> int | None:
+    """Parse a Retry-After header (delta-seconds or HTTP-date) into seconds."""
+    if value is None:
+        return None
+    value = value.strip()
+    if not value:
+        return None
+    # Numeric form: delta-seconds.
+    try:
+        return max(0, int(float(value)))
+    except (TypeError, ValueError):
+        pass
+    # HTTP-date form.
+    try:
+        retry_at = parsedate_to_datetime(value)
+    except (TypeError, ValueError):
+        return None
+    if retry_at is None:
+        return None
+    if retry_at.tzinfo is None:
+        retry_at = retry_at.replace(tzinfo=timezone.utc)
+    delta = (retry_at - datetime.now(timezone.utc)).total_seconds()
+    return max(0, int(delta))
+
+
+def _parse_int_header(value: str | None) -> int | None:
+    """Parse an integer header value, returning None if absent/invalid."""
+    if value is None:
+        return None
+    try:
+        return int(value)
+    except (TypeError, ValueError):
+        return None
+
+
 def create_error_from_response(
     status_code: int,
     body: dict[str, Any] | None = None,
     request_id: str | None = None,
+    headers: Mapping[str, str] | None = None,
 ) -> SpooledError:
     """Create appropriate error from HTTP response."""
     code = body.get("code", "unknown_error") if body else "unknown_error"
@@ -294,11 +351,27 @@ def create_error_from_response(
     if status_code in error_classes:
         error_class = error_classes[status_code]
         if error_class == RateLimitError:
+            # Honor the server's rate-limit signalling instead of the default
+            # backoff so retries wait exactly as long as the server asked.
+            rate_kwargs: dict[str, Any] = {}
+            retry_after = _parse_retry_after(_header_get(headers, "Retry-After"))
+            if retry_after is not None:
+                rate_kwargs["retry_after"] = retry_after
+            limit = _parse_int_header(_header_get(headers, "X-RateLimit-Limit"))
+            if limit is not None:
+                rate_kwargs["limit"] = limit
+            remaining = _parse_int_header(_header_get(headers, "X-RateLimit-Remaining"))
+            if remaining is not None:
+                rate_kwargs["remaining"] = remaining
+            reset_epoch = _parse_int_header(_header_get(headers, "X-RateLimit-Reset"))
+            if reset_epoch is not None:
+                rate_kwargs["reset"] = datetime.fromtimestamp(reset_epoch, tz=timezone.utc)
             return RateLimitError(
                 message,
                 code=code,
                 details=details,
                 request_id=request_id,
+                **rate_kwargs,
             )
         return error_class(
             message,

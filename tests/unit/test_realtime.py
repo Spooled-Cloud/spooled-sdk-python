@@ -46,11 +46,29 @@ class TestRealtimeEvent:
         assert event.data["job_id"] == "j_1"
 
     def test_from_server_event_unknown(self) -> None:
-        """Test unknown server event type defaults to error."""
+        """Test unknown server event type is dropped (not misrouted to error)."""
         event = RealtimeEvent.from_server_event(
             "UnknownEventType",
             {"some": "data"},
         )
+        assert event is None
+
+    def test_from_server_event_uses_server_timestamp(self) -> None:
+        """Test the server-provided timestamp is preserved when present."""
+        from datetime import timezone
+
+        event = RealtimeEvent.from_server_event(
+            "JobCompleted",
+            {"job_id": "j_1", "timestamp": "2026-07-08T12:00:00Z"},
+        )
+        assert event is not None
+        assert event.timestamp is not None
+        assert event.timestamp == datetime(2026, 7, 8, 12, 0, 0, tzinfo=timezone.utc)
+
+    def test_from_server_event_error_still_maps(self) -> None:
+        """Test the server's own Error event still maps to the 'error' type."""
+        event = RealtimeEvent.from_server_event("Error", {"message": "boom"})
+        assert event is not None
         assert event.type == "error"
 
 

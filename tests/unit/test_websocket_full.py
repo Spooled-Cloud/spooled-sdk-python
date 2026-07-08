@@ -138,7 +138,7 @@ class TestRealtimeEvent:
         assert event.data["pending"] == 10
 
     def test_from_server_event_unknown(self):
-        """Test parsing unknown event type."""
+        """Test unknown event type is dropped rather than misrouted to error."""
         from spooled.realtime import RealtimeEvent
 
         event = RealtimeEvent.from_server_event(
@@ -146,7 +146,7 @@ class TestRealtimeEvent:
             {"key": "value"},
         )
 
-        assert event.type == "error"
+        assert event is None
 
 
 class TestSubscribeCommand:

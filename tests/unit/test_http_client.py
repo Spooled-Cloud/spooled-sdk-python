@@ -58,6 +58,17 @@ class TestHttpClientBasics:
         assert "status=pending" in url
         assert "limit=10" in url
 
+    def test_build_url_encodes_special_characters(self, http_client: HttpClient) -> None:
+        """Test query values with reserved characters are percent-encoded."""
+        url = http_client._build_url(
+            "/jobs", {"cursor": "a b+c/d=e&f", "tag": "x=1"}
+        )
+        query = url.split("?", 1)[1]
+        # Raw reserved characters must not leak into the query string as
+        # separators/operators; only the intended '&' and '=' remain.
+        assert " " not in query
+        assert query == "cursor=a+b%2Bc%2Fd%3De%26f&tag=x%3D1"
+
     def test_build_headers_with_auth(self, http_client: HttpClient) -> None:
         """Test headers include auth token."""
         headers = http_client._build_headers()
@@ -334,3 +345,121 @@ class TestHttpClientNonJsonResponse:
 
         result = http_client.get("/metrics", skip_api_prefix=True)
         assert "spooled_jobs_total" in result
+
+
+class TestHttpClientRetrySafety:
+    """Tests for idempotency-aware retry behavior."""
+
+    BASE_URL = "http://localhost:8080"
+
+    def _client(self) -> HttpClient:
+        config = SpooledClientConfig(
+            api_key="sp_test_xxxxxxxxxxxxxxxxxxxx",
+            base_url=self.BASE_URL,
+            retry=RetryConfig(
+                max_retries=3, base_delay=0.001, max_delay=0.002, jitter=False
+            ),
+            circuit_breaker=CircuitBreakerConfig(enabled=False),
+        )
+        resolved = resolve_config(config)
+        breaker = create_circuit_breaker(resolved.circuit_breaker)
+        return HttpClient(resolved, breaker)
+
+    @respx.mock
+    def test_get_is_retried_on_server_error(self) -> None:
+        """Idempotent GET is retried on 5xx."""
+        route = respx.get(f"{self.BASE_URL}/api/v1/jobs").mock(
+            return_value=httpx.Response(500, json={"message": "err"})
+        )
+        with pytest.raises(ServerError):
+            self._client().get("/jobs")
+        assert route.call_count == 4  # initial + 3 retries
+
+    @respx.mock
+    def test_post_not_retried_on_server_error(self) -> None:
+        """Non-idempotent POST is NOT retried on 5xx (avoids duplicate jobs)."""
+        route = respx.post(f"{self.BASE_URL}/api/v1/jobs").mock(
+            return_value=httpx.Response(500, json={"message": "err"})
+        )
+        with pytest.raises(ServerError):
+            self._client().post("/jobs", {"queue_name": "q", "payload": {}})
+        assert route.call_count == 1
+
+    @respx.mock
+    def test_post_with_idempotency_key_is_retried(self) -> None:
+        """POST carrying an idempotency_key is safe to retry."""
+        route = respx.post(f"{self.BASE_URL}/api/v1/jobs").mock(
+            return_value=httpx.Response(500, json={"message": "err"})
+        )
+        with pytest.raises(ServerError):
+            self._client().post(
+                "/jobs",
+                {"queue_name": "q", "idempotency_key": "abc", "payload": {}},
+            )
+        assert route.call_count == 4
+
+    @respx.mock
+    def test_post_retried_on_rate_limit(self) -> None:
+        """A 429 is always safe to retry, even for non-idempotent POST."""
+        route = respx.post(f"{self.BASE_URL}/api/v1/jobs").mock(
+            return_value=httpx.Response(
+                429, json={"message": "slow"}, headers={"Retry-After": "0"}
+            )
+        )
+        with pytest.raises(RateLimitError):
+            self._client().post("/jobs", {"queue_name": "q", "payload": {}})
+        assert route.call_count == 4
+
+
+class TestHttpClientTokenRefresh:
+    """Tests for automatic token refresh on 401."""
+
+    BASE_URL = "http://localhost:8080"
+
+    def _client(self) -> HttpClient:
+        config = SpooledClientConfig(
+            api_key="sp_test_xxxxxxxxxxxxxxxxxxxx",
+            base_url=self.BASE_URL,
+            retry=RetryConfig(max_retries=0),
+            circuit_breaker=CircuitBreakerConfig(enabled=False),
+        )
+        resolved = resolve_config(config)
+        breaker = create_circuit_breaker(resolved.circuit_breaker)
+        return HttpClient(resolved, breaker)
+
+    @respx.mock
+    def test_401_refreshes_token_and_retries_once(self) -> None:
+        """On 401 the refresh fn runs and the request replays with the new token."""
+        client = self._client()
+        route = respx.get(f"{self.BASE_URL}/api/v1/jobs").mock(
+            side_effect=[
+                httpx.Response(401, json={"code": "invalid_token", "message": "exp"}),
+                httpx.Response(200, json=[{"id": "j1"}]),
+            ]
+        )
+
+        calls = {"count": 0}
+
+        def refresh() -> str:
+            calls["count"] += 1
+            client.set_auth_token("fresh_token")
+            return "fresh_token"
+
+        client.set_refresh_token_fn(refresh)
+
+        result = client.get("/jobs")
+
+        assert result == [{"id": "j1"}]
+        assert calls["count"] == 1
+        assert route.call_count == 2
+        assert route.calls[-1].request.headers["Authorization"] == "Bearer fresh_token"
+
+    @respx.mock
+    def test_401_without_refresh_fn_raises(self) -> None:
+        """Without a refresh fn a 401 surfaces as AuthenticationError."""
+        route = respx.get(f"{self.BASE_URL}/api/v1/jobs").mock(
+            return_value=httpx.Response(401, json={"message": "no"})
+        )
+        with pytest.raises(AuthenticationError):
+            self._client().get("/jobs")
+        assert route.call_count == 1
