@@ -2,6 +2,13 @@
 
 All notable changes to the Spooled Python SDK are documented here.
 
+## [1.0.16] - 2026-07-08
+
+### Fixed
+
+- `spooled.__version__` now resolves from the installed package metadata instead
+  of a hardcoded literal that lagged the real release (was stuck at `1.0.1`).
+
 ## [1.0.15] - 2026-07-08
 
 ### Fixed
