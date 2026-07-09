@@ -11,7 +11,7 @@ from pydantic import BaseModel
 
 # Event types from the server
 RealtimeEventType = Literal[
-    "job.status",
+    "job.status_changed",
     "job.created",
     "job.completed",
     "job.failed",
@@ -27,7 +27,7 @@ RealtimeEventType = Literal[
 # Server event type mapping - maps both PascalCase and dot-notation
 SERVER_EVENT_MAP: dict[str, RealtimeEventType] = {
     # PascalCase from server
-    "JobStatusChange": "job.status",
+    "JobStatusChange": "job.status_changed",
     "JobCreated": "job.created",
     "JobCompleted": "job.completed",
     "JobFailed": "job.failed",
@@ -39,7 +39,7 @@ SERVER_EVENT_MAP: dict[str, RealtimeEventType] = {
     "Ping": "ping",
     "Error": "error",
     # Dot-notation (sometimes used)
-    "job.status": "job.status",
+    "job.status": "job.status_changed",  # backend SSE alias -> canonical
     "job.created": "job.created",
     "job.completed": "job.completed",
     "job.failed": "job.failed",

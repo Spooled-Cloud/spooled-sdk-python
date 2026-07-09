@@ -52,7 +52,7 @@ class TestRealtimeEvent:
             "JobStatusChange",
             {"job_id": "j_1", "status": "completed"},
         )
-        assert event.type == "job.status"
+        assert event.type == "job.status_changed"
         assert event.data["job_id"] == "j_1"
 
     def test_from_server_event_unknown(self) -> None:
@@ -172,7 +172,7 @@ class TestRealtimeEventTypes:
     def test_all_event_types(self) -> None:
         """Test all event types are valid."""
         valid_types: list[RealtimeEventType] = [
-            "job.status",
+            "job.status_changed",
             "job.created",
             "job.completed",
             "job.failed",
