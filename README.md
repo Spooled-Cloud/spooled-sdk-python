@@ -265,7 +265,12 @@ try:
 except NotFoundError:
     print("Job not found")
 except RateLimitError as e:
-    print(f"Rate limited. Retry after {e.retry_after}s")
+    # 429 covers both per-second rate limiting and plan-quota errors.
+    # A plan quota carries code == "QUOTA_EXCEEDED" (with resource/current/limit/plan details).
+    if e.code == "QUOTA_EXCEEDED":
+        print(f"Plan quota exceeded: {e.message}")
+    else:
+        print(f"Rate limited. Retry after {e.retry_after}s")
 except SpooledError as e:
     print(f"API error: {e.code} - {e.message}")
 ```
