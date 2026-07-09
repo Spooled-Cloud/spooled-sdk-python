@@ -106,6 +106,21 @@ class ResolvedConfig(BaseModel):
     model_config = {"arbitrary_types_allowed": True}
 
 
+def _normalize_credential(value: str | None) -> str | None:
+    """Trim surrounding whitespace and treat an all-whitespace input as unset.
+
+    httpx (and urllib3) reject ``Authorization: Bearer <key>\\n`` at the
+    transport layer with an opaque error. Users routinely load credentials
+    from ``.env`` files or ``os.getenv`` values that carry a trailing newline,
+    so normalize once at config-resolve time — matching the Go, PHP, and
+    Node SDKs.
+    """
+    if value is None:
+        return None
+    trimmed = value.strip()
+    return trimmed or None
+
+
 def resolve_config(config: SpooledClientConfig) -> ResolvedConfig:
     """Resolve configuration with defaults."""
     debug_fn: Callable[[str, Any], None] | None = None
@@ -120,10 +135,10 @@ def resolve_config(config: SpooledClientConfig) -> ResolvedConfig:
         debug_fn = _debug
 
     return ResolvedConfig(
-        api_key=config.api_key,
-        access_token=config.access_token,
-        refresh_token=config.refresh_token,
-        admin_key=config.admin_key,
+        api_key=_normalize_credential(config.api_key),
+        access_token=_normalize_credential(config.access_token),
+        refresh_token=_normalize_credential(config.refresh_token),
+        admin_key=_normalize_credential(config.admin_key),
         base_url=config.base_url.rstrip("/"),
         ws_url=config.get_ws_url().rstrip("/"),
         grpc_address=config.grpc_address,

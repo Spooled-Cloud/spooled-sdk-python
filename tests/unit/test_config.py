@@ -285,6 +285,54 @@ class TestValidateConfig:
             validate_config(resolved)
 
 
+class TestCredentialTrimming:
+    """Regression tests for whitespace-normalising credential resolution.
+
+    httpx (and urllib3) reject an ``Authorization`` header value that contains
+    a raw ``\\n`` or ``\\r`` with an opaque transport error. Users routinely
+    load credentials from ``.env`` files that add a trailing newline, so
+    ``resolve_config`` must trim before handing values to the HTTP client —
+    matching the Go, PHP, and Node SDKs.
+    """
+
+    def test_trims_trailing_newline_from_api_key(self) -> None:
+        config = SpooledClientConfig(api_key="sp_test_abcdefghij\n")
+        resolved = resolve_config(config)
+        assert resolved.api_key == "sp_test_abcdefghij"
+
+    def test_trims_surrounding_whitespace_from_every_credential(self) -> None:
+        config = SpooledClientConfig(
+            api_key="  sp_test_xxxxxxxxxxxxxxxxxxxx  ",
+            access_token="\tjwt.header.body\n",
+            refresh_token="\r\nrefresh-token\r\n",
+            admin_key=" sk_admin_secret ",
+        )
+        resolved = resolve_config(config)
+
+        assert resolved.api_key == "sp_test_xxxxxxxxxxxxxxxxxxxx"
+        assert resolved.access_token == "jwt.header.body"
+        assert resolved.refresh_token == "refresh-token"
+        assert resolved.admin_key == "sk_admin_secret"
+
+    def test_treats_whitespace_only_credentials_as_none(self) -> None:
+        config = SpooledClientConfig(
+            api_key=None,
+            access_token="\t   \n",
+        )
+        resolved = resolve_config(config)
+
+        assert resolved.api_key is None
+        assert resolved.access_token is None
+
+    def test_authorization_header_has_no_crlf(self) -> None:
+        config = SpooledClientConfig(api_key="sp_test_abcdefghijklmnop\n")
+        resolved = resolve_config(config)
+        assert resolved.api_key is not None
+        header_value = f"Bearer {resolved.api_key}"
+        assert "\n" not in header_value
+        assert "\r" not in header_value
+
+
 class TestConstants:
     """Tests for configuration constants."""
 
