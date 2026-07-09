@@ -159,7 +159,7 @@ class TestSubscribeCommand:
         cmd = SubscribeCommand(queue="test-queue")
         d = cmd.to_dict()
 
-        assert d["type"] == "subscribe"
+        assert d["cmd"] == "subscribe"
         assert d["queue"] == "test-queue"
         assert "job_id" not in d or d.get("job_id") is None
 
@@ -170,7 +170,7 @@ class TestSubscribeCommand:
         cmd = SubscribeCommand(job_id="job-123")
         d = cmd.to_dict()
 
-        assert d["type"] == "subscribe"
+        assert d["cmd"] == "subscribe"
         assert d["job_id"] == "job-123"
 
 
@@ -184,7 +184,7 @@ class TestUnsubscribeCommand:
         cmd = UnsubscribeCommand(queue="test-queue")
         d = cmd.to_dict()
 
-        assert d["type"] == "unsubscribe"
+        assert d["cmd"] == "unsubscribe"
         assert d["queue"] == "test-queue"
 
 
@@ -198,7 +198,7 @@ class TestPingCommand:
         cmd = PingCommand()
         d = cmd.to_dict()
 
-        assert d["type"] == "ping"
+        assert d["cmd"] == "ping"
 
 
 class TestWebSocketClientInit:
@@ -570,14 +570,13 @@ class TestMessageParsing:
         assert event.type == "job.completed"
         assert event.data["job_id"] == "job-123"
 
-    def test_parse_command_response(self):
-        """Test command response is identified."""
-        response_types = ["subscribed", "unsubscribed", "error", "pong"]
+    def test_phantom_command_ack_types_are_dropped(self):
+        """The backend sends no subscribe/unsubscribe/pong acks.
 
-        for resp_type in response_types:
-            message = json.dumps({
-                "type": resp_type,
-                "requestId": "req-123",
-            })
-            data = json.loads(message)
-            assert data["type"] in response_types
+        These phantom types are not real events, so ``from_server_event`` drops
+        them (returns ``None``) rather than misrouting them to consumers.
+        """
+        from spooled.realtime import RealtimeEvent
+
+        for phantom in ("subscribed", "unsubscribed", "pong"):
+            assert RealtimeEvent.from_server_event(phantom, {}) is None

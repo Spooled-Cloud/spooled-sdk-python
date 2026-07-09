@@ -50,6 +50,25 @@ GenericEventHandler = Callable[[RealtimeEvent], None]
 StateChangeHandler = Callable[[SSEConnectionState], None]
 
 
+def _event_from_sse_payload(event_type: str, payload: Any) -> RealtimeEvent | None:
+    """Build a :class:`RealtimeEvent` from a parsed SSE ``data:`` payload.
+
+    The backend serializes each event adjacently-tagged as
+    ``{"type": "<PascalCase>", "data": {...}}``. Unwrap that envelope so typed
+    handlers receive the inner fields verbatim, preferring the PascalCase type
+    carried in the payload over the (dotted) SSE ``event:`` name. Falls back to
+    the raw payload/event name when the frame is not enveloped.
+    """
+    server_type = event_type or "message"
+    event_data = payload
+    if isinstance(payload, dict) and "type" in payload and isinstance(payload.get("data"), dict):
+        server_type = payload["type"]
+        event_data = payload["data"]
+
+    server_timestamp = event_data.get("timestamp") if isinstance(event_data, dict) else None
+    return RealtimeEvent.from_server_event(server_type, event_data, timestamp=server_timestamp)
+
+
 class SSEClient:
     """
     Server-Sent Events client for real-time events.
@@ -398,12 +417,18 @@ class SSEClient:
         self.connect()
 
     def _parse_event(self, event_type: str, data: str) -> RealtimeEvent | None:
-        """Parse SSE event to RealtimeEvent."""
+        """Parse SSE event to RealtimeEvent.
+
+        The backend serializes each event adjacently-tagged as
+        ``{"type": "<PascalCase>", "data": {...}}`` in the SSE ``data:`` field,
+        so unwrap that envelope and deliver the inner fields verbatim rather
+        than the wrapper.
+        """
         try:
-            event_data = json.loads(data)
-            return RealtimeEvent.from_server_event(event_type, event_data)
+            payload = json.loads(data)
         except json.JSONDecodeError:
             return None
+        return _event_from_sse_payload(event_type, payload)
 
     def close(self) -> None:
         """Close the SSE connection."""
@@ -743,12 +768,12 @@ class AsyncSSEClient:
         await self.connect()
 
     def _parse_event(self, event_type: str, data: str) -> RealtimeEvent | None:
-        """Parse SSE event to RealtimeEvent."""
+        """Parse SSE event to RealtimeEvent (unwraps the adjacently-tagged envelope)."""
         try:
-            event_data = json.loads(data)
-            return RealtimeEvent.from_server_event(event_type or "message", event_data)
+            payload = json.loads(data)
         except json.JSONDecodeError:
             return None
+        return _event_from_sse_payload(event_type, payload)
 
     async def close(self) -> None:
         """Close the SSE connection."""

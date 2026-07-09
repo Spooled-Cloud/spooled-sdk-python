@@ -11,7 +11,6 @@ import json
 import queue
 import random
 import threading
-import time
 from collections.abc import Callable, Generator
 from dataclasses import dataclass
 from enum import Enum
@@ -489,11 +488,13 @@ class SpooledRealtime:
         return f"{ws_url}/api/v1/ws?token={self._options.token}"
 
     def _send_ws_command(self, command: SubscribeCommand | UnsubscribeCommand) -> None:
-        """Send WebSocket command."""
+        """Send a WebSocket command in the backend shape ``{"cmd": ...}``.
+
+        The backend sends no ack for subscribe/unsubscribe, so this fires and
+        returns without blocking.
+        """
         if self._ws:
-            cmd_dict = command.to_dict()
-            cmd_dict["requestId"] = f"req_{int(time.time() * 1000)}_{random.randint(0, 999999):06d}"
-            self._ws.send(json.dumps(cmd_dict))
+            self._ws.send(json.dumps(command.to_dict()))
 
     def _resubscribe_all(self) -> None:
         """Resubscribe to all subscriptions."""
@@ -597,16 +598,29 @@ class SpooledRealtime:
         return f"{self._options.base_url}/api/v1/events"
 
     def _parse_sse_event(self, event_type: str, data: str) -> RealtimeEvent | None:
-        """Parse SSE event."""
+        """Parse SSE event.
+
+        The backend serializes each event adjacently-tagged as
+        ``{"type": "<PascalCase>", "data": {...}}`` in the SSE ``data:`` field,
+        so unwrap that envelope and deliver the inner fields verbatim rather
+        than the wrapper.
+        """
         try:
-            event_data = json.loads(data)
+            payload = json.loads(data)
         except json.JSONDecodeError:
             return None
+
+        server_type = event_type or "message"
+        event_data = payload
+        if isinstance(payload, dict) and "type" in payload and isinstance(payload.get("data"), dict):
+            server_type = payload["type"]
+            event_data = payload["data"]
+
         server_timestamp = (
             event_data.get("timestamp") if isinstance(event_data, dict) else None
         )
         return RealtimeEvent.from_server_event(
-            event_type or "message", event_data, timestamp=server_timestamp
+            server_type, event_data, timestamp=server_timestamp
         )
 
     def _dispatch_event(self, event: RealtimeEvent) -> None:
@@ -650,10 +664,9 @@ class SpooledRealtime:
         except json.JSONDecodeError:
             return None
 
+        # Events are adjacently tagged: {"type": "<PascalCase>", "data": {...}}.
+        # The backend sends no command acks, so every frame is an event.
         msg_type = data.get("type", "")
-        if msg_type in ("subscribed", "unsubscribed", "error", "pong"):
-            return None
-
         return RealtimeEvent.from_server_event(
             msg_type, data.get("data", {}), timestamp=data.get("timestamp")
         )

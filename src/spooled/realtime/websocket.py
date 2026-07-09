@@ -12,9 +12,8 @@ import contextlib
 import json
 import random
 import threading
-import time
 from collections.abc import AsyncGenerator, Callable
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from enum import Enum
 from typing import Any
 
@@ -89,20 +88,6 @@ class WebSocketConnectionOptions:
 
 
 # ─────────────────────────────────────────────────────────────────────────────
-# Pending Command
-# ─────────────────────────────────────────────────────────────────────────────
-
-
-@dataclass
-class PendingCommand:
-    """Represents a pending command waiting for response."""
-
-    event: threading.Event = field(default_factory=threading.Event)
-    error: str | None = None
-    resolved: bool = False
-
-
-# ─────────────────────────────────────────────────────────────────────────────
 # WebSocket Client
 # ─────────────────────────────────────────────────────────────────────────────
 
@@ -162,7 +147,6 @@ class WebSocketClient:
         self._reconnect_attempts = 0
         self._reconnect_timer: threading.Timer | None = None
         self._subscriptions: dict[str, SubscriptionFilter] = {}
-        self._pending_commands: dict[str, PendingCommand] = {}
 
         # Event handlers
         self._event_handlers: dict[RealtimeEventType, list[Callable[[RealtimeEvent], None]]] = {}
@@ -296,7 +280,6 @@ class WebSocketClient:
 
         self._set_state(ConnectionState.DISCONNECTED)
         self._subscriptions.clear()
-        self._clear_pending_commands()
 
     def subscribe(self, filter: SubscriptionFilter) -> None:
         """
@@ -372,13 +355,10 @@ class WebSocketClient:
         try:
             data = json.loads(message)
 
-            # Check if this is a command response
+            # The backend serializes events adjacently-tagged as
+            # {"type": "<PascalCaseVariant>", "data": {...}} and does not send
+            # command acks, so every message is treated as an event.
             msg_type = data.get("type", "")
-            if msg_type in ("subscribed", "unsubscribed", "error", "pong"):
-                self._handle_command_response(data)
-                return
-
-            # Handle as event
             event_data = data.get("data", {})
             event = RealtimeEvent.from_server_event(
                 msg_type, event_data, timestamp=data.get("timestamp")
@@ -404,26 +384,9 @@ class WebSocketClient:
         except json.JSONDecodeError:
             self._debug(f"Failed to parse message: {message}", None)
 
-    def _handle_command_response(self, data: dict[str, Any]) -> None:
-        """Handle command response."""
-        request_id = data.get("requestId")
-        if not request_id:
-            return
-
-        with self._lock:
-            pending = self._pending_commands.get(request_id)
-            if not pending:
-                return
-
-            if data.get("type") == "error":
-                pending.error = data.get("error", "Unknown error")
-            pending.resolved = True
-            pending.event.set()
-
     def _handle_disconnect(self) -> None:
         """Handle WebSocket disconnection."""
         self._ws = None
-        self._clear_pending_commands()
 
         if (
             self._options.auto_reconnect
@@ -485,42 +448,18 @@ class WebSocketClient:
                 self._debug(f"Failed to resubscribe: {e}", filter)
 
     def _send_command(self, command: SubscribeCommand | UnsubscribeCommand | PingCommand) -> None:
-        """Send a command to the server."""
+        """Send a command to the server.
+
+        The backend acknowledges neither subscribe/unsubscribe nor ping with a
+        dedicated response frame, so this fires the command and returns
+        immediately instead of blocking on an ack that never arrives (which
+        previously made ``subscribe()`` hang for ``command_timeout`` seconds and
+        then raise ``TimeoutError``).
+        """
         if not self._ws or self._state != ConnectionState.CONNECTED:
             raise RuntimeError("WebSocket not connected")
 
-        # Generate request ID
-        request_id = f"req_{int(time.time() * 1000)}_{random.randint(0, 999999):06d}"
-
-        # Create pending command
-        pending = PendingCommand()
-        with self._lock:
-            self._pending_commands[request_id] = pending
-
-        try:
-            # Send command
-            cmd_dict = command.to_dict()
-            cmd_dict["requestId"] = request_id
-            self._ws.send(json.dumps(cmd_dict))
-
-            # Wait for response with timeout
-            if not pending.event.wait(timeout=self._options.command_timeout):
-                raise TimeoutError("Command timeout")
-
-            if pending.error:
-                raise RuntimeError(pending.error)
-
-        finally:
-            with self._lock:
-                self._pending_commands.pop(request_id, None)
-
-    def _clear_pending_commands(self) -> None:
-        """Clear all pending commands with error."""
-        with self._lock:
-            for pending in self._pending_commands.values():
-                pending.error = "Connection closed"
-                pending.event.set()
-            self._pending_commands.clear()
+        self._ws.send(json.dumps(command.to_dict()))
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -565,7 +504,6 @@ class AsyncWebSocketClient:
         self._state = ConnectionState.DISCONNECTED
         self._reconnect_attempts = 0
         self._subscriptions: dict[str, SubscriptionFilter] = {}
-        self._pending_commands: dict[str, PendingCommand] = {}
 
         # Event handlers
         self._event_handlers: dict[RealtimeEventType, list[Callable[[RealtimeEvent], None]]] = {}
@@ -775,10 +713,6 @@ class AsyncWebSocketClient:
             data = json.loads(message)
             msg_type = data.get("type", "")
 
-            # Skip command responses
-            if msg_type in ("subscribed", "unsubscribed", "error", "pong"):
-                return None
-
             event_data = data.get("data", {})
             return RealtimeEvent.from_server_event(
                 msg_type, event_data, timestamp=data.get("timestamp")
@@ -789,14 +723,14 @@ class AsyncWebSocketClient:
     async def _send_command(
         self, command: SubscribeCommand | UnsubscribeCommand | PingCommand
     ) -> None:
-        """Send a command to the server."""
+        """Send a command to the server.
+
+        The backend sends no command ack, so this fires and returns.
+        """
         if not self._ws or self._state != ConnectionState.CONNECTED:
             raise RuntimeError("WebSocket not connected")
 
-        request_id = f"req_{int(time.time() * 1000)}_{random.randint(0, 999999):06d}"
-        cmd_dict = command.to_dict()
-        cmd_dict["requestId"] = request_id
-        await self._ws.send(json.dumps(cmd_dict))
+        await self._ws.send(json.dumps(command.to_dict()))
 
     async def _resubscribe_all(self) -> None:
         """Resubscribe to all subscriptions after reconnect."""

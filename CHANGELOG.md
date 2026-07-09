@@ -2,6 +2,33 @@
 
 All notable changes to the Spooled Python SDK are documented here.
 
+## [1.0.19] - 2026-07-09
+
+### Fixed
+
+- **Realtime WebSocket commands now use the backend `{"cmd": ...}` shape.**
+  `subscribe`, `unsubscribe`, and `ping` previously serialized as
+  `{"type": "subscribe"}`. The backend's `ClientCommand` enum is internally
+  tagged with `cmd`, so those frames failed to deserialize server-side and the
+  command was silently dropped. They now send
+  `{"cmd": "subscribe", "queue": ..., "job_id": ...}` (and likewise for
+  `unsubscribe`/`ping`), matching production.
+- **`subscribe()`/`unsubscribe()` no longer block on an ack the server never
+  sends.** The synchronous `WebSocketClient` waited up to `command_timeout`
+  seconds for a subscribe/unsubscribe/ping acknowledgement and then raised
+  `TimeoutError` — the backend sends no such response frame. Commands now fire
+  and return immediately. Subscriptions are still tracked so they are re-sent on
+  reconnect.
+- **Server-Sent Events deliver the payload fields verbatim.** Each event is
+  serialized adjacently-tagged as `{"type": "<PascalCase>", "data": {...}}` in
+  the SSE `data:` field; the SDK now unwraps that envelope so typed handlers
+  receive the inner fields (`job_id`, `result`, ...) instead of the wrapper.
+
+Incoming events are still mapped from the backend's PascalCase `type`
+(`JobCompleted`, `QueueStats`, ...) to the SDK's dotted event names
+(`job.completed`, `queue.stats`, ...) before dispatch, and the untyped
+catch-all handler continues to receive every event.
+
 ## [1.0.18] - 2026-07-09
 
 ### Fixed

@@ -119,14 +119,20 @@ class RealtimeEvent(BaseModel):
 
 
 class SubscribeCommand(BaseModel):
-    """Subscribe command for WebSocket."""
+    """Subscribe command for WebSocket.
+
+    The backend's ``ClientCommand`` enum is internally tagged with ``cmd``
+    (``#[serde(tag = "cmd")]``), so the wire shape is
+    ``{"cmd": "subscribe", "queue": ..., "job_id": ...}``. Emitting ``type``
+    here fails to deserialize server-side and the command is silently dropped.
+    """
 
     queue: str | None = None
     job_id: str | None = None
 
     def to_dict(self) -> dict[str, Any]:
-        """Convert to dict for sending."""
-        result: dict[str, Any] = {"type": "subscribe"}
+        """Convert to the backend command shape ``{"cmd": "subscribe", ...}``."""
+        result: dict[str, Any] = {"cmd": "subscribe"}
         if self.queue:
             result["queue"] = self.queue
         if self.job_id:
@@ -135,14 +141,14 @@ class SubscribeCommand(BaseModel):
 
 
 class UnsubscribeCommand(BaseModel):
-    """Unsubscribe command for WebSocket."""
+    """Unsubscribe command for WebSocket (backend shape ``{"cmd": ...}``)."""
 
     queue: str | None = None
     job_id: str | None = None
 
     def to_dict(self) -> dict[str, Any]:
-        """Convert to dict for sending."""
-        result: dict[str, Any] = {"type": "unsubscribe"}
+        """Convert to the backend command shape ``{"cmd": "unsubscribe", ...}``."""
+        result: dict[str, Any] = {"cmd": "unsubscribe"}
         if self.queue:
             result["queue"] = self.queue
         if self.job_id:
@@ -151,8 +157,8 @@ class UnsubscribeCommand(BaseModel):
 
 
 class PingCommand(BaseModel):
-    """Ping command for WebSocket."""
+    """Ping command for WebSocket (backend shape ``{"cmd": "ping"}``)."""
 
     def to_dict(self) -> dict[str, Any]:
-        """Convert to dict for sending."""
-        return {"type": "ping"}
+        """Convert to the backend command shape ``{"cmd": "ping"}``."""
+        return {"cmd": "ping"}
