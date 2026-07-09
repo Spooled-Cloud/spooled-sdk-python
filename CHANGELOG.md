@@ -2,6 +2,16 @@
 
 All notable changes to the Spooled Python SDK are documented here.
 
+## [1.0.18] - 2026-07-09
+
+### Fixed
+
+- **Credentials are trimmed of surrounding whitespace.** API keys, access tokens,
+  and refresh tokens read from a file or environment variable often carry a
+  trailing newline; the client now trims them at config resolution (an
+  all-whitespace value is treated as unset). Prevents a cryptic failure such as
+  Go's `net/http: invalid header field value` on a newline-tainted key.
+
 ## [1.0.17] - 2026-07-08
 
 ### Fixed

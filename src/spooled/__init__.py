@@ -42,7 +42,7 @@ try:
 
     __version__ = _pkg_version("spooled")
 except Exception:  # pragma: no cover - source/editable checkout without metadata
-    __version__ = "1.0.17"
+    __version__ = "1.0.18"
 
 # These will be imported when the client modules are created
 __all__ = [
