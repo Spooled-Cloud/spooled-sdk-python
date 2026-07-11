@@ -7,6 +7,7 @@ from unittest.mock import MagicMock
 
 import pytest
 
+from spooled.types.jobs import ClaimedJob
 from spooled.worker.types import (
     AsyncJobContext,
     JobContext,
@@ -355,6 +356,214 @@ class TestWorkerEventEmission:
         # Should not raise
         event_data = StartedEventData(worker_id="w_1", queue_name="test")
         worker._emit("started", event_data)
+
+
+def _claimed_job(lease_id: str | None) -> ClaimedJob:
+    """Build a ClaimedJob for lease fencing tests."""
+    return ClaimedJob(
+        id="job_123",
+        queue_name="test",
+        payload={},
+        retry_count=0,
+        max_retries=3,
+        timeout_seconds=300,
+        lease_id=lease_id,
+    )
+
+
+class TestWorkerLeaseFencing:
+    """Tests that workers echo the lease_id fencing token from claim."""
+
+    def _worker(self, mock_client):
+        from spooled.worker import SpooledWorker
+
+        mock_client.get_config.return_value = MagicMock(debug_fn=None)
+        worker = SpooledWorker(mock_client, queue_name="test")
+        worker._worker_id = "worker_1"
+        return worker
+
+    def test_complete_echoes_lease_id(self) -> None:
+        """Test _complete_job sends the claimed job's lease_id."""
+        mock_client = MagicMock()
+        worker = self._worker(mock_client)
+
+        worker._complete_job(_claimed_job("lease-abc"), {"ok": True})
+
+        mock_client.jobs.complete.assert_called_once_with("job_123", {
+            "worker_id": "worker_1",
+            "result": {"ok": True},
+            "lease_id": "lease-abc",
+        })
+
+    def test_complete_omits_lease_id_when_none(self) -> None:
+        """Test _complete_job omits lease_id for legacy servers."""
+        mock_client = MagicMock()
+        worker = self._worker(mock_client)
+
+        worker._complete_job(_claimed_job(None), None)
+
+        mock_client.jobs.complete.assert_called_once_with("job_123", {
+            "worker_id": "worker_1",
+            "result": None,
+        })
+
+    def test_fail_echoes_lease_id(self) -> None:
+        """Test _fail_job sends the claimed job's lease_id."""
+        mock_client = MagicMock()
+        worker = self._worker(mock_client)
+
+        worker._fail_job(_claimed_job("lease-abc"), "boom")
+
+        mock_client.jobs.fail.assert_called_once_with("job_123", {
+            "worker_id": "worker_1",
+            "error": "boom",
+            "lease_id": "lease-abc",
+        })
+
+    def test_fail_omits_lease_id_when_none(self) -> None:
+        """Test _fail_job omits lease_id for legacy servers."""
+        mock_client = MagicMock()
+        worker = self._worker(mock_client)
+
+        worker._fail_job(_claimed_job(None), "boom")
+
+        mock_client.jobs.fail.assert_called_once_with("job_123", {
+            "worker_id": "worker_1",
+            "error": "boom",
+        })
+
+    def test_heartbeat_echoes_lease_id(self) -> None:
+        """Test the job heartbeat sends the claimed job's lease_id."""
+        import time
+
+        from spooled.worker.worker import ActiveJob
+
+        mock_client = MagicMock()
+        worker = self._worker(mock_client)
+
+        job = _claimed_job("lease-abc")
+        worker._active_jobs[job.id] = ActiveJob(
+            job=job,
+            started_at=time.time(),
+            abort_event=threading.Event(),
+        )
+        try:
+            # Schedule with a long interval, then fire the heartbeat
+            # synchronously instead of waiting for the timer.
+            worker._schedule_job_heartbeat(job.id, interval=60.0)
+            worker._active_jobs[job.id].heartbeat_timer.function()
+
+            mock_client.jobs.heartbeat.assert_called_once_with("job_123", {
+                "worker_id": "worker_1",
+                "lease_duration_secs": worker._options.lease_duration,
+                "lease_id": "lease-abc",
+            })
+        finally:
+            worker._cleanup_job(job.id)
+
+    def test_heartbeat_omits_lease_id_when_none(self) -> None:
+        """Test the job heartbeat omits lease_id for legacy servers."""
+        import time
+
+        from spooled.worker.worker import ActiveJob
+
+        mock_client = MagicMock()
+        worker = self._worker(mock_client)
+
+        job = _claimed_job(None)
+        worker._active_jobs[job.id] = ActiveJob(
+            job=job,
+            started_at=time.time(),
+            abort_event=threading.Event(),
+        )
+        try:
+            worker._schedule_job_heartbeat(job.id, interval=60.0)
+            worker._active_jobs[job.id].heartbeat_timer.function()
+
+            mock_client.jobs.heartbeat.assert_called_once_with("job_123", {
+                "worker_id": "worker_1",
+                "lease_duration_secs": worker._options.lease_duration,
+            })
+        finally:
+            worker._cleanup_job(job.id)
+
+
+class TestAsyncWorkerLeaseFencing:
+    """Tests that the async worker echoes the lease_id fencing token."""
+
+    def _worker(self, mock_client):
+        from spooled.worker import AsyncSpooledWorker
+
+        mock_client.get_config.return_value = MagicMock(debug_fn=None)
+        worker = AsyncSpooledWorker(mock_client, queue_name="test")
+        worker._worker_id = "worker_1"
+        return worker
+
+    @pytest.mark.asyncio
+    async def test_async_complete_echoes_lease_id(self) -> None:
+        """Test async _complete_job sends the claimed job's lease_id."""
+        from unittest.mock import AsyncMock
+
+        mock_client = MagicMock()
+        mock_client.jobs.complete = AsyncMock()
+        worker = self._worker(mock_client)
+
+        await worker._complete_job(_claimed_job("lease-abc"), {"ok": True})
+
+        mock_client.jobs.complete.assert_awaited_once_with("job_123", {
+            "worker_id": "worker_1",
+            "result": {"ok": True},
+            "lease_id": "lease-abc",
+        })
+
+    @pytest.mark.asyncio
+    async def test_async_complete_omits_lease_id_when_none(self) -> None:
+        """Test async _complete_job omits lease_id for legacy servers."""
+        from unittest.mock import AsyncMock
+
+        mock_client = MagicMock()
+        mock_client.jobs.complete = AsyncMock()
+        worker = self._worker(mock_client)
+
+        await worker._complete_job(_claimed_job(None), None)
+
+        mock_client.jobs.complete.assert_awaited_once_with("job_123", {
+            "worker_id": "worker_1",
+            "result": None,
+        })
+
+    @pytest.mark.asyncio
+    async def test_async_fail_echoes_lease_id(self) -> None:
+        """Test async _fail_job sends the claimed job's lease_id."""
+        from unittest.mock import AsyncMock
+
+        mock_client = MagicMock()
+        mock_client.jobs.fail = AsyncMock()
+        worker = self._worker(mock_client)
+
+        await worker._fail_job(_claimed_job("lease-abc"), "boom")
+
+        mock_client.jobs.fail.assert_awaited_once_with("job_123", {
+            "worker_id": "worker_1",
+            "error": "boom",
+            "lease_id": "lease-abc",
+        })
+
+    @pytest.mark.asyncio
+    async def test_async_fail_omits_lease_id_when_none(self) -> None:
+        """Test async _fail_job omits lease_id for legacy servers."""
+        from unittest.mock import AsyncMock
+
+        mock_client = MagicMock()
+        mock_client.jobs.fail = AsyncMock()
+        worker = self._worker(mock_client)
+
+        await worker._fail_job(_claimed_job(None), "boom")
+
+        mock_client.jobs.fail.assert_awaited_once_with("job_123", {
+            "worker_id": "worker_1",
+            "error": "boom",
+        })
 
 
 class TestAsyncJobContext:

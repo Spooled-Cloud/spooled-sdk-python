@@ -405,10 +405,13 @@ class SpooledWorker:
             return
 
         try:
-            self._client.jobs.complete(job.id, {
+            params: dict[str, Any] = {
                 "worker_id": self._worker_id,
                 "result": result,
-            })
+            }
+            if job.lease_id is not None:
+                params["lease_id"] = job.lease_id
+            self._client.jobs.complete(job.id, params)
 
             self._emit("job:completed", JobCompletedEventData(
                 job_id=job.id,
@@ -428,10 +431,13 @@ class SpooledWorker:
         will_retry = job.retry_count < job.max_retries
 
         try:
-            self._client.jobs.fail(job.id, {
+            params: dict[str, Any] = {
                 "worker_id": self._worker_id,
                 "error": error_message,
-            })
+            }
+            if job.lease_id is not None:
+                params["lease_id"] = job.lease_id
+            self._client.jobs.fail(job.id, params)
 
             self._emit("job:failed", JobFailedEventData(
                 job_id=job.id,
@@ -455,14 +461,18 @@ class SpooledWorker:
         """Schedule job heartbeat."""
 
         def send_heartbeat() -> None:
-            if job_id not in self._active_jobs or not self._worker_id:
+            active = self._active_jobs.get(job_id)
+            if active is None or not self._worker_id:
                 return
 
             try:
-                self._client.jobs.heartbeat(job_id, {
+                params: dict[str, Any] = {
                     "worker_id": self._worker_id,
                     "lease_duration_secs": self._options.lease_duration,
-                })
+                }
+                if active.job.lease_id is not None:
+                    params["lease_id"] = active.job.lease_id
+                self._client.jobs.heartbeat(job_id, params)
             except Exception as e:
                 if self._debug:
                     self._debug(f"Job heartbeat failed for {job_id}: {e}", None)

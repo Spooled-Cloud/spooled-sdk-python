@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "spooled"
-version = "1.0.19"
+version = "1.0.20"
 description = "Official Python SDK for Spooled Cloud job queue service"
 readme = "README.md"
 license = "Apache-2.0"
@@ -118,7 +118,7 @@ ignore_errors = true
 target-version = "py310"
 line-length = 100
 # Exclude auto-generated protobuf files
-exclude = ["src/spooled/grpc/stubs/*_pb2*.py"]
+exclude = ["src/spooled/grpc/stubs/*_pb2*.py", "src/spooled/grpc/stubs/*_pb2*.pyi"]
 
 [tool.ruff.lint]
 select = ["E", "F", "I", "N", "W", "UP", "B", "C4", "SIM"]

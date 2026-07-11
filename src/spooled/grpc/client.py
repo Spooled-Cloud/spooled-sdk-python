@@ -86,6 +86,9 @@ class GrpcJob(BaseModel):
     lease_expires_at: datetime | None = None
     assigned_worker_id: str | None = None
     idempotency_key: str | None = None
+    # Lease fencing token; echo it back on complete/fail/renew_lease so the
+    # operation applies only to the lease this worker holds (None = legacy).
+    lease_id: str | None = None
 
 
 class GrpcDequeueResponse(BaseModel):
@@ -100,6 +103,7 @@ class GrpcCompleteRequest(BaseModel):
     job_id: str
     worker_id: str
     result: dict[str, Any] | None = None
+    lease_id: str | None = None
 
     model_config = {"extra": "forbid"}
 
@@ -117,6 +121,7 @@ class GrpcFailRequest(BaseModel):
     worker_id: str
     error: str = Field(..., min_length=1, max_length=2048)
     retry: bool = True
+    lease_id: str | None = None
 
     model_config = {"extra": "forbid"}
 
@@ -135,6 +140,7 @@ class GrpcRenewLeaseRequest(BaseModel):
     job_id: str
     worker_id: str
     extension_secs: int = Field(default=30, ge=5, le=3600)
+    lease_id: str | None = None
 
     model_config = {"extra": "forbid"}
 
@@ -288,6 +294,7 @@ def _proto_job_to_grpc_job(job: Any) -> GrpcJob:
         lease_expires_at=_timestamp_to_datetime(job.lease_expires_at),
         assigned_worker_id=job.assigned_worker_id or None,
         idempotency_key=job.idempotency_key or None,
+        lease_id=job.lease_id or None,
     )
 
 
@@ -449,30 +456,33 @@ class ProcessJobsStream:
                 )
             )
         elif request.complete:
-            proto_req.complete.CopyFrom(
-                CompleteRequest(
-                    job_id=request.complete.job_id,
-                    worker_id=request.complete.worker_id,
-                    result=_dict_to_struct(request.complete.result),
-                )
+            complete_req = CompleteRequest(
+                job_id=request.complete.job_id,
+                worker_id=request.complete.worker_id,
+                result=_dict_to_struct(request.complete.result),
             )
+            if request.complete.lease_id is not None:
+                complete_req.lease_id = request.complete.lease_id
+            proto_req.complete.CopyFrom(complete_req)
         elif request.fail:
-            proto_req.fail.CopyFrom(
-                FailRequest(
-                    job_id=request.fail.job_id,
-                    worker_id=request.fail.worker_id,
-                    error=request.fail.error,
-                    retry=request.fail.retry,
-                )
+            fail_req = FailRequest(
+                job_id=request.fail.job_id,
+                worker_id=request.fail.worker_id,
+                error=request.fail.error,
+                retry=request.fail.retry,
             )
+            if request.fail.lease_id is not None:
+                fail_req.lease_id = request.fail.lease_id
+            proto_req.fail.CopyFrom(fail_req)
         elif request.renew_lease:
-            proto_req.renew_lease.CopyFrom(
-                RenewLeaseRequest(
-                    job_id=request.renew_lease.job_id,
-                    worker_id=request.renew_lease.worker_id,
-                    extension_secs=request.renew_lease.extension_secs,
-                )
+            renew_req = RenewLeaseRequest(
+                job_id=request.renew_lease.job_id,
+                worker_id=request.renew_lease.worker_id,
+                extension_secs=request.renew_lease.extension_secs,
             )
+            if request.renew_lease.lease_id is not None:
+                renew_req.lease_id = request.renew_lease.lease_id
+            proto_req.renew_lease.CopyFrom(renew_req)
 
         self._request_queue.put(proto_req)
 
@@ -627,6 +637,8 @@ class GrpcQueueService:
         job_id: str,
         worker_id: str,
         result: dict[str, Any] | None = None,
+        *,
+        lease_id: str | None = None,
     ) -> GrpcCompleteResponse:
         """
         Complete a job via gRPC.
@@ -635,6 +647,8 @@ class GrpcQueueService:
             job_id: Job ID
             worker_id: Worker ID
             result: Optional result data
+            lease_id: Lease fencing token from the dequeued job. When set, the
+                completion succeeds only if it matches the job's current lease.
 
         Returns:
             GrpcCompleteResponse with success flag
@@ -646,6 +660,8 @@ class GrpcQueueService:
             worker_id=worker_id,
             result=_dict_to_struct(result),
         )
+        if lease_id is not None:
+            request.lease_id = lease_id
 
         response = self._stub.Complete(request, metadata=self._metadata)
         return GrpcCompleteResponse(success=response.success)
@@ -657,6 +673,7 @@ class GrpcQueueService:
         error: str,
         *,
         retry: bool = True,
+        lease_id: str | None = None,
     ) -> GrpcFailResponse:
         """
         Fail a job via gRPC.
@@ -666,6 +683,8 @@ class GrpcQueueService:
             worker_id: Worker ID
             error: Error message
             retry: Whether to retry the job
+            lease_id: Lease fencing token from the dequeued job. When set, the
+                failure succeeds only if it matches the job's current lease.
 
         Returns:
             GrpcFailResponse with success flag and retry info
@@ -678,6 +697,8 @@ class GrpcQueueService:
             error=error,
             retry=retry,
         )
+        if lease_id is not None:
+            request.lease_id = lease_id
 
         response = self._stub.Fail(request, metadata=self._metadata)
         return GrpcFailResponse(
@@ -691,6 +712,8 @@ class GrpcQueueService:
         job_id: str,
         worker_id: str,
         extension_secs: int = 30,
+        *,
+        lease_id: str | None = None,
     ) -> GrpcRenewLeaseResponse:
         """
         Renew a job's lease via gRPC.
@@ -699,6 +722,8 @@ class GrpcQueueService:
             job_id: Job ID
             worker_id: Worker ID
             extension_secs: Extension duration in seconds
+            lease_id: Lease fencing token from the dequeued job. When set, the
+                renewal succeeds only if it matches the job's current lease.
 
         Returns:
             GrpcRenewLeaseResponse with success flag and new expiration
@@ -710,6 +735,8 @@ class GrpcQueueService:
             worker_id=worker_id,
             extension_secs=extension_secs,
         )
+        if lease_id is not None:
+            request.lease_id = lease_id
 
         response = self._stub.RenewLease(request, metadata=self._metadata)
         return GrpcRenewLeaseResponse(

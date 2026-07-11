@@ -106,6 +106,33 @@ class TestGrpcModels:
         assert job.id == "job-123"
         assert job.status == "pending"
         assert job.retry_count == 0  # default
+        assert job.lease_id is None  # default (legacy server)
+
+    def test_request_models_accept_lease_id(self):
+        """Test the fencing token is accepted by the request models."""
+        from spooled.grpc import (
+            GrpcCompleteRequest,
+            GrpcFailRequest,
+            GrpcRenewLeaseRequest,
+        )
+
+        complete = GrpcCompleteRequest(
+            job_id="job-123", worker_id="worker-1", lease_id="lease-abc"
+        )
+        fail = GrpcFailRequest(
+            job_id="job-123", worker_id="worker-1", error="boom", lease_id="lease-abc"
+        )
+        renew = GrpcRenewLeaseRequest(
+            job_id="job-123", worker_id="worker-1", lease_id="lease-abc"
+        )
+        assert complete.lease_id == "lease-abc"
+        assert fail.lease_id == "lease-abc"
+        assert renew.lease_id == "lease-abc"
+
+        # Defaults to None so omitting it preserves legacy behavior
+        assert GrpcCompleteRequest(job_id="j", worker_id="w").lease_id is None
+        assert GrpcFailRequest(job_id="j", worker_id="w", error="e").lease_id is None
+        assert GrpcRenewLeaseRequest(job_id="j", worker_id="w").lease_id is None
 
 
 class TestGrpcConversions:
@@ -236,6 +263,7 @@ class TestJobStream:
         mock_job.lease_expires_at = None
         mock_job.assigned_worker_id = ""
         mock_job.idempotency_key = ""
+        mock_job.lease_id = ""
 
         mock_call = iter([mock_job])
 
@@ -398,6 +426,7 @@ class TestGrpcQueueService:
         mock_job.lease_expires_at = None
         mock_job.assigned_worker_id = ""
         mock_job.idempotency_key = ""
+        mock_job.lease_id = "lease-abc"
 
         mock_response = MagicMock()
         mock_response.jobs = [mock_job]
@@ -410,6 +439,7 @@ class TestGrpcQueueService:
 
         assert len(result.jobs) == 1
         assert result.jobs[0].id == "job-1"
+        assert result.jobs[0].lease_id == "lease-abc"
 
     def test_complete(self, mock_queue_service):
         """Test complete method."""
@@ -463,6 +493,76 @@ class TestGrpcQueueService:
 
         assert result.success is True
 
+    def test_complete_with_lease_id(self, mock_queue_service):
+        """Test complete sets the lease_id fencing token on the request."""
+        service, mock_stub = mock_queue_service
+
+        mock_response = MagicMock()
+        mock_response.success = True
+        mock_stub.Complete.return_value = mock_response
+
+        service.complete(
+            job_id="job-123",
+            worker_id="worker-1",
+            result={"done": True},
+            lease_id="lease-abc",
+        )
+
+        request = mock_stub.Complete.call_args[0][0]
+        assert request.lease_id == "lease-abc"
+
+    def test_complete_without_lease_id_leaves_field_unset(self, mock_queue_service):
+        """Test complete leaves lease_id at proto3 default when omitted."""
+        service, mock_stub = mock_queue_service
+
+        mock_response = MagicMock()
+        mock_response.success = True
+        mock_stub.Complete.return_value = mock_response
+
+        service.complete(job_id="job-123", worker_id="worker-1")
+
+        request = mock_stub.Complete.call_args[0][0]
+        assert request.lease_id == ""  # empty string = unset server-side
+
+    def test_fail_with_lease_id(self, mock_queue_service):
+        """Test fail sets the lease_id fencing token on the request."""
+        service, mock_stub = mock_queue_service
+
+        mock_response = MagicMock()
+        mock_response.success = True
+        mock_response.will_retry = False
+        mock_response.next_retry_delay_secs = 0
+        mock_stub.Fail.return_value = mock_response
+
+        service.fail(
+            job_id="job-123",
+            worker_id="worker-1",
+            error="Something failed",
+            lease_id="lease-abc",
+        )
+
+        request = mock_stub.Fail.call_args[0][0]
+        assert request.lease_id == "lease-abc"
+
+    def test_renew_lease_with_lease_id(self, mock_queue_service):
+        """Test renew_lease sets the lease_id fencing token on the request."""
+        service, mock_stub = mock_queue_service
+
+        mock_response = MagicMock()
+        mock_response.success = True
+        mock_response.new_expires_at = timestamp_pb2.Timestamp()
+        mock_stub.RenewLease.return_value = mock_response
+
+        service.renew_lease(
+            job_id="job-123",
+            worker_id="worker-1",
+            extension_secs=60,
+            lease_id="lease-abc",
+        )
+
+        request = mock_stub.RenewLease.call_args[0][0]
+        assert request.lease_id == "lease-abc"
+
     def test_get_job(self, mock_queue_service):
         """Test get_job method."""
         service, mock_stub = mock_queue_service
@@ -486,6 +586,7 @@ class TestGrpcQueueService:
         mock_job.lease_expires_at = None
         mock_job.assigned_worker_id = ""
         mock_job.idempotency_key = ""
+        mock_job.lease_id = ""
 
         mock_response = MagicMock()
         mock_response.HasField.return_value = True
@@ -496,6 +597,8 @@ class TestGrpcQueueService:
 
         assert result.job is not None
         assert result.job.id == "job-123"
+        # Empty proto string maps to None (legacy server without fencing)
+        assert result.job.lease_id is None
 
     def test_get_queue_stats(self, mock_queue_service):
         """Test get_queue_stats method."""

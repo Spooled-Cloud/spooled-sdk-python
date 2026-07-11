@@ -190,7 +190,12 @@ class ClaimJobsParams(BaseModel):
 
 
 class ClaimedJob(BaseModel):
-    """A claimed job ready for processing."""
+    """A claimed job ready for processing.
+
+    ``lease_id`` is the lease fencing token returned by the backend on claim;
+    echo it back on complete/fail/heartbeat so the operation applies only to
+    the lease this worker actually holds (``None`` = legacy server).
+    """
 
     id: str
     queue_name: str
@@ -199,6 +204,7 @@ class ClaimedJob(BaseModel):
     max_retries: int
     timeout_seconds: int
     lease_expires_at: datetime | None = None
+    lease_id: str | None = None
 
 
 class ClaimJobsResponse(BaseModel):
@@ -212,6 +218,7 @@ class CompleteJobParams(BaseModel):
 
     worker_id: str
     result: dict[str, Any] | None = None
+    lease_id: str | None = None
 
     model_config = {"extra": "forbid"}
 
@@ -227,6 +234,7 @@ class FailJobParams(BaseModel):
 
     worker_id: str
     error: str = Field(..., min_length=1, max_length=2048)
+    lease_id: str | None = None
 
     model_config = {"extra": "forbid"}
 
@@ -243,6 +251,7 @@ class JobHeartbeatParams(BaseModel):
 
     worker_id: str
     lease_duration_secs: int = Field(default=30, ge=5, le=3600)
+    lease_id: str | None = None
 
     model_config = {"extra": "forbid"}
 

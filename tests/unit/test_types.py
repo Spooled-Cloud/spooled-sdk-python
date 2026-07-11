@@ -13,9 +13,13 @@ from spooled.types.auth import (
 from spooled.types.jobs import (
     BulkEnqueueParams,
     BulkJobItem,
+    ClaimedJob,
     ClaimJobsParams,
+    CompleteJobParams,
     CreateJobParams,
+    FailJobParams,
     Job,
+    JobHeartbeatParams,
 )
 from spooled.types.organizations import (
     CreateOrganizationParams,
@@ -197,6 +201,87 @@ class TestClaimJobsParams:
             ClaimJobsParams(queue_name="q", worker_id="w", lease_duration_secs=4)
         with pytest.raises(PydanticValidationError):
             ClaimJobsParams(queue_name="q", worker_id="w", lease_duration_secs=3601)
+
+
+class TestClaimedJob:
+    """Tests for ClaimedJob."""
+
+    def test_parses_lease_id(self) -> None:
+        """Test lease_id fencing token is parsed from the claim response."""
+        job = ClaimedJob.model_validate({
+            "id": "job_123",
+            "queue_name": "test",
+            "payload": {"key": "value"},
+            "retry_count": 0,
+            "max_retries": 3,
+            "timeout_seconds": 300,
+            "lease_id": "lease-abc",
+        })
+        assert job.lease_id == "lease-abc"
+
+    def test_lease_id_defaults_to_none(self) -> None:
+        """Test lease_id is None when absent (legacy server)."""
+        job = ClaimedJob.model_validate({
+            "id": "job_123",
+            "queue_name": "test",
+            "payload": {},
+            "retry_count": 0,
+            "max_retries": 3,
+            "timeout_seconds": 300,
+        })
+        assert job.lease_id is None
+
+
+class TestLeaseFencingParams:
+    """Tests for lease_id on complete/fail/heartbeat params."""
+
+    def test_complete_params_include_lease_id(self) -> None:
+        """Test CompleteJobParams serializes lease_id when set."""
+        params = CompleteJobParams(
+            worker_id="worker_1",
+            result={"ok": True},
+            lease_id="lease-abc",
+        )
+        data = params.model_dump(exclude_none=True, mode="json")
+        assert data["lease_id"] == "lease-abc"
+
+    def test_complete_params_omit_none_lease_id(self) -> None:
+        """Test CompleteJobParams omits lease_id when None."""
+        params = CompleteJobParams(worker_id="worker_1")
+        data = params.model_dump(exclude_none=True, mode="json")
+        assert "lease_id" not in data
+
+    def test_fail_params_include_lease_id(self) -> None:
+        """Test FailJobParams serializes lease_id when set."""
+        params = FailJobParams(
+            worker_id="worker_1",
+            error="boom",
+            lease_id="lease-abc",
+        )
+        data = params.model_dump(exclude_none=True)
+        assert data["lease_id"] == "lease-abc"
+
+    def test_fail_params_omit_none_lease_id(self) -> None:
+        """Test FailJobParams omits lease_id when None."""
+        params = FailJobParams(worker_id="worker_1", error="boom")
+        data = params.model_dump(exclude_none=True)
+        assert "lease_id" not in data
+
+    def test_heartbeat_params_include_lease_id(self) -> None:
+        """Test JobHeartbeatParams serializes lease_id when set."""
+        params = JobHeartbeatParams(
+            worker_id="worker_1",
+            lease_duration_secs=60,
+            lease_id="lease-abc",
+        )
+        data = params.model_dump(exclude_none=True)
+        assert data["lease_id"] == "lease-abc"
+
+    def test_heartbeat_params_omit_none_lease_id(self) -> None:
+        """Test JobHeartbeatParams omits lease_id when None."""
+        params = JobHeartbeatParams(worker_id="worker_1")
+        data = params.model_dump(exclude_none=True)
+        assert "lease_id" not in data
 
 
 class TestBulkEnqueueParams:

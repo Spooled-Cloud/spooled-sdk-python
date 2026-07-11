@@ -2,6 +2,24 @@
 
 All notable changes to the Spooled Python SDK are documented here.
 
+## [1.0.20] - 2026-07-11
+
+### Added
+
+- **Lease fencing (backend v0.1.94, audit F9).** The claim/dequeue response now
+  carries a `lease_id` fencing token; the SDK captures it on `ClaimedJob` and
+  the workers echo it back on complete/fail/heartbeat. A stale token is
+  rejected server-side with `409 LEASE_EXPIRED` (gRPC `FAILED_PRECONDITION`),
+  so a worker whose lease was reclaimed can no longer complete or fail a job
+  it no longer owns. Omitting the token preserves legacy behavior against
+  older servers.
+- **gRPC client fencing support.** `complete()`, `fail()`, and `renew_lease()`
+  accept an optional `lease_id` keyword; `GrpcJob` exposes the `lease_id`
+  returned on dequeue, and the `ProcessJobs` streaming request models carry it
+  as well. Stubs regenerated from the v0.1.94 proto (`Job.lease_id = 19`,
+  `CompleteRequest.lease_id = 4`, `FailRequest.lease_id = 5`,
+  `RenewLeaseRequest.lease_id = 4`).
+
 ## [1.0.19] - 2026-07-09
 
 ### Fixed
