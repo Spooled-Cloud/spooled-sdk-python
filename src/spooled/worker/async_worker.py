@@ -13,6 +13,7 @@ from collections.abc import Callable, Coroutine
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any
 
+from spooled._version import __version__
 from spooled.types.jobs import ClaimedJob
 from spooled.worker.types import (
     AsyncJobContext,
@@ -75,7 +76,7 @@ class AsyncSpooledWorker:
         shutdown_timeout: float = 30.0,
         hostname: str | None = None,
         worker_type: str = "python",
-        version: str = "1.0.0",
+        version: str = __version__,
         metadata: dict[str, Any] | None = None,
     ) -> None:
         """
@@ -116,6 +117,7 @@ class AsyncSpooledWorker:
         self._worker_heartbeat_task: asyncio.Task[None] | None = None
         self._shutdown_event: asyncio.Event | None = None
         self._semaphore: asyncio.Semaphore | None = None
+        self._active_jobs_lock = asyncio.Lock()
 
         # Event handlers
         self._event_handlers: dict[WorkerEvent, list[Callable[..., Any]]] = {}
@@ -289,7 +291,7 @@ class AsyncSpooledWorker:
             for job_id, active in list(self._active_jobs.items()):
                 if self._debug:
                     self._debug(f"Force-failing job {job_id} due to shutdown timeout", None)
-                await self._fail_job(active.job, "Worker shutdown timeout")
+                await self._fail_job(active, "Worker shutdown timeout")
 
         # Deregister worker
         if self._worker_id:
@@ -352,14 +354,15 @@ class AsyncSpooledWorker:
                 abort_event=abort_event,
             )
 
-            self._active_jobs[job.id] = active
+            async with self._active_jobs_lock:
+                self._active_jobs[job.id] = active
 
             # Start per-job heartbeat
             heartbeat_interval = (
                 self._options.lease_duration * self._options.heartbeat_fraction
             )
             active.heartbeat_task = asyncio.create_task(
-                self._job_heartbeat_loop(job.id, heartbeat_interval)
+                self._job_heartbeat_loop(active, heartbeat_interval)
             )
 
             # Execute handler
@@ -394,7 +397,7 @@ class AsyncSpooledWorker:
                 return
 
             # Complete the job
-            await self._complete_job(job, result)
+            await self._complete_job(active, result)
 
         except Exception as e:
             # Check if aborted
@@ -404,25 +407,30 @@ class AsyncSpooledWorker:
                 return
 
             error_message = str(e)
-            await self._fail_job(job, error_message)
+            await self._fail_job(active, error_message)
 
         finally:
-            await self._cleanup_job(job.id)
+            await self._cleanup_job(active)
 
-    async def _complete_job(self, job: ClaimedJob, result: dict[str, Any] | None) -> None:
-        """Complete a job."""
-        if not self._worker_id:
-            return
-
+    async def _complete_job(self, active: ActiveJob, result: dict[str, Any] | None) -> None:
+        """Complete an active execution only while it still owns the job slot."""
+        job = active.job
         try:
+            async with self._active_jobs_lock:
+                worker_id = self._worker_id
+                if self._active_jobs.get(job.id) is not active or not worker_id:
+                    return
             params: dict[str, Any] = {
-                "worker_id": self._worker_id,
+                "worker_id": worker_id,
                 "result": result,
             }
             if job.lease_id is not None:
                 params["lease_id"] = job.lease_id
             await self._client.jobs.complete(job.id, params)
 
+            async with self._active_jobs_lock:
+                if self._active_jobs.get(job.id) is not active:
+                    return
             self._emit("job:completed", JobCompletedEventData(
                 job_id=job.id,
                 queue_name=job.queue_name,
@@ -433,22 +441,27 @@ class AsyncSpooledWorker:
             if self._debug:
                 self._debug(f"Failed to complete job {job.id}: {e}", None)
 
-    async def _fail_job(self, job: ClaimedJob, error_message: str) -> None:
-        """Fail a job."""
-        if not self._worker_id:
-            return
-
+    async def _fail_job(self, active: ActiveJob, error_message: str) -> None:
+        """Fail an active execution only while it still owns the job slot."""
+        job = active.job
         will_retry = job.retry_count < job.max_retries
 
         try:
+            async with self._active_jobs_lock:
+                worker_id = self._worker_id
+                if self._active_jobs.get(job.id) is not active or not worker_id:
+                    return
             params: dict[str, Any] = {
-                "worker_id": self._worker_id,
+                "worker_id": worker_id,
                 "error": error_message,
             }
             if job.lease_id is not None:
                 params["lease_id"] = job.lease_id
             await self._client.jobs.fail(job.id, params)
 
+            async with self._active_jobs_lock:
+                if self._active_jobs.get(job.id) is not active:
+                    return
             self._emit("job:failed", JobFailedEventData(
                 job_id=job.id,
                 queue_name=job.queue_name,
@@ -460,36 +473,42 @@ class AsyncSpooledWorker:
             if self._debug:
                 self._debug(f"Failed to fail job {job.id}: {e}", None)
 
-    async def _cleanup_job(self, job_id: str) -> None:
-        """Clean up after job completion."""
-        active = self._active_jobs.pop(job_id, None)
-        if active and active.heartbeat_task:
+    async def _cleanup_job(self, active: ActiveJob) -> None:
+        """Clean up only the exact execution that finished."""
+        async with self._active_jobs_lock:
+            if self._active_jobs.get(active.job.id) is active:
+                del self._active_jobs[active.job.id]
+        if active.heartbeat_task and active.heartbeat_task is not asyncio.current_task():
             active.heartbeat_task.cancel()
             try:
                 await active.heartbeat_task
             except asyncio.CancelledError:
                 pass
 
-    async def _job_heartbeat_loop(self, job_id: str, interval: float) -> None:
-        """Job heartbeat loop."""
-        while job_id in self._active_jobs and self._worker_id:
+    async def _job_heartbeat_loop(self, active: ActiveJob, interval: float) -> None:
+        """Send heartbeats bound to one immutable execution."""
+        job = active.job
+        while True:
             await asyncio.sleep(interval)
 
-            active = self._active_jobs.get(job_id)
-            if active is None or not self._worker_id:
-                break
-
             try:
+                async with self._active_jobs_lock:
+                    worker_id = self._worker_id
+                    if self._active_jobs.get(job.id) is not active or not worker_id:
+                        break
                 params: dict[str, Any] = {
-                    "worker_id": self._worker_id,
+                    "worker_id": worker_id,
                     "lease_duration_secs": self._options.lease_duration,
                 }
-                if active.job.lease_id is not None:
-                    params["lease_id"] = active.job.lease_id
-                await self._client.jobs.heartbeat(job_id, params)
+                if job.lease_id is not None:
+                    params["lease_id"] = job.lease_id
+                await self._client.jobs.heartbeat(job.id, params)
+                async with self._active_jobs_lock:
+                    if self._active_jobs.get(job.id) is not active:
+                        break
             except Exception as e:
                 if self._debug:
-                    self._debug(f"Job heartbeat failed for {job_id}: {e}", None)
+                    self._debug(f"Job heartbeat failed for {job.id}: {e}", None)
 
     async def _worker_heartbeat_loop(self, interval: float) -> None:
         """Worker heartbeat loop."""

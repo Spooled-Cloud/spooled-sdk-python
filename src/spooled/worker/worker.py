@@ -15,6 +15,7 @@ from dataclasses import dataclass
 from threading import Event
 from typing import TYPE_CHECKING, Any
 
+from spooled._version import __version__
 from spooled.types.jobs import ClaimedJob
 from spooled.worker.types import (
     ErrorEventData,
@@ -75,7 +76,7 @@ class SpooledWorker:
         shutdown_timeout: float = 30.0,
         hostname: str | None = None,
         worker_type: str = "python",
-        version: str = "1.0.0",
+        version: str = __version__,
         metadata: dict[str, Any] | None = None,
         auto_start: bool = False,
     ) -> None:
@@ -279,7 +280,7 @@ class SpooledWorker:
             for job_id, active in list(self._active_jobs.items()):
                 if self._debug:
                     self._debug(f"Force-failing job {job_id} due to shutdown timeout", None)
-                self._fail_job(active.job, "Worker shutdown timeout")
+                self._fail_job(active, "Worker shutdown timeout")
 
         # Shutdown executor
         if self._executor:
@@ -350,7 +351,7 @@ class SpooledWorker:
 
         # Start per-job heartbeat
         heartbeat_interval = self._options.lease_duration * self._options.heartbeat_fraction
-        self._schedule_job_heartbeat(job.id, heartbeat_interval)
+        self._schedule_job_heartbeat(active, heartbeat_interval)
 
         # Execute handler in thread pool
         if self._executor:
@@ -384,7 +385,7 @@ class SpooledWorker:
                 return
 
             # Complete the job
-            self._complete_job(job, result)
+            self._complete_job(active, result)
 
         except Exception as e:
             # Check if aborted
@@ -394,25 +395,30 @@ class SpooledWorker:
                 return
 
             error_message = str(e)
-            self._fail_job(job, error_message)
+            self._fail_job(active, error_message)
 
         finally:
-            self._cleanup_job(job.id)
+            self._cleanup_job(active)
 
-    def _complete_job(self, job: ClaimedJob, result: dict[str, Any] | None) -> None:
-        """Complete a job."""
-        if not self._worker_id:
-            return
-
+    def _complete_job(self, active: ActiveJob, result: dict[str, Any] | None) -> None:
+        """Complete an active execution only while it still owns the job slot."""
+        job = active.job
         try:
+            with self._lock:
+                worker_id = self._worker_id
+                if self._active_jobs.get(job.id) is not active or not worker_id:
+                    return
             params: dict[str, Any] = {
-                "worker_id": self._worker_id,
+                "worker_id": worker_id,
                 "result": result,
             }
             if job.lease_id is not None:
                 params["lease_id"] = job.lease_id
             self._client.jobs.complete(job.id, params)
 
+            with self._lock:
+                if self._active_jobs.get(job.id) is not active:
+                    return
             self._emit("job:completed", JobCompletedEventData(
                 job_id=job.id,
                 queue_name=job.queue_name,
@@ -423,22 +429,27 @@ class SpooledWorker:
             if self._debug:
                 self._debug(f"Failed to complete job {job.id}: {e}", None)
 
-    def _fail_job(self, job: ClaimedJob, error_message: str) -> None:
-        """Fail a job."""
-        if not self._worker_id:
-            return
-
+    def _fail_job(self, active: ActiveJob, error_message: str) -> None:
+        """Fail an active execution only while it still owns the job slot."""
+        job = active.job
         will_retry = job.retry_count < job.max_retries
 
         try:
+            with self._lock:
+                worker_id = self._worker_id
+                if self._active_jobs.get(job.id) is not active or not worker_id:
+                    return
             params: dict[str, Any] = {
-                "worker_id": self._worker_id,
+                "worker_id": worker_id,
                 "error": error_message,
             }
             if job.lease_id is not None:
                 params["lease_id"] = job.lease_id
             self._client.jobs.fail(job.id, params)
 
+            with self._lock:
+                if self._active_jobs.get(job.id) is not active:
+                    return
             self._emit("job:failed", JobFailedEventData(
                 job_id=job.id,
                 queue_name=job.queue_name,
@@ -450,47 +461,47 @@ class SpooledWorker:
             if self._debug:
                 self._debug(f"Failed to fail job {job.id}: {e}", None)
 
-    def _cleanup_job(self, job_id: str) -> None:
-        """Clean up after job completion."""
+    def _cleanup_job(self, active: ActiveJob) -> None:
+        """Clean up only the exact execution that finished."""
         with self._lock:
-            active = self._active_jobs.pop(job_id, None)
-            if active and active.heartbeat_timer:
+            if self._active_jobs.get(active.job.id) is active:
+                del self._active_jobs[active.job.id]
+            if active.heartbeat_timer:
                 active.heartbeat_timer.cancel()
 
-    def _schedule_job_heartbeat(self, job_id: str, interval: float) -> None:
-        """Schedule job heartbeat."""
+    def _schedule_job_heartbeat(self, active: ActiveJob, interval: float) -> None:
+        """Schedule heartbeats bound to one immutable execution."""
+        job = active.job
 
         def send_heartbeat() -> None:
-            active = self._active_jobs.get(job_id)
-            if active is None or not self._worker_id:
-                return
-
             try:
+                with self._lock:
+                    worker_id = self._worker_id
+                    if self._active_jobs.get(job.id) is not active or not worker_id:
+                        return
                 params: dict[str, Any] = {
-                    "worker_id": self._worker_id,
+                    "worker_id": worker_id,
                     "lease_duration_secs": self._options.lease_duration,
                 }
-                if active.job.lease_id is not None:
-                    params["lease_id"] = active.job.lease_id
-                self._client.jobs.heartbeat(job_id, params)
+                if job.lease_id is not None:
+                    params["lease_id"] = job.lease_id
+                self._client.jobs.heartbeat(job.id, params)
             except Exception as e:
                 if self._debug:
-                    self._debug(f"Job heartbeat failed for {job_id}: {e}", None)
+                    self._debug(f"Job heartbeat failed for {job.id}: {e}", None)
 
-            # Reschedule
-            if job_id in self._active_jobs:
-                timer = threading.Timer(interval, send_heartbeat)
-                timer.daemon = True
-                with self._lock:
-                    if job_id in self._active_jobs:
-                        self._active_jobs[job_id].heartbeat_timer = timer
-                        timer.start()
+            timer = threading.Timer(interval, send_heartbeat)
+            timer.daemon = True
+            with self._lock:
+                if self._active_jobs.get(job.id) is active:
+                    active.heartbeat_timer = timer
+                    timer.start()
 
         timer = threading.Timer(interval, send_heartbeat)
         timer.daemon = True
         with self._lock:
-            if job_id in self._active_jobs:
-                self._active_jobs[job_id].heartbeat_timer = timer
+            if self._active_jobs.get(job.id) is active:
+                active.heartbeat_timer = timer
                 timer.start()
 
     def _schedule_worker_heartbeat(self, interval: float) -> None:

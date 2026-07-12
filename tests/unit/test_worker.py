@@ -382,12 +382,21 @@ class TestWorkerLeaseFencing:
         worker._worker_id = "worker_1"
         return worker
 
+    def _active(self, worker, lease_id):
+        from spooled.worker.worker import ActiveJob
+
+        job = _claimed_job(lease_id)
+        active = ActiveJob(job=job, started_at=0.0, abort_event=threading.Event())
+        worker._active_jobs[job.id] = active
+        return active
+
     def test_complete_echoes_lease_id(self) -> None:
         """Test _complete_job sends the claimed job's lease_id."""
         mock_client = MagicMock()
         worker = self._worker(mock_client)
 
-        worker._complete_job(_claimed_job("lease-abc"), {"ok": True})
+        active = self._active(worker, "lease-abc")
+        worker._complete_job(active, {"ok": True})
 
         mock_client.jobs.complete.assert_called_once_with("job_123", {
             "worker_id": "worker_1",
@@ -400,7 +409,8 @@ class TestWorkerLeaseFencing:
         mock_client = MagicMock()
         worker = self._worker(mock_client)
 
-        worker._complete_job(_claimed_job(None), None)
+        active = self._active(worker, None)
+        worker._complete_job(active, None)
 
         mock_client.jobs.complete.assert_called_once_with("job_123", {
             "worker_id": "worker_1",
@@ -412,7 +422,8 @@ class TestWorkerLeaseFencing:
         mock_client = MagicMock()
         worker = self._worker(mock_client)
 
-        worker._fail_job(_claimed_job("lease-abc"), "boom")
+        active = self._active(worker, "lease-abc")
+        worker._fail_job(active, "boom")
 
         mock_client.jobs.fail.assert_called_once_with("job_123", {
             "worker_id": "worker_1",
@@ -425,7 +436,8 @@ class TestWorkerLeaseFencing:
         mock_client = MagicMock()
         worker = self._worker(mock_client)
 
-        worker._fail_job(_claimed_job(None), "boom")
+        active = self._active(worker, None)
+        worker._fail_job(active, "boom")
 
         mock_client.jobs.fail.assert_called_once_with("job_123", {
             "worker_id": "worker_1",
@@ -450,7 +462,7 @@ class TestWorkerLeaseFencing:
         try:
             # Schedule with a long interval, then fire the heartbeat
             # synchronously instead of waiting for the timer.
-            worker._schedule_job_heartbeat(job.id, interval=60.0)
+            worker._schedule_job_heartbeat(worker._active_jobs[job.id], interval=60.0)
             worker._active_jobs[job.id].heartbeat_timer.function()
 
             mock_client.jobs.heartbeat.assert_called_once_with("job_123", {
@@ -459,7 +471,7 @@ class TestWorkerLeaseFencing:
                 "lease_id": "lease-abc",
             })
         finally:
-            worker._cleanup_job(job.id)
+            worker._cleanup_job(worker._active_jobs[job.id])
 
     def test_heartbeat_omits_lease_id_when_none(self) -> None:
         """Test the job heartbeat omits lease_id for legacy servers."""
@@ -477,7 +489,7 @@ class TestWorkerLeaseFencing:
             abort_event=threading.Event(),
         )
         try:
-            worker._schedule_job_heartbeat(job.id, interval=60.0)
+            worker._schedule_job_heartbeat(worker._active_jobs[job.id], interval=60.0)
             worker._active_jobs[job.id].heartbeat_timer.function()
 
             mock_client.jobs.heartbeat.assert_called_once_with("job_123", {
@@ -485,7 +497,7 @@ class TestWorkerLeaseFencing:
                 "lease_duration_secs": worker._options.lease_duration,
             })
         finally:
-            worker._cleanup_job(job.id)
+            worker._cleanup_job(worker._active_jobs[job.id])
 
 
 class TestAsyncWorkerLeaseFencing:
@@ -499,6 +511,16 @@ class TestAsyncWorkerLeaseFencing:
         worker._worker_id = "worker_1"
         return worker
 
+    def _active(self, worker, lease_id):
+        import asyncio
+
+        from spooled.worker.async_worker import ActiveJob
+
+        job = _claimed_job(lease_id)
+        active = ActiveJob(job=job, started_at=0.0, abort_event=asyncio.Event())
+        worker._active_jobs[job.id] = active
+        return active
+
     @pytest.mark.asyncio
     async def test_async_complete_echoes_lease_id(self) -> None:
         """Test async _complete_job sends the claimed job's lease_id."""
@@ -508,7 +530,8 @@ class TestAsyncWorkerLeaseFencing:
         mock_client.jobs.complete = AsyncMock()
         worker = self._worker(mock_client)
 
-        await worker._complete_job(_claimed_job("lease-abc"), {"ok": True})
+        active = self._active(worker, "lease-abc")
+        await worker._complete_job(active, {"ok": True})
 
         mock_client.jobs.complete.assert_awaited_once_with("job_123", {
             "worker_id": "worker_1",
@@ -525,7 +548,8 @@ class TestAsyncWorkerLeaseFencing:
         mock_client.jobs.complete = AsyncMock()
         worker = self._worker(mock_client)
 
-        await worker._complete_job(_claimed_job(None), None)
+        active = self._active(worker, None)
+        await worker._complete_job(active, None)
 
         mock_client.jobs.complete.assert_awaited_once_with("job_123", {
             "worker_id": "worker_1",
@@ -541,7 +565,8 @@ class TestAsyncWorkerLeaseFencing:
         mock_client.jobs.fail = AsyncMock()
         worker = self._worker(mock_client)
 
-        await worker._fail_job(_claimed_job("lease-abc"), "boom")
+        active = self._active(worker, "lease-abc")
+        await worker._fail_job(active, "boom")
 
         mock_client.jobs.fail.assert_awaited_once_with("job_123", {
             "worker_id": "worker_1",
@@ -558,7 +583,8 @@ class TestAsyncWorkerLeaseFencing:
         mock_client.jobs.fail = AsyncMock()
         worker = self._worker(mock_client)
 
-        await worker._fail_job(_claimed_job(None), "boom")
+        active = self._active(worker, None)
+        await worker._fail_job(active, "boom")
 
         mock_client.jobs.fail.assert_awaited_once_with("job_123", {
             "worker_id": "worker_1",

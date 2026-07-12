@@ -91,7 +91,9 @@ class TestGrpcModels:
             max_concurrency=10,
         )
         assert req.worker_type == "python"  # default
-        assert req.version == "1.0.0"  # default
+        from spooled import __version__
+
+        assert req.version == __version__
 
     def test_grpc_job_model(self):
         """Test GrpcJob model."""
@@ -116,15 +118,11 @@ class TestGrpcModels:
             GrpcRenewLeaseRequest,
         )
 
-        complete = GrpcCompleteRequest(
-            job_id="job-123", worker_id="worker-1", lease_id="lease-abc"
-        )
+        complete = GrpcCompleteRequest(job_id="job-123", worker_id="worker-1", lease_id="lease-abc")
         fail = GrpcFailRequest(
             job_id="job-123", worker_id="worker-1", error="boom", lease_id="lease-abc"
         )
-        renew = GrpcRenewLeaseRequest(
-            job_id="job-123", worker_id="worker-1", lease_id="lease-abc"
-        )
+        renew = GrpcRenewLeaseRequest(job_id="job-123", worker_id="worker-1", lease_id="lease-abc")
         assert complete.lease_id == "lease-abc"
         assert fail.lease_id == "lease-abc"
         assert renew.lease_id == "lease-abc"
@@ -317,6 +315,51 @@ class TestProcessRequest:
         assert req.dequeue is None
 
 
+class TestProcessJobsStream:
+    """Tests for bidirectional ProcessJobs request serialization."""
+
+    def test_send_serializes_lease_fencing_tokens(self):
+        """ProcessJobsStream.send preserves each operation's lease token on the wire."""
+        from spooled.grpc import (
+            GrpcCompleteRequest,
+            GrpcFailRequest,
+            GrpcRenewLeaseRequest,
+            ProcessJobsStream,
+            ProcessRequest,
+        )
+
+        stream = ProcessJobsStream(MagicMock(return_value=iter([])), [])
+        requests = [
+            ProcessRequest(
+                complete=GrpcCompleteRequest(
+                    job_id="job-1", worker_id="worker-1", lease_id="lease-complete"
+                )
+            ),
+            ProcessRequest(
+                fail=GrpcFailRequest(
+                    job_id="job-1",
+                    worker_id="worker-1",
+                    error="boom",
+                    lease_id="lease-fail",
+                )
+            ),
+            ProcessRequest(
+                renew_lease=GrpcRenewLeaseRequest(
+                    job_id="job-1", worker_id="worker-1", lease_id="lease-renew"
+                )
+            ),
+        ]
+
+        for request in requests:
+            stream.send(request)
+
+        serialized = [stream._request_queue.get_nowait() for _ in requests]
+        assert serialized[0].complete.lease_id == "lease-complete"
+        assert serialized[1].fail.lease_id == "lease-fail"
+        assert serialized[2].renew_lease.lease_id == "lease-renew"
+        stream.end()
+
+
 class TestProcessResponse:
     """Tests for ProcessResponse."""
 
@@ -456,6 +499,11 @@ class TestGrpcQueueService:
         )
 
         assert result.success is True
+        request = mock_stub.Complete.call_args[0][0]
+        assert request.job_id == "job-123"
+        assert request.worker_id == "worker-1"
+        assert dict(request.result) == {"done": True}
+        assert request.lease_id == ""
 
     def test_fail(self, mock_queue_service):
         """Test fail method."""
@@ -475,6 +523,12 @@ class TestGrpcQueueService:
 
         assert result.success is True
         assert result.will_retry is True
+        request = mock_stub.Fail.call_args[0][0]
+        assert request.job_id == "job-123"
+        assert request.worker_id == "worker-1"
+        assert request.error == "Something failed"
+        assert request.retry is True
+        assert request.lease_id == ""
 
     def test_renew_lease(self, mock_queue_service):
         """Test renew_lease method."""
@@ -492,6 +546,10 @@ class TestGrpcQueueService:
         )
 
         assert result.success is True
+        request = mock_stub.RenewLease.call_args[0][0]
+        assert request.job_id == "job-123"
+        assert request.worker_id == "worker-1"
+        assert request.extension_secs == 60
 
     def test_complete_with_lease_id(self, mock_queue_service):
         """Test complete sets the lease_id fencing token on the request."""
@@ -509,6 +567,9 @@ class TestGrpcQueueService:
         )
 
         request = mock_stub.Complete.call_args[0][0]
+        assert request.job_id == "job-123"
+        assert request.worker_id == "worker-1"
+        assert dict(request.result) == {"done": True}
         assert request.lease_id == "lease-abc"
 
     def test_complete_without_lease_id_leaves_field_unset(self, mock_queue_service):
@@ -542,6 +603,10 @@ class TestGrpcQueueService:
         )
 
         request = mock_stub.Fail.call_args[0][0]
+        assert request.job_id == "job-123"
+        assert request.worker_id == "worker-1"
+        assert request.error == "Something failed"
+        assert request.retry is True
         assert request.lease_id == "lease-abc"
 
     def test_renew_lease_with_lease_id(self, mock_queue_service):
@@ -561,6 +626,9 @@ class TestGrpcQueueService:
         )
 
         request = mock_stub.RenewLease.call_args[0][0]
+        assert request.job_id == "job-123"
+        assert request.worker_id == "worker-1"
+        assert request.extension_secs == 60
         assert request.lease_id == "lease-abc"
 
     def test_get_job(self, mock_queue_service):

@@ -2,6 +2,23 @@
 
 All notable changes to the Spooled Python SDK are documented here.
 
+## [1.0.21] - 2026-07-12
+
+### Fixed
+
+- Aligned the optional gRPC runtime and generator floors with the checked-in
+  generated stubs (`grpcio`/`grpcio-tools` 1.80.0+, protobuf 6.33.5+) and
+  regenerated the stubs and lockfile.
+- Worker and gRPC registration defaults now use the package's canonical version
+  instead of reporting `1.0.0`; source-only imports retain a synchronized
+  `1.0.21` fallback when installed package metadata is unavailable.
+- Sync and async workers now bind heartbeat, settlement, and cleanup to the exact
+  active execution, so a stale lease cannot borrow, settle, remove, or cancel a
+  replacement execution for the same job ID.
+- Added regression coverage for bidirectional stream lease fencing, async
+  heartbeat lease serialization, unary complete/fail/renew wire fields, and
+  generated-stub imports at the declared minimum dependency versions.
+
 ## [1.0.20] - 2026-07-11
 
 ### Added

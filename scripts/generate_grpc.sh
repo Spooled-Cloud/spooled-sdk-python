@@ -19,11 +19,19 @@ python -m grpc_tools.protoc \
     --pyi_out="$OUTPUT_DIR" \
     "$PROTO_DIR/spooled.proto"
 
-# Create __init__.py
-cat > "$OUTPUT_DIR/__init__.py" << 'EOF'
-"""Generated gRPC stubs."""
-from spooled.grpc.stubs.spooled_pb2 import *
-from spooled.grpc.stubs.spooled_pb2_grpc import *
-EOF
+# grpcio-tools generates a top-level sibling import; rewrite it for this package.
+python - "$OUTPUT_DIR/spooled_pb2_grpc.py" << 'PY'
+from pathlib import Path
+import sys
+
+path = Path(sys.argv[1])
+content = path.read_text()
+content = content.replace(
+    "import spooled_pb2 as spooled__pb2",
+    "from spooled.grpc.stubs import spooled_pb2 as spooled__pb2",
+)
+path.write_text(content)
+PY
+
 
 echo "gRPC stubs generated successfully in $OUTPUT_DIR"

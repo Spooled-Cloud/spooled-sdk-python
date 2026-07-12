@@ -13,6 +13,7 @@ Example:
     >>> print(f"Created job: {result.id}")
 """
 
+from spooled._version import __version__
 from spooled.config import (
     CircuitBreakerConfig,
     RetryConfig,
@@ -34,15 +35,6 @@ from spooled.errors import (
     ValidationError,
     is_spooled_error,
 )
-
-# Version — resolved from the installed package metadata so it never drifts from
-# the released version (the previous hardcoded literal lagged the real release).
-try:
-    from importlib.metadata import version as _pkg_version
-
-    __version__ = _pkg_version("spooled")
-except Exception:  # pragma: no cover - source/editable checkout without metadata
-    __version__ = "1.0.20"
 
 # These will be imported when the client modules are created
 __all__ = [

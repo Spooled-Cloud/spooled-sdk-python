@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "spooled"
-version = "1.0.20"
+version = "1.0.21"
 description = "Official Python SDK for Spooled Cloud job queue service"
 readme = "README.md"
 license = "Apache-2.0"
@@ -41,12 +41,12 @@ dependencies = [
 
 [project.optional-dependencies]
 grpc = [
-    "grpcio>=1.60.0",
-    "grpcio-tools>=1.60.0",
-    # Security floor: CVE-2026-0994 (JSON recursion depth bypass) is fixed in
-    # protobuf 5.29.6 (and 6.33.5 on the 6.x line); older floors permitted
-    # vulnerable releases.
-    "protobuf>=5.29.6",
+    # Keep runtime floors aligned with the checked-in generated stubs.
+    "grpcio>=1.80.0",
+    "grpcio-tools>=1.80.0",
+    # Generated protobuf code requires 6.31.1+. Use the patched 6.x security
+    # floor for CVE-2026-0994 rather than permitting vulnerable 6.x releases.
+    "protobuf>=6.33.5",
 ]
 realtime = [
     "websockets>=12.0",
@@ -72,6 +72,9 @@ Homepage = "https://spooled.cloud"
 Documentation = "https://spooled.cloud/docs/"
 Repository = "https://github.com/spooled-cloud/spooled-sdk-python"
 Changelog = "https://github.com/spooled-cloud/spooled-sdk-python/blob/main/CHANGELOG.md"
+
+[tool.hatch.build]
+artifacts = ["src/spooled/grpc/stubs"]
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/spooled"]

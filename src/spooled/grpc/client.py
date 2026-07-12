@@ -18,6 +18,8 @@ from typing import Any
 from google.protobuf import struct_pb2, timestamp_pb2
 from pydantic import BaseModel, Field
 
+from spooled._version import __version__
+
 # Optional gRPC imports
 try:
     import grpc
@@ -179,7 +181,7 @@ class GrpcRegisterWorkerRequest(BaseModel):
     hostname: str
     worker_type: str = "python"
     max_concurrency: int = Field(default=5, ge=1, le=100)
-    version: str = "1.0.0"
+    version: str = __version__
     metadata: dict[str, str] | None = None
 
     model_config = {"extra": "forbid"}
@@ -899,7 +901,7 @@ class GrpcWorkersService:
         *,
         worker_type: str = "python",
         max_concurrency: int = 5,
-        version: str = "1.0.0",
+        version: str = __version__,
         metadata: dict[str, str] | None = None,
     ) -> GrpcRegisterWorkerResponse:
         """
