@@ -5,4 +5,4 @@ from importlib.metadata import PackageNotFoundError, version
 try:
     __version__ = version("spooled")
 except PackageNotFoundError:  # pragma: no cover - source checkout without installed metadata
-    __version__ = "1.0.21"
+    __version__ = "1.0.22"

@@ -1,6 +1,7 @@
 """Release metadata and lease-fencing regression tests."""
 
 import asyncio
+import re
 import runpy
 import threading
 from importlib.metadata import PackageNotFoundError
@@ -10,30 +11,46 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 
 from spooled import __version__
+from spooled.config import DEFAULT_USER_AGENT, SpooledClientConfig
 from spooled.grpc import GrpcRegisterWorkerRequest
 from spooled.types.jobs import ClaimedJob
 from spooled.worker import AsyncSpooledWorker, SpooledWorker
 from spooled.worker.async_worker import ActiveJob as AsyncActiveJob
+from spooled.worker.types import SpooledWorkerOptions
 from spooled.worker.worker import ActiveJob as SyncActiveJob
 
 
+def _project_version() -> str:
+    pyproject = (Path(__file__).parents[2] / "pyproject.toml").read_text()
+    project = pyproject.split("[project]", 1)[1].split("\n[", 1)[0]
+    match = re.search(r'^version = "([^"]+)"$', project, re.MULTILINE)
+    assert match is not None
+    return match.group(1)
+
+
 def test_source_checkout_version_fallback() -> None:
-    """A checkout without installed metadata still reports the release version."""
+    """A checkout without installed metadata still reports the project version."""
     version_module = Path(__file__).parents[2] / "src" / "spooled" / "_version.py"
     with patch("importlib.metadata.version", side_effect=PackageNotFoundError):
         namespace = runpy.run_path(str(version_module))
 
-    assert namespace["__version__"] == "1.0.21"
+    assert namespace["__version__"] == _project_version()
 
 
-def test_registration_defaults_use_package_version() -> None:
-    """All worker registration paths report the installed package version."""
+def test_runtime_metadata_uses_project_version() -> None:
+    """Every default that identifies this SDK derives from the project version."""
+    expected_version = _project_version()
     client = MagicMock()
     client.get_config.return_value = MagicMock(debug_fn=None)
 
-    assert SpooledWorker(client, "test")._options.version == __version__
-    assert AsyncSpooledWorker(client, "test")._options.version == __version__
-    assert GrpcRegisterWorkerRequest(queue_name="test", hostname="host").version == __version__
+    assert __version__ == expected_version
+    expected_user_agent = f"spooled-python/{expected_version}"
+    assert expected_user_agent == DEFAULT_USER_AGENT
+    assert expected_user_agent == SpooledClientConfig().user_agent
+    assert SpooledWorkerOptions(queue_name="test").version == expected_version
+    assert SpooledWorker(client, "test")._options.version == expected_version
+    assert AsyncSpooledWorker(client, "test")._options.version == expected_version
+    assert GrpcRegisterWorkerRequest(queue_name="test", hostname="host").version == expected_version
 
 
 @pytest.mark.asyncio

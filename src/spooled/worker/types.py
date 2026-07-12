@@ -11,6 +11,8 @@ from typing import Any, Literal
 
 from pydantic import BaseModel, Field
 
+from spooled._version import __version__
+
 # Worker states
 WorkerState = Literal["idle", "starting", "running", "stopping", "stopped", "error"]
 
@@ -167,7 +169,7 @@ class SpooledWorkerOptions(BaseModel):
     shutdown_timeout: float = Field(default=30.0, gt=0)  # seconds
     hostname: str | None = None
     worker_type: str = Field(default="python")
-    version: str = Field(default="1.0.0")
+    version: str = Field(default=__version__)
     metadata: dict[str, Any] = Field(default_factory=dict)
     auto_start: bool = Field(default=False)
 

@@ -12,15 +12,141 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v6
+        with:
+          ref: ${{ github.event.release.tag_name }}
 
       - uses: actions/setup-python@v6
         with:
-          python-version: "3.x"
+          python-version: "3.10"
+
+      - uses: astral-sh/setup-uv@v7
+
+      - name: Install validation and build dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -e ".[dev,all]"
+          python -m pip install build twine
+
+      - name: Validate release metadata
+        env:
+          RELEASE_TAG: ${{ github.event.release.tag_name }}
+        run: |
+          python - <<'PY'
+          import os
+          import re
+          import runpy
+          from importlib.metadata import PackageNotFoundError
+          from pathlib import Path
+          from unittest.mock import patch
+
+          tag = os.environ["RELEASE_TAG"]
+          match = re.fullmatch(r"v(\d+\.\d+\.\d+)", tag)
+          if match is None:
+              raise SystemExit(f"release tag must be vX.Y.Z, got {tag!r}")
+          expected = match.group(1)
+
+          pyproject = Path("pyproject.toml").read_text()
+          project = pyproject.split("[project]", 1)[1].split("\n[", 1)[0]
+          project_match = re.search(r'^version = "([^"]+)"$', project, re.M)
+          if project_match is None:
+              raise SystemExit("pyproject.toml has no [project] version")
+          project_version = project_match.group(1)
+          if project_version != expected:
+              raise SystemExit(
+                  f"tag {tag} does not match pyproject.toml version {project_version}"
+              )
+
+          lock = Path("uv.lock").read_text()
+          lock_match = re.search(
+              r'\[\[package\]\]\nname = "spooled"\nversion = "([^"]+)"', lock
+          )
+          if lock_match is None or lock_match.group(1) != expected:
+              actual = lock_match.group(1) if lock_match else "missing"
+              raise SystemExit(f"uv.lock spooled version is {actual}, expected {expected}")
+
+          with patch("importlib.metadata.version", side_effect=PackageNotFoundError):
+              source_version = runpy.run_path("src/spooled/_version.py")["__version__"]
+          if source_version != expected:
+              raise SystemExit(
+                  f"source fallback version is {source_version}, expected {expected}"
+              )
+
+          changelog = Path("CHANGELOG.md").read_text()
+          if re.search(rf"^## \[{re.escape(expected)}\] - \d{{4}}-\d{{2}}-\d{{2}}$", changelog, re.M) is None:
+              raise SystemExit(f"CHANGELOG.md has no dated {expected} release heading")
+
+          from spooled import __version__
+          from spooled.config import DEFAULT_USER_AGENT, SpooledClientConfig
+          from spooled.grpc import GrpcRegisterWorkerRequest
+          from spooled.worker import AsyncSpooledWorker, SpooledWorker
+          from spooled.worker.types import SpooledWorkerOptions
+          from unittest.mock import MagicMock
+
+          client = MagicMock()
+          client.get_config.return_value = MagicMock(debug_fn=None)
+          actual = {
+              "installed version": __version__,
+              "default user-agent": DEFAULT_USER_AGENT,
+              "client user-agent": SpooledClientConfig().user_agent,
+              "worker options": SpooledWorkerOptions(queue_name="release").version,
+              "sync worker": SpooledWorker(client, "release")._options.version,
+              "async worker": AsyncSpooledWorker(client, "release")._options.version,
+              "gRPC worker": GrpcRegisterWorkerRequest(
+                  queue_name="release", hostname="release"
+              ).version,
+          }
+          expected_values = {
+              "installed version": expected,
+              "default user-agent": f"spooled-python/{expected}",
+              "client user-agent": f"spooled-python/{expected}",
+              "worker options": expected,
+              "sync worker": expected,
+              "async worker": expected,
+              "gRPC worker": expected,
+          }
+          if actual != expected_values:
+              raise SystemExit(f"runtime release metadata mismatch: {actual!r}")
+          PY
+
+      - name: Check lock file
+        run: uv lock --check
+
+      - name: Lint with ruff
+        run: ruff check src tests
+
+      - name: Type check with mypy
+        run: mypy src/spooled
+
+      - name: Run unit tests
+        run: pytest tests/unit -v --cov=spooled --cov-report=term-missing
 
       - name: Build release distributions
+        run: python -m build
+
+      - name: Check release distributions
+        run: twine check dist/*
+
+      - name: Smoke test built wheel
+        env:
+          RELEASE_TAG: ${{ github.event.release.tag_name }}
         run: |
-          python -m pip install build
-          python -m build
+          python -m venv release-smoke
+          WHEEL="$(find dist -name '*.whl' -print -quit)"
+          release-smoke/bin/pip install "${WHEEL}[all]"
+          release-smoke/bin/python - <<'PY'
+          import os
+          import spooled
+          from spooled.config import DEFAULT_USER_AGENT
+          from spooled.grpc.stubs import spooled_pb2, spooled_pb2_grpc
+          from spooled.worker.types import SpooledWorkerOptions
+
+          expected = os.environ["RELEASE_TAG"].removeprefix("v")
+          assert spooled.__version__ == expected
+          assert DEFAULT_USER_AGENT == f"spooled-python/{expected}"
+          assert SpooledWorkerOptions(queue_name="release").version == expected
+          assert spooled_pb2.DESCRIPTOR.name == "spooled.proto"
+          assert spooled_pb2_grpc.GRPC_GENERATED_VERSION == "1.80.0"
+          PY
 
       - name: Upload distributions
         uses: actions/upload-artifact@v7

@@ -2,6 +2,23 @@
 
 All notable changes to the Spooled Python SDK are documented here.
 
+## [1.0.22] - 2026-07-12
+
+### Fixed
+
+- The default REST `User-Agent` now derives from the canonical package version
+  instead of remaining stuck at `spooled-python/1.0.1`.
+- Direct `SpooledWorkerOptions` construction now defaults its registration
+  version to the canonical package version instead of `1.0.0`.
+- Added release-contract coverage for project metadata, source fallback, REST
+  user-agent, worker options, sync/async workers, and gRPC registration.
+
+### Changed
+
+- Added a release advisory checklist and strengthened the GitHub Release workflow
+  to validate release metadata and run the normal lint, type, test, build, and
+  artifact checks before Trusted Publishing uploads to PyPI.
+
 ## [1.0.21] - 2026-07-12
 
 ### Fixed

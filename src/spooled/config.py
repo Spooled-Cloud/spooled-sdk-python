@@ -9,12 +9,14 @@ from typing import Any
 
 from pydantic import BaseModel, Field
 
+from spooled._version import __version__
+
 # API defaults
 DEFAULT_BASE_URL = "https://api.spooled.cloud"
 DEFAULT_GRPC_ADDRESS = "grpc.spooled.cloud:443"
 API_BASE_PATH = "/api/v1"
 DEFAULT_TIMEOUT = 30.0
-DEFAULT_USER_AGENT = "spooled-python/1.0.1"
+DEFAULT_USER_AGENT = f"spooled-python/{__version__}"
 
 
 class RetryConfig(BaseModel):
