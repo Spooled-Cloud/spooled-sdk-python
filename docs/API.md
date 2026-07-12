@@ -10,18 +10,18 @@ Complete API reference for the Spooled Python SDK.
 from spooled import SpooledClient
 
 # Simple initialization
-client = SpooledClient(api_key="sk_live_...")
+client = SpooledClient(api_key="sp_live_...")
 
 # With options
 client = SpooledClient(
-    api_key="sk_live_...",
+    api_key="sp_live_...",
     base_url="https://api.spooled.cloud",
     timeout=30.0,
     debug=True,
 )
 
 # As context manager
-with SpooledClient(api_key="sk_live_...") as client:
+with SpooledClient(api_key="sp_live_...") as client:
     # use client
     pass
 ```
@@ -32,7 +32,7 @@ with SpooledClient(api_key="sk_live_...") as client:
 from spooled import AsyncSpooledClient
 
 # As async context manager
-async with AsyncSpooledClient(api_key="sk_live_...") as client:
+async with AsyncSpooledClient(api_key="sp_live_...") as client:
     result = await client.jobs.create({...})
 ```
 

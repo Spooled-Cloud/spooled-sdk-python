@@ -9,7 +9,7 @@ from spooled import SpooledClient
 from spooled.worker import SpooledWorker
 
 # Create client
-client = SpooledClient(api_key="sk_live_...")
+client = SpooledClient(api_key="sp_live_...")
 
 # Create worker
 worker = SpooledWorker(
@@ -45,7 +45,7 @@ worker = SpooledWorker(
     shutdown_timeout=30.0,    # Graceful shutdown timeout
     hostname="worker-1",      # Custom hostname
     worker_type="python",     # Worker type identifier
-    version="1.0.0",          # Worker version
+    # version defaults to spooled.__version__ (1.0.21 for this release)
     metadata={"env": "prod"}, # Custom metadata
 )
 ```
@@ -72,7 +72,7 @@ def handle_job(ctx):
     # Logging
     ctx.log("info", "Processing started", {"key": "value"})
     
-    # Progress (for future use)
+    # Progress is currently a no-op placeholder
     ctx.progress(50, "Halfway done")
     
     return {"result": "done"}
@@ -121,7 +121,7 @@ import sys
 
 def shutdown(signum, frame):
     print("Shutting down...")
-    worker.stop()  # Waits for active jobs to complete
+    worker.stop()  # Signals active jobs, waits up to shutdown_timeout, then force-fails leftovers
     client.close()
     sys.exit(0)
 
@@ -154,7 +154,7 @@ from spooled import AsyncSpooledClient
 from spooled.worker import AsyncSpooledWorker
 
 async def main():
-    async with AsyncSpooledClient(api_key="sk_live_...") as client:
+    async with AsyncSpooledClient(api_key="sp_live_...") as client:
         worker = AsyncSpooledWorker(
             client,
             queue_name="my-queue",
@@ -171,6 +171,12 @@ async def main():
 
 asyncio.run(main())
 ```
+
+## Lease Renewal and Fencing
+
+Each claimed job is tracked as a distinct active execution. The sync worker renews its lease with a per-execution timer; the async worker uses a per-execution task. Heartbeat, completion, failure, and cleanup all remain bound to that exact execution and include the claimed job's `lease_id` when the server provides one. This prevents stale work from renewing or settling a replacement lease for the same job ID.
+
+Heartbeat failures are logged through the client's debug hook; handlers should still be idempotent because jobs can be reclaimed after a lease expires.
 
 ## Best Practices
 

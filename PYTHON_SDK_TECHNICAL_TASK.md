@@ -1,8 +1,8 @@
 # Python SDK Technical Task
 
-## Status: ✅ Completed
+## Status: Historical completion checklist
 
-All tasks have been implemented and verified.
+This file records the original implementation scope and its contemporaneous checkbox state. Checked items are not independent proof that every behavior remains implemented, tested, released, or production-verified. For current behavior and release history, use `README.md`, `docs/`, `CHANGELOG.md`, current tests, and registry artifacts.
 
 ## 1. Project Setup
 - [x] Create project structure
@@ -51,8 +51,8 @@ All tasks have been implemented and verified.
 
 ## 7. Testing
 - [x] Unit tests
-- [x] Integration tests (`test_local.py`)
-- [x] Production verification (`test_production.py`)
+- [x] Integration and local verification coverage
+- [x] Production verification tooling
 - [x] Performance testing
 
 ## 8. Documentation

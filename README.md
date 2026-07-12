@@ -203,7 +203,7 @@ client.close()
 
 ### When to use gRPC?
 
-- **High Throughput**: 3x faster than HTTP API for enqueue/dequeue operations.
+- **High Throughput**: Persistent HTTP/2 and Protobuf can reduce overhead; benchmark your workload and network path.
 - **Streaming**: Supports real-time job streaming.
 - **Efficiency**: Uses persistent HTTP/2 connections with keepalives.
 
@@ -316,8 +316,11 @@ except SpooledError as e:
 ## Requirements
 
 - Python 3.10+
-- `httpx>=0.25.0`
-- `pydantic>=2.0.0`
+- Core: `httpx>=0.25.0`, `pydantic>=2.0.0`
+- gRPC extra: `grpcio>=1.80.0`, `grpcio-tools>=1.80.0`, `protobuf>=6.33.5`
+- Realtime extra: `websockets>=12.0`, `sseclient-py>=1.8.0`
+
+The package version is defined in `pyproject.toml`. At runtime, `spooled.__version__`, worker registration, and gRPC worker registration read installed package metadata; source-only imports fall back to `1.0.21`.
 
 ## License
 
