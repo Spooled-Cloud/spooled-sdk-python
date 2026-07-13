@@ -19,6 +19,18 @@ from google.protobuf import struct_pb2, timestamp_pb2
 from pydantic import BaseModel, Field
 
 from spooled._version import __version__
+from spooled.errors import (
+    AuthenticationError,
+    AuthorizationError,
+    ConflictError,
+    NetworkError,
+    NotFoundError,
+    RateLimitError,
+    ServerError,
+    SpooledError,
+    TimeoutError,
+    ValidationError,
+)
 
 # Optional gRPC imports
 try:
@@ -275,6 +287,43 @@ def _job_status_to_str(status: int) -> str:
     return status_map.get(status, "unknown")
 
 
+def _map_grpc_error(error: Any, timeout_seconds: float) -> SpooledError:
+    """Map grpc.RpcError into the SDK's typed error hierarchy."""
+    code = error.code() if hasattr(error, "code") else None
+    details = error.details() if hasattr(error, "details") else str(error)
+
+    if grpc is not None:
+        if code == grpc.StatusCode.DEADLINE_EXCEEDED:
+            return TimeoutError(details or "gRPC request timed out", timeout_seconds)
+        if code == grpc.StatusCode.UNAUTHENTICATED:
+            return AuthenticationError(details or "Authentication failed")
+        if code == grpc.StatusCode.PERMISSION_DENIED:
+            return AuthorizationError(details or "Access denied")
+        if code == grpc.StatusCode.NOT_FOUND:
+            return NotFoundError(details or "Resource not found")
+        if code == grpc.StatusCode.INVALID_ARGUMENT:
+            return ValidationError(details or "Validation failed")
+        if code in (grpc.StatusCode.FAILED_PRECONDITION, grpc.StatusCode.ABORTED):
+            return ConflictError(details or "Operation conflict")
+        if code == grpc.StatusCode.RESOURCE_EXHAUSTED:
+            return RateLimitError(details or "Rate limit exceeded")
+        if code == grpc.StatusCode.UNAVAILABLE:
+            return NetworkError(details or "gRPC service unavailable", cause=error)
+
+    return ServerError(details or "gRPC request failed")
+
+
+def _call_unary(
+    callable_: Any, request: Any, metadata: list[tuple[str, str]], timeout_seconds: float
+) -> Any:
+    try:
+        return callable_(request, metadata=metadata, timeout=timeout_seconds)
+    except Exception as error:
+        if grpc is not None and isinstance(error, grpc.RpcError):
+            raise _map_grpc_error(error, timeout_seconds) from error
+        raise
+
+
 def _proto_job_to_grpc_job(job: Any) -> GrpcJob:
     """Convert a protobuf Job to a GrpcJob model."""
     return GrpcJob(
@@ -349,6 +398,11 @@ class JobStream:
                 self._options.on_end()
             raise
         except Exception as e:
+            if grpc is not None and isinstance(e, grpc.RpcError):
+                mapped = _map_grpc_error(e, 0)
+                if self._options.on_error:
+                    self._options.on_error(mapped)
+                raise mapped from e
             if self._options.on_error:
                 self._options.on_error(e)
             raise
@@ -399,10 +453,12 @@ class ProcessJobsStream:
         self,
         call: Any,  # grpc.StreamStreamMultiCallable
         metadata: list[tuple[str, str]],
+        timeout_seconds: float = 30.0,
         options: StreamOptions | None = None,
     ) -> None:
         self._call = call
         self._metadata = metadata
+        self._timeout_seconds = timeout_seconds
         self._options = options or StreamOptions()
         self._request_queue: queue.Queue[Any] = queue.Queue()
         self._response_iterator: Any = None
@@ -429,7 +485,11 @@ class ProcessJobsStream:
                         break
                     continue
 
-        self._stream = self._call(request_generator(), metadata=self._metadata)
+        self._stream = self._call(
+            request_generator(),
+            metadata=self._metadata,
+            timeout=self._timeout_seconds,
+        )
         self._started = True
 
     def send(self, request: ProcessRequest) -> None:
@@ -500,9 +560,7 @@ class ProcessJobsStream:
                 if which == "job":
                     response.job = _proto_job_to_grpc_job(proto_resp.job)
                 elif which == "complete":
-                    response.complete = GrpcCompleteResponse(
-                        success=proto_resp.complete.success
-                    )
+                    response.complete = GrpcCompleteResponse(success=proto_resp.complete.success)
                 elif which == "fail":
                     response.fail = GrpcFailResponse(
                         success=proto_resp.fail.success,
@@ -522,6 +580,11 @@ class ProcessJobsStream:
                 yield response
 
         except Exception as e:
+            if grpc is not None and isinstance(e, grpc.RpcError):
+                mapped = _map_grpc_error(e, self._timeout_seconds)
+                if self._options.on_error:
+                    self._options.on_error(mapped)
+                raise mapped from e
             if self._options.on_error:
                 self._options.on_error(e)
             raise
@@ -554,9 +617,12 @@ class GrpcQueueService:
     Provides high-performance job queue operations via gRPC.
     """
 
-    def __init__(self, stub: Any, metadata: list[tuple[str, str]]) -> None:
+    def __init__(
+        self, stub: Any, metadata: list[tuple[str, str]], timeout_seconds: float = 30.0
+    ) -> None:
         self._stub = stub
         self._metadata = metadata
+        self._timeout_seconds = timeout_seconds
 
     def enqueue(
         self,
@@ -598,7 +664,7 @@ class GrpcQueueService:
         if tags:
             request.tags.update(tags)
 
-        response = self._stub.Enqueue(request, metadata=self._metadata)
+        response = _call_unary(self._stub.Enqueue, request, self._metadata, self._timeout_seconds)
         return GrpcEnqueueResponse(job_id=response.job_id, created=response.created)
 
     def dequeue(
@@ -630,7 +696,7 @@ class GrpcQueueService:
             lease_duration_secs=lease_duration_secs,
         )
 
-        response = self._stub.Dequeue(request, metadata=self._metadata)
+        response = _call_unary(self._stub.Dequeue, request, self._metadata, self._timeout_seconds)
         jobs = [_proto_job_to_grpc_job(job) for job in response.jobs]
         return GrpcDequeueResponse(jobs=jobs)
 
@@ -665,7 +731,7 @@ class GrpcQueueService:
         if lease_id is not None:
             request.lease_id = lease_id
 
-        response = self._stub.Complete(request, metadata=self._metadata)
+        response = _call_unary(self._stub.Complete, request, self._metadata, self._timeout_seconds)
         return GrpcCompleteResponse(success=response.success)
 
     def fail(
@@ -702,7 +768,7 @@ class GrpcQueueService:
         if lease_id is not None:
             request.lease_id = lease_id
 
-        response = self._stub.Fail(request, metadata=self._metadata)
+        response = _call_unary(self._stub.Fail, request, self._metadata, self._timeout_seconds)
         return GrpcFailResponse(
             success=response.success,
             will_retry=response.will_retry,
@@ -740,7 +806,9 @@ class GrpcQueueService:
         if lease_id is not None:
             request.lease_id = lease_id
 
-        response = self._stub.RenewLease(request, metadata=self._metadata)
+        response = _call_unary(
+            self._stub.RenewLease, request, self._metadata, self._timeout_seconds
+        )
         return GrpcRenewLeaseResponse(
             success=response.success,
             new_expires_at=_timestamp_to_datetime(response.new_expires_at),
@@ -759,7 +827,7 @@ class GrpcQueueService:
         from spooled.grpc.stubs import GetJobRequest
 
         request = GetJobRequest(job_id=job_id)
-        response = self._stub.GetJob(request, metadata=self._metadata)
+        response = _call_unary(self._stub.GetJob, request, self._metadata, self._timeout_seconds)
 
         job = None
         if response.HasField("job"):
@@ -780,7 +848,9 @@ class GrpcQueueService:
         from spooled.grpc.stubs import GetQueueStatsRequest
 
         request = GetQueueStatsRequest(queue_name=queue_name)
-        response = self._stub.GetQueueStats(request, metadata=self._metadata)
+        response = _call_unary(
+            self._stub.GetQueueStats, request, self._metadata, self._timeout_seconds
+        )
 
         return GrpcQueueStats(
             queue_name=response.queue_name,
@@ -833,7 +903,9 @@ class GrpcQueueService:
             lease_duration_secs=lease_duration_secs,
         )
 
-        call = self._stub.StreamJobs(request, metadata=self._metadata)
+        call = self._stub.StreamJobs(
+            request, metadata=self._metadata, timeout=self._timeout_seconds
+        )
 
         if options and options.on_connected:
             options.on_connected()
@@ -879,6 +951,7 @@ class GrpcQueueService:
         return ProcessJobsStream(
             self._stub.ProcessJobs,
             self._metadata,
+            self._timeout_seconds,
             options,
         )
 
@@ -890,9 +963,12 @@ class GrpcWorkersService:
     Provides worker registration, heartbeat, and deregistration via gRPC.
     """
 
-    def __init__(self, stub: Any, metadata: list[tuple[str, str]]) -> None:
+    def __init__(
+        self, stub: Any, metadata: list[tuple[str, str]], timeout_seconds: float = 30.0
+    ) -> None:
         self._stub = stub
         self._metadata = metadata
+        self._timeout_seconds = timeout_seconds
 
     def register(
         self,
@@ -931,7 +1007,7 @@ class GrpcWorkersService:
         if metadata:
             request.metadata.update(metadata)
 
-        response = self._stub.Register(request, metadata=self._metadata)
+        response = _call_unary(self._stub.Register, request, self._metadata, self._timeout_seconds)
         return GrpcRegisterWorkerResponse(
             worker_id=response.worker_id,
             lease_duration_secs=response.lease_duration_secs,
@@ -969,7 +1045,7 @@ class GrpcWorkersService:
         if metadata:
             request.metadata.update(metadata)
 
-        response = self._stub.Heartbeat(request, metadata=self._metadata)
+        response = _call_unary(self._stub.Heartbeat, request, self._metadata, self._timeout_seconds)
         return GrpcHeartbeatResponse(
             acknowledged=response.acknowledged,
             should_drain=response.should_drain,
@@ -988,7 +1064,9 @@ class GrpcWorkersService:
         from spooled.grpc.stubs import DeregisterRequest
 
         request = DeregisterRequest(worker_id=worker_id)
-        response = self._stub.Deregister(request, metadata=self._metadata)
+        response = _call_unary(
+            self._stub.Deregister, request, self._metadata, self._timeout_seconds
+        )
         return GrpcDeregisterResponse(success=response.success)
 
 
@@ -1040,6 +1118,7 @@ class SpooledGrpcClient:
         use_tls: bool | None = None,
         root_certificates: bytes | None = None,
         options: list[tuple[str, Any]] | None = None,
+        timeout: float = 30.0,
     ) -> None:
         """
         Initialize gRPC client.
@@ -1050,14 +1129,14 @@ class SpooledGrpcClient:
             use_tls: Whether to use TLS. If None, auto-detect from address.
             root_certificates: Custom root certificates for TLS
             options: Additional gRPC channel options
+            timeout: Default per-call timeout in seconds
         """
         if not HAS_GRPC:
-            raise ImportError(
-                "grpcio package required. Install with: pip install spooled[grpc]"
-            )
+            raise ImportError("grpcio package required. Install with: pip install spooled[grpc]")
 
         self._address = address
         self._api_key = api_key
+        self._timeout = timeout
 
         # Auto-detect TLS based on address
         if use_tls is None:
@@ -1072,12 +1151,8 @@ class SpooledGrpcClient:
         # Create channel
         channel_options = options or []
         if use_tls:
-            credentials = grpc.ssl_channel_credentials(
-                root_certificates=root_certificates
-            )
-            self._channel = grpc.secure_channel(
-                address, credentials, options=channel_options
-            )
+            credentials = grpc.ssl_channel_credentials(root_certificates=root_certificates)
+            self._channel = grpc.secure_channel(address, credentials, options=channel_options)
         else:
             self._channel = grpc.insecure_channel(address, options=channel_options)
 
@@ -1088,8 +1163,8 @@ class SpooledGrpcClient:
         self._worker_stub = WorkerServiceStub(self._channel)  # type: ignore[no-untyped-call]
 
         # Create service instances
-        self._queue = GrpcQueueService(self._queue_stub, self._metadata)
-        self._workers = GrpcWorkersService(self._worker_stub, self._metadata)
+        self._queue = GrpcQueueService(self._queue_stub, self._metadata, self._timeout)
+        self._workers = GrpcWorkersService(self._worker_stub, self._metadata, self._timeout)
 
     @property
     def queue(self) -> GrpcQueueService:
