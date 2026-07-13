@@ -320,7 +320,7 @@ except SpooledError as e:
 - gRPC extra: `grpcio>=1.80.0`, `grpcio-tools>=1.80.0`, `protobuf>=6.33.5`
 - Realtime extra: `websockets>=12.0`, `sseclient-py>=1.8.0`
 
-The package version is defined in `pyproject.toml`. At runtime, `spooled.__version__`, the default REST `User-Agent`, worker options, and REST/gRPC worker registration read installed package metadata; source-only imports fall back to `1.0.22`.
+The package version is defined in `pyproject.toml`. At runtime, `spooled.__version__`, the default REST `User-Agent`, worker options, and REST/gRPC worker registration read installed package metadata; source-only imports fall back to `1.0.23`.
 
 Release maintainers should follow the [publishing checklist](docs/PUBLISHING.md) before creating a tag or publishing to PyPI.
 

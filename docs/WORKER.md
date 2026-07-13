@@ -45,7 +45,7 @@ worker = SpooledWorker(
     shutdown_timeout=30.0,    # Graceful shutdown timeout
     hostname="worker-1",      # Custom hostname
     worker_type="python",     # Worker type identifier
-    # version defaults to spooled.__version__ (1.0.22 for this release)
+    # version defaults to spooled.__version__ (1.0.23 for this release)
     metadata={"env": "prod"}, # Custom metadata
 )
 ```

@@ -2,6 +2,12 @@
 
 All notable changes to the Spooled Python SDK are documented here.
 
+## [1.0.23] - 2026-07-13
+
+### Fixed
+
+- Add default gRPC per-call deadlines and map `grpc.RpcError` statuses into the SDK error hierarchy.
+
 ## [1.0.22] - 2026-07-12
 
 ### Fixed
