@@ -28,16 +28,18 @@ def main() -> None:
 
         # Create a job
         print("\nCreating a job...")
-        result = client.jobs.create({
-            "queue_name": "example-queue",
-            "payload": {
-                "to": "user@example.com",
-                "subject": "Hello from Spooled!",
-                "body": "This is a test email.",
-            },
-            "priority": 5,
-            "max_retries": 3,
-        })
+        result = client.jobs.create(
+            {
+                "queue_name": "example-queue",
+                "payload": {
+                    "to": "user@example.com",
+                    "subject": "Hello from Spooled!",
+                    "body": "This is a test email.",
+                },
+                "priority": 5,
+                "max_retries": 3,
+            }
+        )
         print(f"  Job ID: {result.id}")
         print(f"  Created: {result.created}")
 

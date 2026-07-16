@@ -56,15 +56,11 @@ class AsyncApiKeysResource(AsyncBaseResource):
         data = await self._http.get("/api-keys")
         return [ApiKeySummary.model_validate(item) for item in data]
 
-    async def create(
-        self, params: CreateApiKeyParams | dict[str, Any]
-    ) -> CreateApiKeyResponse:
+    async def create(self, params: CreateApiKeyParams | dict[str, Any]) -> CreateApiKeyResponse:
         """Create a new API key."""
         if isinstance(params, dict):
             params = CreateApiKeyParams.model_validate(params)
-        data = await self._http.post(
-            "/api-keys", params.model_dump(exclude_none=True, mode="json")
-        )
+        data = await self._http.post("/api-keys", params.model_dump(exclude_none=True, mode="json"))
         return CreateApiKeyResponse.model_validate(data)
 
     async def get(self, key_id: str) -> ApiKey:
@@ -72,9 +68,7 @@ class AsyncApiKeysResource(AsyncBaseResource):
         data = await self._http.get(f"/api-keys/{key_id}")
         return ApiKey.model_validate(data)
 
-    async def update(
-        self, key_id: str, params: UpdateApiKeyParams | dict[str, Any]
-    ) -> ApiKey:
+    async def update(self, key_id: str, params: UpdateApiKeyParams | dict[str, Any]) -> ApiKey:
         """Update an API key."""
         if isinstance(params, dict):
             params = UpdateApiKeyParams.model_validate(params)

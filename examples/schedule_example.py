@@ -24,37 +24,41 @@ def main() -> None:
         print("Creating schedules...")
 
         # Daily report at 9 AM
-        daily = client.schedules.create({
-            "name": "Daily Report",
-            "description": "Generate daily sales report",
-            "cron_expression": "0 9 * * *",
-            "timezone": "America/New_York",
-            "queue_name": "reports",
-            "payload_template": {
-                "report_type": "daily",
-                "format": "pdf",
-                "recipients": ["sales@example.com"],
-            },
-            "priority": 5,
-            "max_retries": 3,
-            "timeout_seconds": 300,
-            "tags": {"type": "report", "frequency": "daily"},
-        })
+        daily = client.schedules.create(
+            {
+                "name": "Daily Report",
+                "description": "Generate daily sales report",
+                "cron_expression": "0 9 * * *",
+                "timezone": "America/New_York",
+                "queue_name": "reports",
+                "payload_template": {
+                    "report_type": "daily",
+                    "format": "pdf",
+                    "recipients": ["sales@example.com"],
+                },
+                "priority": 5,
+                "max_retries": 3,
+                "timeout_seconds": 300,
+                "tags": {"type": "report", "frequency": "daily"},
+            }
+        )
         print(f"  Created: {daily.name} ({daily.id})")
         print(f"  Next run: {daily.next_run_at}")
 
         # Hourly metrics collection
-        hourly = client.schedules.create({
-            "name": "Hourly Metrics",
-            "description": "Collect system metrics",
-            "cron_expression": "0 * * * *",  # Every hour
-            "timezone": "UTC",
-            "queue_name": "metrics",
-            "payload_template": {
-                "action": "collect",
-                "targets": ["cpu", "memory", "disk"],
-            },
-        })
+        hourly = client.schedules.create(
+            {
+                "name": "Hourly Metrics",
+                "description": "Collect system metrics",
+                "cron_expression": "0 * * * *",  # Every hour
+                "timezone": "UTC",
+                "queue_name": "metrics",
+                "payload_template": {
+                    "action": "collect",
+                    "targets": ["cpu", "memory", "disk"],
+                },
+            }
+        )
         print(f"  Created: {hourly.name} ({hourly.id})")
         print(f"  Next run: {hourly.next_run_at}")
 

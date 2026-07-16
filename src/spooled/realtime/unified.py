@@ -244,9 +244,7 @@ class SpooledRealtime:
         self._all_events_handlers.append(handler)
         return lambda: self._all_events_handlers.remove(handler)
 
-    def on_state_change(
-        self, handler: StateChangeHandler | None = None
-    ) -> Callable[..., Any]:
+    def on_state_change(self, handler: StateChangeHandler | None = None) -> Callable[..., Any]:
         """
         Add a listener for connection state changes.
 
@@ -345,9 +343,7 @@ class SpooledRealtime:
         else:
             # WebSocket can subscribe dynamically
             if self._state == ConnectionState.CONNECTED and self._ws:
-                self._send_ws_command(
-                    SubscribeCommand(queue=filter.queue, job_id=filter.job_id)
-                )
+                self._send_ws_command(SubscribeCommand(queue=filter.queue, job_id=filter.job_id))
 
     def unsubscribe(self, filter: SubscriptionFilter) -> None:
         """
@@ -364,9 +360,7 @@ class SpooledRealtime:
         del self._subscriptions[filter_id]
 
         if self._options.type == "websocket" and self._state == ConnectionState.CONNECTED:
-            self._send_ws_command(
-                UnsubscribeCommand(queue=filter.queue, job_id=filter.job_id)
-            )
+            self._send_ws_command(UnsubscribeCommand(queue=filter.queue, job_id=filter.job_id))
 
     # ─────────────────────────────────────────────────────────────────────────
     # Event Generator (for iteration)
@@ -442,9 +436,7 @@ class SpooledRealtime:
             self._stop_event.clear()
 
             # Start receive thread
-            self._receive_thread = threading.Thread(
-                target=self._ws_receive_loop, daemon=True
-            )
+            self._receive_thread = threading.Thread(target=self._ws_receive_loop, daemon=True)
             self._receive_thread.start()
 
             # Resubscribe
@@ -482,9 +474,9 @@ class SpooledRealtime:
 
     def _build_ws_url(self) -> str:
         """Build WebSocket URL."""
-        ws_url = self._options.ws_url or self._options.base_url.replace(
-            "http://", "ws://"
-        ).replace("https://", "wss://")
+        ws_url = self._options.ws_url or self._options.base_url.replace("http://", "ws://").replace(
+            "https://", "wss://"
+        )
         return f"{ws_url}/api/v1/ws?token={self._options.token}"
 
     def _send_ws_command(self, command: SubscribeCommand | UnsubscribeCommand) -> None:
@@ -500,9 +492,7 @@ class SpooledRealtime:
         """Resubscribe to all subscriptions."""
         for filter in self._subscriptions.values():
             if self._options.type == "websocket" and self._ws:
-                self._send_ws_command(
-                    SubscribeCommand(queue=filter.queue, job_id=filter.job_id)
-                )
+                self._send_ws_command(SubscribeCommand(queue=filter.queue, job_id=filter.job_id))
 
     # ─────────────────────────────────────────────────────────────────────────
     # SSE Implementation
@@ -511,9 +501,7 @@ class SpooledRealtime:
     def _connect_sse(self, filter: SubscriptionFilter | None = None) -> None:
         """Connect via SSE."""
         if not HAS_HTTPX:
-            raise ImportError(
-                "httpx package required. Install with: pip install spooled[realtime]"
-            )
+            raise ImportError("httpx package required. Install with: pip install spooled[realtime]")
 
         self._refresh_token()
         url = self._build_sse_url(filter)
@@ -538,9 +526,7 @@ class SpooledRealtime:
             self._stop_event.clear()
 
             # Start receive thread
-            self._receive_thread = threading.Thread(
-                target=self._sse_receive_loop, daemon=True
-            )
+            self._receive_thread = threading.Thread(target=self._sse_receive_loop, daemon=True)
             self._receive_thread.start()
 
             self._debug("SSE connected", None)
@@ -612,16 +598,16 @@ class SpooledRealtime:
 
         server_type = event_type or "message"
         event_data = payload
-        if isinstance(payload, dict) and "type" in payload and isinstance(payload.get("data"), dict):
+        if (
+            isinstance(payload, dict)
+            and "type" in payload
+            and isinstance(payload.get("data"), dict)
+        ):
             server_type = payload["type"]
             event_data = payload["data"]
 
-        server_timestamp = (
-            event_data.get("timestamp") if isinstance(event_data, dict) else None
-        )
-        return RealtimeEvent.from_server_event(
-            server_type, event_data, timestamp=server_timestamp
-        )
+        server_timestamp = event_data.get("timestamp") if isinstance(event_data, dict) else None
+        return RealtimeEvent.from_server_event(server_type, event_data, timestamp=server_timestamp)
 
     def _dispatch_event(self, event: RealtimeEvent) -> None:
         """Deliver an event to handlers and, if in use, the events() queue."""
@@ -726,9 +712,7 @@ class SpooledRealtime:
     @staticmethod
     def _filter_to_id(filter: SubscriptionFilter) -> str:
         """Generate unique ID for filter."""
-        return json.dumps(
-            {"queue": filter.queue, "job_id": filter.job_id}, sort_keys=True
-        )
+        return json.dumps({"queue": filter.queue, "job_id": filter.job_id}, sort_keys=True)
 
     # ─────────────────────────────────────────────────────────────────────────
     # Context Manager

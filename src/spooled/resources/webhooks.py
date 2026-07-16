@@ -27,9 +27,7 @@ class WebhooksResource(BaseResource):
         data = self._http.get("/outgoing-webhooks")
         return [OutgoingWebhook.model_validate(item) for item in data]
 
-    def create(
-        self, params: CreateOutgoingWebhookParams | dict[str, Any]
-    ) -> OutgoingWebhook:
+    def create(self, params: CreateOutgoingWebhookParams | dict[str, Any]) -> OutgoingWebhook:
         """Create an outgoing webhook."""
         if isinstance(params, dict):
             params = CreateOutgoingWebhookParams.model_validate(params)
@@ -73,9 +71,7 @@ class WebhooksResource(BaseResource):
 
     def retry_delivery(self, webhook_id: str, delivery_id: str) -> RetryDeliveryResponse:
         """Retry a failed webhook delivery."""
-        data = self._http.post(
-            f"/outgoing-webhooks/{webhook_id}/deliveries/{delivery_id}/retry"
-        )
+        data = self._http.post(f"/outgoing-webhooks/{webhook_id}/deliveries/{delivery_id}/retry")
         return RetryDeliveryResponse.model_validate(data)
 
 
@@ -87,9 +83,7 @@ class AsyncWebhooksResource(AsyncBaseResource):
         data = await self._http.get("/outgoing-webhooks")
         return [OutgoingWebhook.model_validate(item) for item in data]
 
-    async def create(
-        self, params: CreateOutgoingWebhookParams | dict[str, Any]
-    ) -> OutgoingWebhook:
+    async def create(self, params: CreateOutgoingWebhookParams | dict[str, Any]) -> OutgoingWebhook:
         """Create an outgoing webhook."""
         if isinstance(params, dict):
             params = CreateOutgoingWebhookParams.model_validate(params)
@@ -133,9 +127,7 @@ class AsyncWebhooksResource(AsyncBaseResource):
         )
         return [OutgoingWebhookDelivery.model_validate(item) for item in data]
 
-    async def retry_delivery(
-        self, webhook_id: str, delivery_id: str
-    ) -> RetryDeliveryResponse:
+    async def retry_delivery(self, webhook_id: str, delivery_id: str) -> RetryDeliveryResponse:
         """Retry a failed webhook delivery."""
         data = await self._http.post(
             f"/outgoing-webhooks/{webhook_id}/deliveries/{delivery_id}/retry"

@@ -425,9 +425,7 @@ class TestSpooledRealtimeUnified:
             pytest.skip("realtime module not available")
 
         realtime = SpooledRealtime(
-            SpooledRealtimeOptions(
-                base_url="https://api.spooled.cloud", token="t", type="sse"
-            )
+            SpooledRealtimeOptions(base_url="https://api.spooled.cloud", token="t", type="sse")
         )
 
         realtime.subscribe(SubscriptionFilter(queue="emails"))

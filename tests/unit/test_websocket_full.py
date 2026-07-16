@@ -534,10 +534,10 @@ class TestReconnectLogic:
             delay = min(base_delay * (2 ** (attempt - 1)), max_delay)
             delays.append(delay)
 
-        assert delays[0] == 1.0   # 1 * 2^0 = 1
-        assert delays[1] == 2.0   # 1 * 2^1 = 2
-        assert delays[2] == 4.0   # 1 * 2^2 = 4
-        assert delays[3] == 8.0   # 1 * 2^3 = 8
+        assert delays[0] == 1.0  # 1 * 2^0 = 1
+        assert delays[1] == 2.0  # 1 * 2^1 = 2
+        assert delays[2] == 4.0  # 1 * 2^2 = 4
+        assert delays[3] == 8.0  # 1 * 2^3 = 8
         assert delays[4] == 16.0  # 1 * 2^4 = 16
 
     def test_max_delay_cap(self):
@@ -545,7 +545,7 @@ class TestReconnectLogic:
         base_delay = 1.0
         max_delay = 10.0
 
-        delay = min(base_delay * (2 ** 10), max_delay)
+        delay = min(base_delay * (2**10), max_delay)
         assert delay == max_delay
 
 
@@ -556,13 +556,15 @@ class TestMessageParsing:
         """Test parsing job event message."""
         from spooled.realtime import RealtimeEvent
 
-        message = json.dumps({
-            "type": "job.completed",
-            "data": {
-                "job_id": "job-123",
-                "result": {"success": True},
+        message = json.dumps(
+            {
+                "type": "job.completed",
+                "data": {
+                    "job_id": "job-123",
+                    "result": {"success": True},
+                },
             }
-        })
+        )
 
         data = json.loads(message)
         event = RealtimeEvent.from_server_event(data["type"], data.get("data", {}))

@@ -99,10 +99,10 @@ class TestCalculateDelay:
 
     def test_exponential_backoff(self, config: RetryConfig) -> None:
         """Test exponential backoff."""
-        assert calculate_delay(1, config) == 1.0   # 1 * 2^0 = 1
-        assert calculate_delay(2, config) == 2.0   # 1 * 2^1 = 2
-        assert calculate_delay(3, config) == 4.0   # 1 * 2^2 = 4
-        assert calculate_delay(4, config) == 8.0   # 1 * 2^3 = 8
+        assert calculate_delay(1, config) == 1.0  # 1 * 2^0 = 1
+        assert calculate_delay(2, config) == 2.0  # 1 * 2^1 = 2
+        assert calculate_delay(3, config) == 4.0  # 1 * 2^2 = 4
+        assert calculate_delay(4, config) == 8.0  # 1 * 2^3 = 8
 
     def test_max_delay_cap(self, config: RetryConfig) -> None:
         """Test delay is capped at max_delay."""

@@ -26,11 +26,7 @@ LOGIN_URL = f"{BASE_URL}/api/v1/auth/login"
 def _make_jwt(exp: float) -> str:
     """Build an unsigned JWT-shaped token carrying the given ``exp`` claim."""
     header = base64.urlsafe_b64encode(b'{"alg":"none"}').rstrip(b"=").decode()
-    body = (
-        base64.urlsafe_b64encode(json.dumps({"exp": int(exp)}).encode())
-        .rstrip(b"=")
-        .decode()
-    )
+    body = base64.urlsafe_b64encode(json.dumps({"exp": int(exp)}).encode()).rstrip(b"=").decode()
     return f"{header}.{body}.sig"
 
 
@@ -111,9 +107,7 @@ class TestSyncJwtCache:
             return_value=_login_response(_make_jwt(time.time() + 3600))
         )
 
-        with SpooledClient(
-            api_key=API_KEY, access_token="static_tok", base_url=BASE_URL
-        ) as client:
+        with SpooledClient(api_key=API_KEY, access_token="static_tok", base_url=BASE_URL) as client:
             assert client.get_jwt_token() == "static_tok"
             assert client.get_jwt_token() == "static_tok"
 
@@ -205,9 +199,7 @@ class TestRealtimeTokenProvider:
             return "fresh-token"
 
         realtime = SpooledRealtime(
-            SpooledRealtimeOptions(
-                base_url=BASE_URL, token="stale", token_provider=provider
-            )
+            SpooledRealtimeOptions(base_url=BASE_URL, token="stale", token_provider=provider)
         )
         realtime._refresh_token()
 
@@ -224,9 +216,7 @@ class TestRealtimeTokenProvider:
             raise RuntimeError("login 429")
 
         realtime = SpooledRealtime(
-            SpooledRealtimeOptions(
-                base_url=BASE_URL, token="stale", token_provider=provider
-            )
+            SpooledRealtimeOptions(base_url=BASE_URL, token="stale", token_provider=provider)
         )
         realtime._refresh_token()
 
@@ -239,9 +229,7 @@ class TestRealtimeTokenProvider:
             SpooledRealtimeOptions,
         )
 
-        realtime = SpooledRealtime(
-            SpooledRealtimeOptions(base_url=BASE_URL, token="stale")
-        )
+        realtime = SpooledRealtime(SpooledRealtimeOptions(base_url=BASE_URL, token="stale"))
         realtime._refresh_token()
 
         assert realtime._options.token == "stale"

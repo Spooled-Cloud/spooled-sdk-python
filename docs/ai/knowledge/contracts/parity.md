@@ -1,5 +1,5 @@
 # Parity notes (Python)
 
 - Async client unique among SDKs.
-- gRPC always sends 3/300 unless overridden — differs from PHP omit / Go zero.
-- Worker progress no-op.
+- REST/gRPC job create omits unset retry/timeout defaults; explicit values are still sent.
+- Worker progress emits local job logs only; Go remains the SDK with backend-persisted `POST /jobs/{id}/progress`.

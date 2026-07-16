@@ -39,7 +39,8 @@ class TestEnqueueRequest:
         )
         assert req.queue_name == "test"
         assert req.priority == 0
-        assert req.max_retries == 3
+        assert req.max_retries is None
+        assert req.timeout_seconds is None
 
     def test_full_request(self) -> None:
         """Test full enqueue request."""

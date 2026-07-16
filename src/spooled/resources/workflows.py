@@ -57,9 +57,7 @@ class WorkflowJobsResource:
         """Add dependencies to a job."""
         if isinstance(params, dict):
             params = AddDependenciesParams.model_validate(params)
-        data = self._http.post(
-            f"/jobs/{job_id}/dependencies", params.model_dump(exclude_none=True)
-        )
+        data = self._http.post(f"/jobs/{job_id}/dependencies", params.model_dump(exclude_none=True))
         return AddDependenciesResponse.model_validate(data)
 
 
@@ -123,9 +121,7 @@ class WorkflowsResource(BaseResource):
         data = self._http.get("/workflows", params=query_params)
         return [WorkflowResponse.model_validate(item) for item in data]
 
-    def create(
-        self, params: CreateWorkflowParams | dict[str, Any]
-    ) -> CreateWorkflowResponse:
+    def create(self, params: CreateWorkflowParams | dict[str, Any]) -> CreateWorkflowResponse:
         """Create a new workflow."""
         if isinstance(params, dict):
             params = CreateWorkflowParams.model_validate(params)
@@ -170,9 +166,7 @@ class AsyncWorkflowsResource(AsyncBaseResource):
         data = await self._http.get("/workflows", params=query_params)
         return [WorkflowResponse.model_validate(item) for item in data]
 
-    async def create(
-        self, params: CreateWorkflowParams | dict[str, Any]
-    ) -> CreateWorkflowResponse:
+    async def create(self, params: CreateWorkflowParams | dict[str, Any]) -> CreateWorkflowResponse:
         """Create a new workflow."""
         if isinstance(params, dict):
             params = CreateWorkflowParams.model_validate(params)

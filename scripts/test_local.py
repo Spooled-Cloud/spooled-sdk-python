@@ -32,25 +32,24 @@ Options:
 
 from __future__ import annotations
 
-import asyncio
 import concurrent.futures
 import json
 import os
 import random
-import signal
 import sys
 import threading
 import time
-from dataclasses import dataclass, field
+from collections.abc import Callable
+from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
-from http.server import HTTPServer, BaseHTTPRequestHandler
-from typing import Any, Callable
+from http.server import BaseHTTPRequestHandler, HTTPServer
+from typing import Any
 
 # Add src to path if running from scripts directory
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "src"))
 
-from spooled import SpooledClient, AsyncSpooledClient
-from spooled.errors import SpooledError, is_spooled_error
+from spooled import SpooledClient
+from spooled.errors import SpooledError
 from spooled.worker import SpooledWorker
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -69,7 +68,9 @@ ADMIN_API_KEY = os.environ.get("ADMIN_API_KEY", "")
 
 if not API_KEY:
     print("❌ API_KEY environment variable is required")
-    print("   Usage: API_KEY=sk_test_... BASE_URL=http://localhost:8080 python scripts/test_local.py")
+    print(
+        "   Usage: API_KEY=sk_test_... BASE_URL=http://localhost:8080 python scripts/test_local.py"
+    )
     sys.exit(1)
 
 
@@ -233,7 +234,11 @@ def cleanup_old_jobs(client: SpooledClient) -> None:
         jobs = client.jobs.list({"limit": 100})
         cancelled = 0
         for job in jobs:
-            if job.queue_name.startswith("test-") and job.status in ("pending", "processing", "scheduled"):
+            if job.queue_name.startswith("test-") and job.status in (
+                "pending",
+                "processing",
+                "scheduled",
+            ):
                 try:
                     client.jobs.cancel(job.id)
                     cancelled += 1
@@ -296,11 +301,13 @@ def test_jobs_basic_crud(client: SpooledClient) -> None:
 
     def test_create_job() -> None:
         nonlocal job_id
-        result = client.jobs.create({
-            "queue_name": queue_name,
-            "payload": {"test": True, "message": "Hello"},
-            "priority": 5,
-        })
+        result = client.jobs.create(
+            {
+                "queue_name": queue_name,
+                "payload": {"test": True, "message": "Hello"},
+                "priority": 5,
+            }
+        )
         job_id = result.id
         assert_defined(result.id, "job id")
         log(f"Created job: {job_id}")
@@ -350,14 +357,16 @@ def test_jobs_bulk_operations(client: SpooledClient) -> None:
 
     def test_bulk_create() -> None:
         nonlocal job_ids
-        result = client.jobs.bulk_enqueue({
-            "queue_name": queue_name,
-            "jobs": [
-                {"payload": {"index": 0}},
-                {"payload": {"index": 1}},
-                {"payload": {"index": 2}},
-            ],
-        })
+        result = client.jobs.bulk_enqueue(
+            {
+                "queue_name": queue_name,
+                "jobs": [
+                    {"payload": {"index": 0}},
+                    {"payload": {"index": 1}},
+                    {"payload": {"index": 2}},
+                ],
+            }
+        )
         assert_true(result.success_count >= 3, "should create 3 jobs")
         job_ids = [j.job_id for j in result.succeeded if j.job_id]
 
@@ -395,22 +404,26 @@ def test_job_idempotency(client: SpooledClient) -> None:
 
     def test_create_with_key() -> None:
         nonlocal job_id
-        result = client.jobs.create({
-            "queue_name": queue_name,
-            "payload": {"test": "idempotent"},
-            "idempotency_key": idempotency_key,
-        })
+        result = client.jobs.create(
+            {
+                "queue_name": queue_name,
+                "payload": {"test": "idempotent"},
+                "idempotency_key": idempotency_key,
+            }
+        )
         job_id = result.id
         assert_equal(result.created, True, "should be created")
 
     run_test("Create job with idempotency key", test_create_with_key)
 
     def test_duplicate() -> None:
-        result = client.jobs.create({
-            "queue_name": queue_name,
-            "payload": {"test": "duplicate"},
-            "idempotency_key": idempotency_key,
-        })
+        result = client.jobs.create(
+            {
+                "queue_name": queue_name,
+                "payload": {"test": "duplicate"},
+                "idempotency_key": idempotency_key,
+            }
+        )
         assert_equal(result.id, job_id, "should return same job")
         assert_equal(result.created, False, "should not create new")
 
@@ -433,31 +446,37 @@ def test_job_lifecycle(client: SpooledClient) -> None:
 
     def test_create_lifecycle_job() -> None:
         nonlocal job_id
-        result = client.jobs.create({
-            "queue_name": queue_name,
-            "payload": {"lifecycle": "test"},
-        })
+        result = client.jobs.create(
+            {
+                "queue_name": queue_name,
+                "payload": {"lifecycle": "test"},
+            }
+        )
         job_id = result.id
 
     run_test("Create job for lifecycle test", test_create_lifecycle_job)
 
     def test_register_worker() -> None:
         nonlocal worker_id
-        result = client.workers.register({
-            "queue_name": queue_name,
-            "hostname": "test-lifecycle-worker",
-            "max_concurrency": 1,
-        })
+        result = client.workers.register(
+            {
+                "queue_name": queue_name,
+                "hostname": "test-lifecycle-worker",
+                "max_concurrency": 1,
+            }
+        )
         worker_id = result.id
 
     run_test("POST /api/v1/workers/register", test_register_worker)
 
     def test_claim_job() -> None:
-        result = client.jobs.claim({
-            "queue_name": queue_name,
-            "worker_id": worker_id,
-            "limit": 1,
-        })
+        result = client.jobs.claim(
+            {
+                "queue_name": queue_name,
+                "worker_id": worker_id,
+                "limit": 1,
+            }
+        )
         assert_equal(len(result.jobs), 1, "should claim 1 job")
         assert_equal(result.jobs[0].id, job_id, "job id")
 
@@ -499,22 +518,26 @@ def test_job_failure_and_retry(client: SpooledClient) -> None:
 
     def test_create_failure_job() -> None:
         nonlocal job_id
-        result = client.jobs.create({
-            "queue_name": queue_name,
-            "payload": {"will_fail": True},
-            "max_retries": 1,
-        })
+        result = client.jobs.create(
+            {
+                "queue_name": queue_name,
+                "payload": {"will_fail": True},
+                "max_retries": 1,
+            }
+        )
         job_id = result.id
 
     run_test("Create job for failure test", test_create_failure_job)
 
     def test_register_and_claim() -> None:
         nonlocal worker_id
-        reg = client.workers.register({
-            "queue_name": queue_name,
-            "hostname": "test-failure-worker",
-            "max_concurrency": 1,
-        })
+        reg = client.workers.register(
+            {
+                "queue_name": queue_name,
+                "hostname": "test-failure-worker",
+                "max_concurrency": 1,
+            }
+        )
         worker_id = reg.id
         client.jobs.claim({"queue_name": queue_name, "worker_id": worker_id, "limit": 1})
 
@@ -524,7 +547,10 @@ def test_job_failure_and_retry(client: SpooledClient) -> None:
         client.jobs.fail(job_id, {"worker_id": worker_id, "error": "Intentional test failure"})
         job = client.jobs.get(job_id)
         # Job should be pending again (retrying) or failed
-        assert_true(job.status in ("pending", "failed", "deadletter"), f"status should be retry/failed, got {job.status}")
+        assert_true(
+            job.status in ("pending", "failed", "deadletter"),
+            f"status should be retry/failed, got {job.status}",
+        )
 
     run_test("POST /api/v1/jobs/{id}/fail - Fail job", test_fail_job)
 
@@ -649,11 +675,14 @@ def test_queues_advanced(client: SpooledClient) -> None:
 
     def test_update_config() -> None:
         try:
-            config = client.queues.update_config(queue_name, {
-                "default_timeout": 600,
-                "max_retries": 5,
-            })
-            log(f"Queue config updated")
+            client.queues.update_config(
+                queue_name,
+                {
+                    "default_timeout": 600,
+                    "max_retries": 5,
+                },
+            )
+            log("Queue config updated")
         except SpooledError as e:
             log(f"Queue config update failed: {e.message}")
 
@@ -688,14 +717,16 @@ def test_workers(client: SpooledClient) -> None:
 
     def test_register_worker() -> None:
         nonlocal worker_id
-        result = client.workers.register({
-            "queue_name": queue_name,
-            "hostname": "test-worker-host",
-            "worker_type": "test",
-            "max_concurrency": 5,
-            "metadata": {"test": True},
-            "version": "1.0.0",
-        })
+        result = client.workers.register(
+            {
+                "queue_name": queue_name,
+                "hostname": "test-worker-host",
+                "worker_type": "test",
+                "max_concurrency": 5,
+                "metadata": {"test": True},
+                "version": "1.0.0",
+            }
+        )
         worker_id = result.id
         assert_defined(result.id, "worker id")
 
@@ -737,12 +768,14 @@ def test_webhooks(client: SpooledClient) -> None:
     def test_create_webhook() -> None:
         nonlocal webhook_id, ssrf_blocked
         try:
-            result = client.webhooks.create({
-                "name": f"{test_prefix}-webhook",
-                "url": webhook_url,
-                "events": ["job.created", "job.completed"],
-                "secret": "test-secret-123",
-            })
+            result = client.webhooks.create(
+                {
+                    "name": f"{test_prefix}-webhook",
+                    "url": webhook_url,
+                    "events": ["job.created", "job.completed"],
+                    "secret": "test-secret-123",
+                }
+            )
             webhook_id = result.id
             assert_defined(result.id, "webhook id")
         except SpooledError as e:
@@ -770,8 +803,12 @@ def test_webhooks(client: SpooledClient) -> None:
         webhook = client.webhooks.get(webhook_id)
         assert_equal(webhook.id, webhook_id, "webhook id")
 
-    run_test("GET /api/v1/outgoing-webhooks/{id} - Get webhook", test_get_webhook, 
-             skip=ssrf_blocked, skip_reason=skip_reason)
+    run_test(
+        "GET /api/v1/outgoing-webhooks/{id} - Get webhook",
+        test_get_webhook,
+        skip=ssrf_blocked,
+        skip_reason=skip_reason,
+    )
 
     def test_update_webhook() -> None:
         if not webhook_id:
@@ -780,8 +817,12 @@ def test_webhooks(client: SpooledClient) -> None:
         webhook = client.webhooks.get(webhook_id)
         assert_equal(webhook.name, f"{test_prefix}-webhook-updated", "name")
 
-    run_test("PUT /api/v1/outgoing-webhooks/{id} - Update webhook", test_update_webhook,
-             skip=ssrf_blocked, skip_reason=skip_reason)
+    run_test(
+        "PUT /api/v1/outgoing-webhooks/{id} - Update webhook",
+        test_update_webhook,
+        skip=ssrf_blocked,
+        skip_reason=skip_reason,
+    )
 
     def test_test_webhook() -> None:
         try:
@@ -802,16 +843,24 @@ def test_webhooks(client: SpooledClient) -> None:
         deliveries = client.webhooks.get_deliveries(webhook_id)
         log(f"Webhook has {len(deliveries)} deliveries")
 
-    run_test("GET /api/v1/outgoing-webhooks/{id}/deliveries - List deliveries", test_get_deliveries,
-             skip=ssrf_blocked, skip_reason=skip_reason)
+    run_test(
+        "GET /api/v1/outgoing-webhooks/{id}/deliveries - List deliveries",
+        test_get_deliveries,
+        skip=ssrf_blocked,
+        skip_reason=skip_reason,
+    )
 
     def test_delete_webhook() -> None:
         if not webhook_id:
             raise AssertionError("No webhook to delete (SSRF blocked)")
         client.webhooks.delete(webhook_id)
 
-    run_test("DELETE /api/v1/outgoing-webhooks/{id} - Delete webhook", test_delete_webhook,
-             skip=ssrf_blocked, skip_reason=skip_reason)
+    run_test(
+        "DELETE /api/v1/outgoing-webhooks/{id} - Delete webhook",
+        test_delete_webhook,
+        skip=ssrf_blocked,
+        skip_reason=skip_reason,
+    )
 
 
 def test_schedules(client: SpooledClient) -> None:
@@ -822,12 +871,14 @@ def test_schedules(client: SpooledClient) -> None:
 
     def test_create_schedule() -> None:
         nonlocal schedule_id
-        result = client.schedules.create({
-            "name": f"{test_prefix}-schedule",
-            "cron_expression": "0 0 * * * *",  # Every hour
-            "queue_name": f"{test_prefix}-scheduled",
-            "payload_template": {"scheduled": True},
-        })
+        result = client.schedules.create(
+            {
+                "name": f"{test_prefix}-schedule",
+                "cron_expression": "0 0 * * * *",  # Every hour
+                "queue_name": f"{test_prefix}-scheduled",
+                "payload_template": {"scheduled": True},
+            }
+        )
         schedule_id = result.id
         assert_defined(result.id, "schedule id")
         log(f"Created schedule: {schedule_id}")
@@ -889,15 +940,31 @@ def test_workflows(client: SpooledClient) -> None:
 
     def test_create_workflow() -> None:
         nonlocal workflow_id
-        result = client.workflows.create({
-            "name": f"{test_prefix}-workflow",
-            "description": "Test workflow with dependencies",
-            "jobs": [
-                {"key": "step1", "queue_name": f"{test_prefix}-workflow", "payload": {"step": 1}},
-                {"key": "step2", "queue_name": f"{test_prefix}-workflow", "payload": {"step": 2}, "depends_on": ["step1"]},
-                {"key": "step3", "queue_name": f"{test_prefix}-workflow", "payload": {"step": 3}, "depends_on": ["step1"]},
-            ],
-        })
+        result = client.workflows.create(
+            {
+                "name": f"{test_prefix}-workflow",
+                "description": "Test workflow with dependencies",
+                "jobs": [
+                    {
+                        "key": "step1",
+                        "queue_name": f"{test_prefix}-workflow",
+                        "payload": {"step": 1},
+                    },
+                    {
+                        "key": "step2",
+                        "queue_name": f"{test_prefix}-workflow",
+                        "payload": {"step": 2},
+                        "depends_on": ["step1"],
+                    },
+                    {
+                        "key": "step3",
+                        "queue_name": f"{test_prefix}-workflow",
+                        "payload": {"step": 3},
+                        "depends_on": ["step1"],
+                    },
+                ],
+            }
+        )
         workflow_id = result.workflow_id
         assert_defined(result.workflow_id, "workflow id")
         log(f"Created workflow: {workflow_id}")
@@ -929,20 +996,37 @@ def test_workflow_execution(client: SpooledClient) -> None:
     queue_name = f"{test_prefix}-workflow-exec"
     workflow_id = ""
     job_map: dict[str, str] = {}
-    processed_jobs: list[str] = []
 
     def test_create_dag_workflow() -> None:
         nonlocal workflow_id, job_map
-        result = client.workflows.create({
-            "name": f"{test_prefix}-dag-workflow",
-            "description": "Test workflow DAG execution",
-            "jobs": [
-                {"key": "A", "queue_name": queue_name, "payload": {"step": "A", "order": 1}},
-                {"key": "B", "queue_name": queue_name, "payload": {"step": "B", "order": 2}, "depends_on": ["A"]},
-                {"key": "C", "queue_name": queue_name, "payload": {"step": "C", "order": 2}, "depends_on": ["A"]},
-                {"key": "D", "queue_name": queue_name, "payload": {"step": "D", "order": 3}, "depends_on": ["B", "C"], "dependency_mode": "all"},
-            ],
-        })
+        result = client.workflows.create(
+            {
+                "name": f"{test_prefix}-dag-workflow",
+                "description": "Test workflow DAG execution",
+                "jobs": [
+                    {"key": "A", "queue_name": queue_name, "payload": {"step": "A", "order": 1}},
+                    {
+                        "key": "B",
+                        "queue_name": queue_name,
+                        "payload": {"step": "B", "order": 2},
+                        "depends_on": ["A"],
+                    },
+                    {
+                        "key": "C",
+                        "queue_name": queue_name,
+                        "payload": {"step": "C", "order": 2},
+                        "depends_on": ["A"],
+                    },
+                    {
+                        "key": "D",
+                        "queue_name": queue_name,
+                        "payload": {"step": "D", "order": 3},
+                        "depends_on": ["B", "C"],
+                        "dependency_mode": "all",
+                    },
+                ],
+            }
+        )
         workflow_id = result.workflow_id
         for j in result.job_ids:
             job_map[j.key] = j.job_id
@@ -976,14 +1060,26 @@ def test_workflow_jobs(client: SpooledClient) -> None:
 
     def test_create_workflow_for_jobs() -> None:
         nonlocal workflow_id, job_id
-        result = client.workflows.create({
-            "name": f"{test_prefix}-jobs-test",
-            "jobs": [
-                {"key": "job-a", "queue_name": queue_name, "payload": {"step": "A"}},
-                {"key": "job-b", "queue_name": queue_name, "payload": {"step": "B"}, "depends_on": ["job-a"]},
-                {"key": "job-c", "queue_name": queue_name, "payload": {"step": "C"}, "depends_on": ["job-a"]},
-            ],
-        })
+        result = client.workflows.create(
+            {
+                "name": f"{test_prefix}-jobs-test",
+                "jobs": [
+                    {"key": "job-a", "queue_name": queue_name, "payload": {"step": "A"}},
+                    {
+                        "key": "job-b",
+                        "queue_name": queue_name,
+                        "payload": {"step": "B"},
+                        "depends_on": ["job-a"],
+                    },
+                    {
+                        "key": "job-c",
+                        "queue_name": queue_name,
+                        "payload": {"step": "C"},
+                        "depends_on": ["job-a"],
+                    },
+                ],
+            }
+        )
         assert_defined(result.workflow_id, "workflow id")
         workflow_id = result.workflow_id
         for j in result.job_ids:
@@ -1033,7 +1129,10 @@ def test_workflow_jobs(client: SpooledClient) -> None:
             else:
                 raise
 
-    run_test("GET /api/v1/workflows/{id}/jobs/status - Get all jobs status", test_get_workflow_jobs_status)
+    run_test(
+        "GET /api/v1/workflows/{id}/jobs/status - Get all jobs status",
+        test_get_workflow_jobs_status,
+    )
 
     # Cleanup
     try:
@@ -1153,7 +1252,10 @@ def test_organization_webhook_token(client: SpooledClient) -> None:
             else:
                 raise
 
-    run_test("POST /api/v1/organizations/webhook-token/regenerate - Regenerate token", test_regenerate_webhook_token)
+    run_test(
+        "POST /api/v1/organizations/webhook-token/regenerate - Regenerate token",
+        test_regenerate_webhook_token,
+    )
 
     def test_clear_webhook_token() -> None:
         try:
@@ -1165,7 +1267,9 @@ def test_organization_webhook_token(client: SpooledClient) -> None:
             else:
                 raise
 
-    run_test("POST /api/v1/organizations/webhook-token/clear - Clear token", test_clear_webhook_token)
+    run_test(
+        "POST /api/v1/organizations/webhook-token/clear - Clear token", test_clear_webhook_token
+    )
 
 
 def test_billing(client: SpooledClient) -> None:
@@ -1247,8 +1351,8 @@ def test_registration() -> None:
     print("\n🆕 Registration (Open Mode)")
     print("─" * 60)
 
-    import urllib.request
     import urllib.error
+    import urllib.request
 
     timestamp = int(time.time())
     test_org_name = f"Test Org {timestamp}"
@@ -1351,6 +1455,7 @@ def test_worker_integration(client: SpooledClient) -> None:
 
         # Start in thread
         import threading
+
         thread = threading.Thread(target=worker.start, daemon=True)
         thread.start()
 
@@ -1372,10 +1477,12 @@ def test_worker_integration(client: SpooledClient) -> None:
         job_ids = []
         num_jobs = 3
         for i in range(num_jobs):
-            result = client.jobs.create({
-                "queue_name": queue_name,
-                "payload": {"index": i, "message": f"Job {i}"},
-            })
+            result = client.jobs.create(
+                {
+                    "queue_name": queue_name,
+                    "payload": {"index": i, "message": f"Job {i}"},
+                }
+            )
             job_ids.append(result.id)
 
         # Wait for processing - allow more time
@@ -1397,11 +1504,13 @@ def test_worker_integration(client: SpooledClient) -> None:
         if not worker:
             raise Exception("Worker not initialized")
 
-        result = client.jobs.create({
-            "queue_name": queue_name,
-            "payload": {"should_fail": True},
-            "max_retries": 0,
-        })
+        result = client.jobs.create(
+            {
+                "queue_name": queue_name,
+                "payload": {"should_fail": True},
+                "max_retries": 0,
+            }
+        )
 
         # Wait for failure
         for _ in range(50):
@@ -1430,10 +1539,12 @@ def test_edge_cases(client: SpooledClient) -> None:
 
     def test_large_payload() -> None:
         large_payload = {"data": "x" * 10000}
-        result = client.jobs.create({
-            "queue_name": f"{test_prefix}-edge",
-            "payload": large_payload,
-        })
+        result = client.jobs.create(
+            {
+                "queue_name": f"{test_prefix}-edge",
+                "payload": large_payload,
+            }
+        )
         job = client.jobs.get(result.id)
         assert_defined(job.payload, "payload should exist")
         client.jobs.cancel(result.id)
@@ -1442,11 +1553,13 @@ def test_edge_cases(client: SpooledClient) -> None:
 
     def test_scheduled_job() -> None:
         future_date = datetime.now(timezone.utc) + timedelta(hours=1)
-        result = client.jobs.create({
-            "queue_name": f"{test_prefix}-edge",
-            "payload": {"scheduled": True},
-            "scheduled_at": future_date,
-        })
+        result = client.jobs.create(
+            {
+                "queue_name": f"{test_prefix}-edge",
+                "payload": {"scheduled": True},
+                "scheduled_at": future_date,
+            }
+        )
         job = client.jobs.get(result.id)
         assert_equal(job.status, "scheduled", "should be scheduled")
         client.jobs.cancel(result.id)
@@ -1455,11 +1568,13 @@ def test_edge_cases(client: SpooledClient) -> None:
 
     def test_job_with_expiration() -> None:
         expires_at = datetime.now(timezone.utc) + timedelta(minutes=1)
-        result = client.jobs.create({
-            "queue_name": f"{test_prefix}-edge",
-            "payload": {"expires": True},
-            "expires_at": expires_at,
-        })
+        result = client.jobs.create(
+            {
+                "queue_name": f"{test_prefix}-edge",
+                "payload": {"expires": True},
+                "expires_at": expires_at,
+            }
+        )
         job = client.jobs.get(result.id)
         assert_defined(job.expires_at, "expires_at should be set")
         client.jobs.cancel(result.id)
@@ -1468,10 +1583,12 @@ def test_edge_cases(client: SpooledClient) -> None:
 
     def test_special_queue_name() -> None:
         special_queue = f"{test_prefix}-special_queue.test-123"
-        result = client.jobs.create({
-            "queue_name": special_queue,
-            "payload": {"test": "special"},
-        })
+        result = client.jobs.create(
+            {
+                "queue_name": special_queue,
+                "payload": {"test": "special"},
+            }
+        )
         job = client.jobs.get(result.id)
         assert_equal(job.queue_name, special_queue, "queue name with special chars")
         client.jobs.cancel(result.id)
@@ -1479,14 +1596,16 @@ def test_edge_cases(client: SpooledClient) -> None:
     run_test("Special characters in queue name", test_special_queue_name)
 
     def test_unicode_payload() -> None:
-        result = client.jobs.create({
-            "queue_name": f"{test_prefix}-edge",
-            "payload": {
-                "message": "你好世界 🌍 مرحبا",
-                "emoji": "🎉🚀💻",
-                "japanese": "こんにちは",
-            },
-        })
+        result = client.jobs.create(
+            {
+                "queue_name": f"{test_prefix}-edge",
+                "payload": {
+                    "message": "你好世界 🌍 مرحبا",
+                    "emoji": "🎉🚀💻",
+                    "japanese": "こんにちは",
+                },
+            }
+        )
         job = client.jobs.get(result.id)
         assert_defined(job.payload, "payload with unicode")
         client.jobs.cancel(result.id)
@@ -1494,15 +1613,17 @@ def test_edge_cases(client: SpooledClient) -> None:
     run_test("Unicode in payload", test_unicode_payload)
 
     def test_all_optional_fields() -> None:
-        result = client.jobs.create({
-            "queue_name": f"{test_prefix}-edge",
-            "payload": {"complete": True},
-            "priority": 50,
-            "max_retries": 5,
-            "timeout_seconds": 600,
-            "tags": {"env": "test", "version": "1.0"},
-            "idempotency_key": f"full-{int(time.time())}",
-        })
+        result = client.jobs.create(
+            {
+                "queue_name": f"{test_prefix}-edge",
+                "payload": {"complete": True},
+                "priority": 50,
+                "max_retries": 5,
+                "timeout_seconds": 600,
+                "tags": {"env": "test", "version": "1.0"},
+                "idempotency_key": f"full-{int(time.time())}",
+            }
+        )
         job = client.jobs.get(result.id)
         assert_equal(job.priority, 50, "priority")
         assert_equal(job.max_retries, 5, "max retries")
@@ -1527,10 +1648,12 @@ def test_error_handling(client: SpooledClient) -> None:
 
     def test_validation_error() -> None:
         try:
-            client.jobs.create({
-                "queue_name": "x",  # Valid queue name
-                "payload": "not-a-dict",  # Invalid payload type
-            })
+            client.jobs.create(
+                {
+                    "queue_name": "x",  # Valid queue name
+                    "payload": "not-a-dict",  # Invalid payload type
+                }
+            )
             raise AssertionError("Should have thrown")
         except (SpooledError, Exception) as e:
             # Either SDK or server should reject invalid payload
@@ -1560,7 +1683,9 @@ def test_metrics() -> None:
             req = urllib.request.Request(f"{BASE_URL}/metrics")
             with urllib.request.urlopen(req, timeout=5) as resp:
                 content = resp.read().decode()
-                assert_true("spooled" in content.lower() or "http" in content.lower(), "should have metrics")
+                assert_true(
+                    "spooled" in content.lower() or "http" in content.lower(), "should have metrics"
+                )
                 log("Metrics endpoint accessible")
         except Exception as e:
             log(f"Metrics: {e}")
@@ -1579,10 +1704,12 @@ def test_concurrent_operations(client: SpooledClient) -> None:
         num_concurrent = 5
 
         def create_job(i: int) -> str:
-            result = client.jobs.create({
-                "queue_name": queue_name,
-                "payload": {"index": i},
-            })
+            result = client.jobs.create(
+                {
+                    "queue_name": queue_name,
+                    "payload": {"index": i},
+                }
+            )
             return result.id
 
         with concurrent.futures.ThreadPoolExecutor(max_workers=num_concurrent) as executor:
@@ -1604,7 +1731,7 @@ def test_concurrent_operations(client: SpooledClient) -> None:
         queue_name = f"{test_prefix}-race"
 
         # Create a job
-        result = client.jobs.create({"queue_name": queue_name, "payload": {"race": True}})
+        client.jobs.create({"queue_name": queue_name, "payload": {"race": True}})
 
         # Register two workers
         w1 = client.workers.register({"queue_name": queue_name, "hostname": "worker1"})
@@ -1612,7 +1739,9 @@ def test_concurrent_operations(client: SpooledClient) -> None:
 
         # Both try to claim concurrently
         def claim(worker_id: str) -> int:
-            result = client.jobs.claim({"queue_name": queue_name, "worker_id": worker_id, "limit": 1})
+            result = client.jobs.claim(
+                {"queue_name": queue_name, "worker_id": worker_id, "limit": 1}
+            )
             return len(result.jobs)
 
         with concurrent.futures.ThreadPoolExecutor(max_workers=2) as executor:
@@ -1648,10 +1777,12 @@ def test_stress_load(client: SpooledClient) -> None:
         start = time.time()
         job_ids = []
         for i in range(num_jobs):
-            result = client.jobs.create({
-                "queue_name": queue_name,
-                "payload": {"stress": i},
-            })
+            result = client.jobs.create(
+                {
+                    "queue_name": queue_name,
+                    "payload": {"stress": i},
+                }
+            )
             job_ids.append(result.id)
         duration = time.time() - start
 
@@ -1678,8 +1809,8 @@ def test_admin_endpoints() -> None:
         results.append(TestResult(name="Admin tests", passed=True, duration=0, skipped=True))
         return
 
-    import urllib.request
     import urllib.error
+    import urllib.request
 
     def test_admin_stats() -> None:
         try:
@@ -1690,7 +1821,7 @@ def test_admin_endpoints() -> None:
             with urllib.request.urlopen(req, timeout=5) as resp:
                 data = json.loads(resp.read())
                 assert_defined(data, "stats data")
-                log(f"Admin stats retrieved")
+                log("Admin stats retrieved")
         except urllib.error.HTTPError as e:
             log(f"Admin stats: {e.code}")
 
@@ -1915,10 +2046,10 @@ def test_websocket_realtime(client: SpooledClient) -> None:
     # WebSocket requires the realtime extra
     try:
         from spooled.realtime import (
-            WebSocketClient,
-            WebSocketConnectionOptions,
             ConnectionState,
             SubscriptionFilter,
+            WebSocketClient,
+            WebSocketConnectionOptions,
         )
     except ImportError:
         print("  ⏭️  WebSocket tests skipped (websockets not installed)")
@@ -1934,12 +2065,14 @@ def test_websocket_realtime(client: SpooledClient) -> None:
         # Convert HTTP URL to WS URL
         ws_url = BASE_URL.replace("http://", "ws://").replace("https://", "wss://")
 
-        ws_client = WebSocketClient(WebSocketConnectionOptions(
-            ws_url=ws_url,
-            token=API_KEY,
-            auto_reconnect=False,  # Don't reconnect in tests
-            command_timeout=5.0,
-        ))
+        ws_client = WebSocketClient(
+            WebSocketConnectionOptions(
+                ws_url=ws_url,
+                token=API_KEY,
+                auto_reconnect=False,  # Don't reconnect in tests
+                command_timeout=5.0,
+            )
+        )
         assert_equal(ws_client.state, ConnectionState.DISCONNECTED, "initial state")
 
     run_test("WebSocket: Create client", test_ws_connect)
@@ -2008,14 +2141,18 @@ def test_grpc_advanced(client: SpooledClient) -> None:
 
     if SKIP_GRPC:
         print("  ⏭️  gRPC advanced tests skipped (set SKIP_GRPC=0 to enable)")
-        results.append(TestResult(name="gRPC advanced tests", passed=True, duration=0, skipped=True))
+        results.append(
+            TestResult(name="gRPC advanced tests", passed=True, duration=0, skipped=True)
+        )
         return
 
     try:
         from spooled.grpc import SpooledGrpcClient
     except ImportError:
         print("  ⏭️  gRPC advanced tests skipped (grpcio not installed)")
-        results.append(TestResult(name="gRPC advanced tests", passed=True, duration=0, skipped=True))
+        results.append(
+            TestResult(name="gRPC advanced tests", passed=True, duration=0, skipped=True)
+        )
         return
 
     cleanup_old_jobs(client)
@@ -2049,7 +2186,7 @@ def test_grpc_advanced(client: SpooledClient) -> None:
             payload={"test": "get_job"},
         )
         job_id = result.job_id
-        
+
         # Get it back
         get_result = grpc_client.queue.get_job(job_id)
         assert_defined(get_result.job, "job should exist")
@@ -2086,7 +2223,7 @@ def test_grpc_advanced(client: SpooledClient) -> None:
                 queue_name=queue_name,
                 payload={"batch": i},
             )
-        
+
         # Dequeue batch
         result = grpc_client.queue.dequeue(
             queue_name=queue_name,
@@ -2104,25 +2241,25 @@ def test_grpc_advanced(client: SpooledClient) -> None:
             queue_name=queue_name,
             payload={"complete_test": True},
         )
-        
+
         # Dequeue and find the job we just created
         dequeue_result = grpc_client.queue.dequeue(
             queue_name=queue_name,
             worker_id=worker_id,
             batch_size=10,  # Get more to find our job
         )
-        
+
         # Find our specific job or use first available
         target_job_id = enqueue_result.job_id
         claimed_job_ids = [j.id for j in dequeue_result.jobs]
         if target_job_id not in claimed_job_ids and claimed_job_ids:
             # Use the first claimed job instead
             target_job_id = claimed_job_ids[0]
-        
+
         if not target_job_id or target_job_id not in claimed_job_ids:
             log("No job available to complete, skipping")
             return
-        
+
         # Complete with result
         result = grpc_client.queue.complete(
             job_id=target_job_id,
@@ -2140,25 +2277,25 @@ def test_grpc_advanced(client: SpooledClient) -> None:
             payload={"fail_test": True},
             max_retries=3,
         )
-        
+
         # Dequeue and find the job we just created
         dequeue_result = grpc_client.queue.dequeue(
             queue_name=queue_name,
             worker_id=worker_id,
             batch_size=10,  # Get more to find our job
         )
-        
+
         # Find our specific job or use first available
         target_job_id = enqueue_result.job_id
         claimed_job_ids = [j.id for j in dequeue_result.jobs]
         if target_job_id not in claimed_job_ids and claimed_job_ids:
             # Use the first claimed job instead
             target_job_id = claimed_job_ids[0]
-        
+
         if not target_job_id or target_job_id not in claimed_job_ids:
             log("No job available to fail, skipping")
             return
-        
+
         # Fail with retry
         result = grpc_client.queue.fail(
             job_id=target_job_id,
@@ -2279,12 +2416,14 @@ def test_webhook_retry(client: SpooledClient) -> None:
     def test_setup_webhook() -> None:
         nonlocal webhook_id
         try:
-            webhook = client.webhooks.create({
-                "name": f"retry-test-{int(time.time())}",
-                "url": webhook_url,
-                "events": ["job.created"],
-                "enabled": True,
-            })
+            webhook = client.webhooks.create(
+                {
+                    "name": f"retry-test-{int(time.time())}",
+                    "url": webhook_url,
+                    "events": ["job.created"],
+                    "enabled": True,
+                }
+            )
             webhook_id = webhook.id
             log(f"Created webhook {webhook_id}")
         except SpooledError as e:
@@ -2296,7 +2435,7 @@ def test_webhook_retry(client: SpooledClient) -> None:
         if not webhook_id:
             log("No webhook created, skipping retry test")
             return
-        
+
         try:
             deliveries = client.webhooks.get_deliveries(webhook_id)
             if deliveries and len(deliveries) > 0:
@@ -2332,12 +2471,14 @@ def test_webhook_delivery(client: SpooledClient) -> None:
         nonlocal webhook_id, ssrf_blocked
         clear_received_webhooks()
         try:
-            result = client.webhooks.create({
-                "name": f"{test_prefix}-delivery-test",
-                "url": webhook_url,
-                "events": ["job.created", "job.started", "job.completed"],
-                "enabled": True,
-            })
+            result = client.webhooks.create(
+                {
+                    "name": f"{test_prefix}-delivery-test",
+                    "url": webhook_url,
+                    "events": ["job.created", "job.started", "job.completed"],
+                    "enabled": True,
+                }
+            )
             webhook_id = result.id
         except SpooledError as e:
             if "HTTP not allowed" in str(e) or "Invalid webhook URL" in str(e):
@@ -2347,19 +2488,25 @@ def test_webhook_delivery(client: SpooledClient) -> None:
             else:
                 raise
 
-    run_test("Setup webhook for job events", test_setup_webhook, 
-             skip=ssrf_blocked, skip_reason="SSRF protection blocks localhost")
+    run_test(
+        "Setup webhook for job events",
+        test_setup_webhook,
+        skip=ssrf_blocked,
+        skip_reason="SSRF protection blocks localhost",
+    )
 
     def test_receive_job_created_webhook() -> None:
         if ssrf_blocked:
             log("Skipped - webhook creation blocked by SSRF")
             return
-            
-        client.jobs.create({
-            "queue_name": queue_name,
-            "payload": {"test": "webhook-delivery"},
-        })
-        
+
+        client.jobs.create(
+            {
+                "queue_name": queue_name,
+                "payload": {"test": "webhook-delivery"},
+            }
+        )
+
         # Wait for webhook
         webhook = wait_for_webhook("job.created", 3000)
         if webhook:
@@ -2385,11 +2532,11 @@ def test_websocket(client: SpooledClient) -> None:
     def test_ws_connectivity() -> None:
         # Get JWT token first
         auth = client.auth.login({"api_key": API_KEY})
-        
+
         # Test WS upgrade capability
         ws_url = BASE_URL.replace("http://", "ws://").replace("https://", "wss://")
         log(f"WebSocket URL would be: {ws_url}/api/v1/ws?token=...")
-        
+
         # Verify we can get the token for WS connection
         assert_defined(auth.access_token, "JWT token for WS")
         log("WebSocket auth token obtained successfully")
@@ -2490,7 +2637,7 @@ def test_tier_limits(client: SpooledClient) -> None:
     def test_verify_usage_tracking() -> None:
         usage = client.organizations.get_usage()
         assert_defined(usage.usage, "should have usage data")
-        log(f"Usage data retrieved")
+        log("Usage data retrieved")
 
     run_test("Tier: Verify usage tracking", test_verify_usage_tracking)
 
@@ -2501,14 +2648,18 @@ def test_grpc_tier_limits(client: SpooledClient) -> None:
 
     if SKIP_GRPC:
         print("  ⏭️  gRPC tier limit tests skipped (set SKIP_GRPC=0 to enable)")
-        results.append(TestResult(name="gRPC tier limit tests", passed=True, duration=0, skipped=True))
+        results.append(
+            TestResult(name="gRPC tier limit tests", passed=True, duration=0, skipped=True)
+        )
         return
 
     try:
         from spooled.grpc import SpooledGrpcClient
     except ImportError:
         print("  ⏭️  gRPC tier limit tests skipped (grpcio not installed)")
-        results.append(TestResult(name="gRPC tier limit tests", passed=True, duration=0, skipped=True))
+        results.append(
+            TestResult(name="gRPC tier limit tests", passed=True, duration=0, skipped=True)
+        )
         return
 
     cleanup_old_jobs(client)

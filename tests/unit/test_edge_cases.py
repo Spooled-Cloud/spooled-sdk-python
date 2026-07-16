@@ -45,10 +45,12 @@ class TestConcurrentAccess:
             results = []
 
             def create_job(n):
-                result = client.jobs.create({
-                    "queue_name": "test",
-                    "payload": {"n": n},
-                })
+                result = client.jobs.create(
+                    {
+                        "queue_name": "test",
+                        "payload": {"n": n},
+                    }
+                )
                 results.append(result)
 
             # Run 10 concurrent requests
@@ -235,10 +237,12 @@ class TestLargePayloads:
         )
 
         with SpooledClient(api_key=API_KEY, base_url=BASE_URL) as client:
-            result = client.jobs.create({
-                "queue_name": "test",
-                "payload": large_payload,
-            })
+            result = client.jobs.create(
+                {
+                    "queue_name": "test",
+                    "payload": large_payload,
+                }
+            )
             assert result.id == "job_large"
 
     @respx.mock
@@ -248,7 +252,9 @@ class TestLargePayloads:
             return_value=httpx.Response(
                 200,
                 json={
-                    "succeeded": [{"index": i, "job_id": f"j_{i}", "created": True} for i in range(100)],
+                    "succeeded": [
+                        {"index": i, "job_id": f"j_{i}", "created": True} for i in range(100)
+                    ],
                     "failed": [],
                     "total": 100,
                     "success_count": 100,
@@ -258,10 +264,12 @@ class TestLargePayloads:
         )
 
         with SpooledClient(api_key=API_KEY, base_url=BASE_URL) as client:
-            result = client.jobs.bulk_enqueue({
-                "queue_name": "test",
-                "jobs": [{"payload": {"n": i}} for i in range(100)],
-            })
+            result = client.jobs.bulk_enqueue(
+                {
+                    "queue_name": "test",
+                    "jobs": [{"payload": {"n": i}} for i in range(100)],
+                }
+            )
             assert result.success_count == 100
 
 
@@ -279,23 +287,23 @@ class TestSpecialCharacters:
         )
 
         with SpooledClient(api_key=API_KEY, base_url=BASE_URL) as client:
-            result = client.jobs.create({
-                "queue_name": "test",
-                "payload": {
-                    "message": "Hello, 世界! 🌍",
-                    "emoji": "👍 🎉 💯",
-                    "japanese": "こんにちは",
-                    "arabic": "مرحبا",
-                },
-            })
+            result = client.jobs.create(
+                {
+                    "queue_name": "test",
+                    "payload": {
+                        "message": "Hello, 世界! 🌍",
+                        "emoji": "👍 🎉 💯",
+                        "japanese": "こんにちは",
+                        "arabic": "مرحبا",
+                    },
+                }
+            )
             assert result.id == "job_unicode"
 
     @respx.mock
     def test_special_chars_in_queue_name(self) -> None:
         """Test special characters in queue name query."""
-        respx.get(f"{BASE_URL}/api/v1/jobs").mock(
-            return_value=httpx.Response(200, json=[])
-        )
+        respx.get(f"{BASE_URL}/api/v1/jobs").mock(return_value=httpx.Response(200, json=[]))
 
         with SpooledClient(api_key=API_KEY, base_url=BASE_URL) as client:
             # Queue names with hyphens and numbers
@@ -308,9 +316,7 @@ class TestEmptyResponses:
     @respx.mock
     def test_empty_list_response(self) -> None:
         """Test empty list response."""
-        respx.get(f"{BASE_URL}/api/v1/jobs").mock(
-            return_value=httpx.Response(200, json=[])
-        )
+        respx.get(f"{BASE_URL}/api/v1/jobs").mock(return_value=httpx.Response(200, json=[]))
 
         with SpooledClient(api_key=API_KEY, base_url=BASE_URL) as client:
             jobs = client.jobs.list()
@@ -381,9 +387,7 @@ class TestErrorMessageParsing:
     @respx.mock
     def test_error_with_no_body(self) -> None:
         """Test handling error with empty body."""
-        respx.get(f"{BASE_URL}/api/v1/jobs").mock(
-            return_value=httpx.Response(500, content=b"")
-        )
+        respx.get(f"{BASE_URL}/api/v1/jobs").mock(return_value=httpx.Response(500, content=b""))
 
         with SpooledClient(api_key=API_KEY, base_url=BASE_URL) as client:
             with pytest.raises(ServerError) as exc_info:
@@ -427,9 +431,7 @@ class TestTypeConversions:
     @respx.mock
     def test_list_with_status_filter(self) -> None:
         """Test list with status filter."""
-        respx.get(f"{BASE_URL}/api/v1/jobs").mock(
-            return_value=httpx.Response(200, json=[])
-        )
+        respx.get(f"{BASE_URL}/api/v1/jobs").mock(return_value=httpx.Response(200, json=[]))
 
         with SpooledClient(api_key=API_KEY, base_url=BASE_URL) as client:
             # Status filter should work
@@ -438,9 +440,7 @@ class TestTypeConversions:
     @respx.mock
     def test_boolean_in_params(self) -> None:
         """Test boolean conversion in query params."""
-        respx.get(f"{BASE_URL}/api/v1/schedules").mock(
-            return_value=httpx.Response(200, json=[])
-        )
+        respx.get(f"{BASE_URL}/api/v1/schedules").mock(return_value=httpx.Response(200, json=[]))
 
         with SpooledClient(api_key=API_KEY, base_url=BASE_URL) as client:
             client.schedules.list({"is_active": True})
@@ -461,10 +461,13 @@ class TestNetworkConditions:
             )
         )
 
-        with SpooledClient(
-            api_key=API_KEY,
-            base_url=BASE_URL,
-            retry=RetryConfig(max_retries=0),
-            circuit_breaker=CircuitBreakerConfig(enabled=False),
-        ) as client, pytest.raises(ServerError):
+        with (
+            SpooledClient(
+                api_key=API_KEY,
+                base_url=BASE_URL,
+                retry=RetryConfig(max_retries=0),
+                circuit_breaker=CircuitBreakerConfig(enabled=False),
+            ) as client,
+            pytest.raises(ServerError),
+        ):
             client.jobs.list()

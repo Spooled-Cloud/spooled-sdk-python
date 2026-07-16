@@ -22,7 +22,9 @@ from spooled.types.schedules import (
 class SchedulesResource(BaseResource):
     """Schedules resource (sync)."""
 
-    def list(self, params: ListSchedulesParams | dict[str, Any] | None = None) -> builtins.list[Schedule]:
+    def list(
+        self, params: ListSchedulesParams | dict[str, Any] | None = None
+    ) -> builtins.list[Schedule]:
         """List schedules."""
         if isinstance(params, dict):
             params = ListSchedulesParams.model_validate(params)
@@ -30,9 +32,7 @@ class SchedulesResource(BaseResource):
         data = self._http.get("/schedules", params=query_params)
         return [Schedule.model_validate(item) for item in data]
 
-    def create(
-        self, params: CreateScheduleParams | dict[str, Any]
-    ) -> CreateScheduleResponse:
+    def create(self, params: CreateScheduleParams | dict[str, Any]) -> CreateScheduleResponse:
         """Create a new schedule."""
         if isinstance(params, dict):
             params = CreateScheduleParams.model_validate(params)
@@ -44,9 +44,7 @@ class SchedulesResource(BaseResource):
         data = self._http.get(f"/schedules/{schedule_id}")
         return Schedule.model_validate(data)
 
-    def update(
-        self, schedule_id: str, params: UpdateScheduleParams | dict[str, Any]
-    ) -> Schedule:
+    def update(self, schedule_id: str, params: UpdateScheduleParams | dict[str, Any]) -> Schedule:
         """Update a schedule."""
         if isinstance(params, dict):
             params = UpdateScheduleParams.model_validate(params)
@@ -93,9 +91,7 @@ class AsyncSchedulesResource(AsyncBaseResource):
         data = await self._http.get("/schedules", params=query_params)
         return [Schedule.model_validate(item) for item in data]
 
-    async def create(
-        self, params: CreateScheduleParams | dict[str, Any]
-    ) -> CreateScheduleResponse:
+    async def create(self, params: CreateScheduleParams | dict[str, Any]) -> CreateScheduleResponse:
         """Create a new schedule."""
         if isinstance(params, dict):
             params = CreateScheduleParams.model_validate(params)
@@ -141,7 +137,5 @@ class AsyncSchedulesResource(AsyncBaseResource):
 
     async def get_history(self, schedule_id: str, limit: int = 10) -> builtins.list[ScheduleRun]:
         """Get schedule execution history."""
-        data = await self._http.get(
-            f"/schedules/{schedule_id}/history", params={"limit": limit}
-        )
+        data = await self._http.get(f"/schedules/{schedule_id}/history", params={"limit": limit})
         return [ScheduleRun.model_validate(item) for item in data]

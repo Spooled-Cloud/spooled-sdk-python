@@ -40,9 +40,9 @@ class JobContext:
     signal: Event  # For abort signaling
 
     def progress(self, percent: int, message: str | None = None) -> None:
-        """Report job progress (0-100)."""
-        # Progress tracking could be implemented via heartbeat metadata
-        pass
+        """Log local job progress (0-100)."""
+        bounded_percent = max(0, min(100, percent))
+        self.log("info", f"Progress {bounded_percent}%", {"message": message} if message else None)
 
     def log(
         self,
@@ -74,8 +74,11 @@ class AsyncJobContext:
     signal: Any  # asyncio.Event for abort signaling
 
     async def progress(self, percent: int, message: str | None = None) -> None:
-        """Report job progress (0-100)."""
-        pass
+        """Log local job progress (0-100)."""
+        bounded_percent = max(0, min(100, percent))
+        await self.log(
+            "info", f"Progress {bounded_percent}%", {"message": message} if message else None
+        )
 
     async def log(
         self,

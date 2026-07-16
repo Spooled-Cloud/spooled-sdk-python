@@ -162,7 +162,9 @@ class SpooledWorker:
         self._handler = handler
         return handler
 
-    def on(self, event: WorkerEvent, handler: Callable[..., Any] | None = None) -> Callable[..., Any]:
+    def on(
+        self, event: WorkerEvent, handler: Callable[..., Any] | None = None
+    ) -> Callable[..., Any]:
         """
         Register event handler (decorator).
 
@@ -199,14 +201,16 @@ class SpooledWorker:
 
         try:
             # Register with the API
-            registration = self._client.workers.register({
-                "queue_name": self._options.queue_name,
-                "hostname": self._options.hostname,
-                "worker_type": self._options.worker_type,
-                "max_concurrency": self._options.concurrency,
-                "metadata": self._options.metadata,
-                "version": self._options.version,
-            })
+            registration = self._client.workers.register(
+                {
+                    "queue_name": self._options.queue_name,
+                    "hostname": self._options.hostname,
+                    "worker_type": self._options.worker_type,
+                    "max_concurrency": self._options.concurrency,
+                    "metadata": self._options.metadata,
+                    "version": self._options.version,
+                }
+            )
 
             self._worker_id = registration.id
 
@@ -222,10 +226,13 @@ class SpooledWorker:
 
             # Start polling
             self._state = "running"
-            self._emit("started", StartedEventData(
-                worker_id=self._worker_id,
-                queue_name=self._options.queue_name,
-            ))
+            self._emit(
+                "started",
+                StartedEventData(
+                    worker_id=self._worker_id,
+                    queue_name=self._options.queue_name,
+                ),
+            )
 
             # Poll loop (blocking)
             while self._state == "running" and not self._shutdown_event.is_set():
@@ -298,10 +305,13 @@ class SpooledWorker:
                     self._debug(f"Failed to deregister worker: {e}", None)
 
         self._state = "stopped"
-        self._emit("stopped", StoppedEventData(
-            worker_id=self._worker_id or "",
-            reason="graceful",
-        ))
+        self._emit(
+            "stopped",
+            StoppedEventData(
+                worker_id=self._worker_id or "",
+                reason="graceful",
+            ),
+        )
         self._worker_id = None
 
     def _poll(self) -> None:
@@ -317,12 +327,14 @@ class SpooledWorker:
             return
 
         try:
-            result = self._client.jobs.claim({
-                "queue_name": self._options.queue_name,
-                "worker_id": self._worker_id,
-                "limit": available_slots,
-                "lease_duration_secs": self._options.lease_duration,
-            })
+            result = self._client.jobs.claim(
+                {
+                    "queue_name": self._options.queue_name,
+                    "worker_id": self._worker_id,
+                    "limit": available_slots,
+                    "lease_duration_secs": self._options.lease_duration,
+                }
+            )
 
             for job in result.jobs:
                 self._process_job(job)
@@ -334,10 +346,13 @@ class SpooledWorker:
 
     def _process_job(self, job: ClaimedJob) -> None:
         """Start processing a job."""
-        self._emit("job:claimed", JobClaimedEventData(
-            job_id=job.id,
-            queue_name=job.queue_name,
-        ))
+        self._emit(
+            "job:claimed",
+            JobClaimedEventData(
+                job_id=job.id,
+                queue_name=job.queue_name,
+            ),
+        )
 
         abort_event = Event()
         active = ActiveJob(
@@ -361,10 +376,13 @@ class SpooledWorker:
         """Execute job handler."""
         job = active.job
 
-        self._emit("job:started", JobStartedEventData(
-            job_id=job.id,
-            queue_name=job.queue_name,
-        ))
+        self._emit(
+            "job:started",
+            JobStartedEventData(
+                job_id=job.id,
+                queue_name=job.queue_name,
+            ),
+        )
 
         context = JobContext(
             job_id=job.id,
@@ -419,11 +437,14 @@ class SpooledWorker:
             with self._lock:
                 if self._active_jobs.get(job.id) is not active:
                     return
-            self._emit("job:completed", JobCompletedEventData(
-                job_id=job.id,
-                queue_name=job.queue_name,
-                result=result,
-            ))
+            self._emit(
+                "job:completed",
+                JobCompletedEventData(
+                    job_id=job.id,
+                    queue_name=job.queue_name,
+                    result=result,
+                ),
+            )
 
         except Exception as e:
             if self._debug:
@@ -450,12 +471,15 @@ class SpooledWorker:
             with self._lock:
                 if self._active_jobs.get(job.id) is not active:
                     return
-            self._emit("job:failed", JobFailedEventData(
-                job_id=job.id,
-                queue_name=job.queue_name,
-                error=error_message,
-                will_retry=will_retry,
-            ))
+            self._emit(
+                "job:failed",
+                JobFailedEventData(
+                    job_id=job.id,
+                    queue_name=job.queue_name,
+                    error=error_message,
+                    will_retry=will_retry,
+                ),
+            )
 
         except Exception as e:
             if self._debug:
@@ -512,10 +536,13 @@ class SpooledWorker:
                 return
 
             try:
-                self._client.workers.heartbeat(self._worker_id, {
-                    "current_jobs": len(self._active_jobs),
-                    "status": "healthy",
-                })
+                self._client.workers.heartbeat(
+                    self._worker_id,
+                    {
+                        "current_jobs": len(self._active_jobs),
+                        "status": "healthy",
+                    },
+                )
             except Exception as e:
                 if self._debug:
                     self._debug(f"Worker heartbeat failed: {e}", None)

@@ -29,18 +29,14 @@ class WorkersResource(BaseResource):
         data = self._http.get(f"/workers/{worker_id}")
         return Worker.model_validate(data)
 
-    def register(
-        self, params: RegisterWorkerParams | dict[str, Any]
-    ) -> RegisterWorkerResponse:
+    def register(self, params: RegisterWorkerParams | dict[str, Any]) -> RegisterWorkerResponse:
         """Register a worker."""
         if isinstance(params, dict):
             params = RegisterWorkerParams.model_validate(params)
         data = self._http.post("/workers/register", params.model_dump(exclude_none=True))
         return RegisterWorkerResponse.model_validate(data)
 
-    def heartbeat(
-        self, worker_id: str, params: WorkerHeartbeatParams | dict[str, Any]
-    ) -> None:
+    def heartbeat(self, worker_id: str, params: WorkerHeartbeatParams | dict[str, Any]) -> None:
         """Send worker heartbeat."""
         if isinstance(params, dict):
             params = WorkerHeartbeatParams.model_validate(params)

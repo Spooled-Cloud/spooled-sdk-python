@@ -173,7 +173,15 @@ class TestJob:
         """Test status must be valid literal."""
         now = datetime.now()
         # Valid statuses
-        for status in ["pending", "scheduled", "processing", "completed", "failed", "deadletter", "cancelled"]:
+        for status in [
+            "pending",
+            "scheduled",
+            "processing",
+            "completed",
+            "failed",
+            "deadletter",
+            "cancelled",
+        ]:
             job = Job(
                 id="job_123",
                 organization_id="org_1",
@@ -232,27 +240,31 @@ class TestClaimedJob:
 
     def test_parses_lease_id(self) -> None:
         """Test lease_id fencing token is parsed from the claim response."""
-        job = ClaimedJob.model_validate({
-            "id": "job_123",
-            "queue_name": "test",
-            "payload": {"key": "value"},
-            "retry_count": 0,
-            "max_retries": 3,
-            "timeout_seconds": 300,
-            "lease_id": "lease-abc",
-        })
+        job = ClaimedJob.model_validate(
+            {
+                "id": "job_123",
+                "queue_name": "test",
+                "payload": {"key": "value"},
+                "retry_count": 0,
+                "max_retries": 3,
+                "timeout_seconds": 300,
+                "lease_id": "lease-abc",
+            }
+        )
         assert job.lease_id == "lease-abc"
 
     def test_lease_id_defaults_to_none(self) -> None:
         """Test lease_id is None when absent (legacy server)."""
-        job = ClaimedJob.model_validate({
-            "id": "job_123",
-            "queue_name": "test",
-            "payload": {},
-            "retry_count": 0,
-            "max_retries": 3,
-            "timeout_seconds": 300,
-        })
+        job = ClaimedJob.model_validate(
+            {
+                "id": "job_123",
+                "queue_name": "test",
+                "payload": {},
+                "retry_count": 0,
+                "max_retries": 3,
+                "timeout_seconds": 300,
+            }
+        )
         assert job.lease_id is None
 
 

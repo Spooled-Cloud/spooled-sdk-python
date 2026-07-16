@@ -402,7 +402,9 @@ class SpooledClient:
         new_config: dict[str, Any] = {
             "api_key": api_key if api_key is not None else self._config.api_key,
             "access_token": access_token if access_token is not None else self._config.access_token,
-            "refresh_token": refresh_token if refresh_token is not None else self._config.refresh_token,
+            "refresh_token": refresh_token
+            if refresh_token is not None
+            else self._config.refresh_token,
             "admin_key": admin_key if admin_key is not None else self._config.admin_key,
             "base_url": base_url if base_url is not None else self._config.base_url,
             "timeout": timeout if timeout is not None else self._config.timeout,

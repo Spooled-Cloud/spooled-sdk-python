@@ -27,15 +27,17 @@ class TestJobsResourceComplete:
         )
 
         with SpooledClient(api_key=API_KEY, base_url=BASE_URL) as client:
-            result = client.jobs.create({
-                "queue_name": "test",
-                "payload": {"key": "value"},
-                "priority": 10,
-                "max_retries": 5,
-                "timeout_seconds": 600,
-                "idempotency_key": "unique-123",
-                "tags": {"env": "test"},
-            })
+            result = client.jobs.create(
+                {
+                    "queue_name": "test",
+                    "payload": {"key": "value"},
+                    "priority": 10,
+                    "max_retries": 5,
+                    "timeout_seconds": 600,
+                    "idempotency_key": "unique-123",
+                    "tags": {"env": "test"},
+                }
+            )
             assert result.id == "job_123"
 
     @respx.mock
@@ -49,28 +51,30 @@ class TestJobsResourceComplete:
         )
 
         with SpooledClient(api_key=API_KEY, base_url=BASE_URL) as client:
-            result = client.jobs.create({
-                "queue_name": "test",
-                "payload": {},
-                "idempotency_key": "existing-key",
-            })
+            result = client.jobs.create(
+                {
+                    "queue_name": "test",
+                    "payload": {},
+                    "idempotency_key": "existing-key",
+                }
+            )
             assert result.id == "job_existing"
             assert result.created is False
 
     @respx.mock
     def test_list_jobs_with_filters(self) -> None:
         """Test listing jobs with filters."""
-        respx.get(f"{BASE_URL}/api/v1/jobs").mock(
-            return_value=httpx.Response(200, json=[])
-        )
+        respx.get(f"{BASE_URL}/api/v1/jobs").mock(return_value=httpx.Response(200, json=[]))
 
         with SpooledClient(api_key=API_KEY, base_url=BASE_URL) as client:
-            jobs = client.jobs.list({
-                "queue_name": "emails",
-                "status": "pending",
-                "limit": 25,
-                "offset": 10,
-            })
+            jobs = client.jobs.list(
+                {
+                    "queue_name": "emails",
+                    "status": "pending",
+                    "limit": 25,
+                    "offset": 10,
+                }
+            )
             assert jobs == []
 
     @respx.mock
@@ -165,13 +169,15 @@ class TestJobsResourceComplete:
         )
 
         with SpooledClient(api_key=API_KEY, base_url=BASE_URL) as client:
-            result = client.jobs.bulk_enqueue({
-                "queue_name": "test",
-                "jobs": [
-                    {"payload": {"n": 1}},
-                    {"payload": {"n": 2}},
-                ],
-            })
+            result = client.jobs.bulk_enqueue(
+                {
+                    "queue_name": "test",
+                    "jobs": [
+                        {"payload": {"n": 1}},
+                        {"payload": {"n": 2}},
+                    ],
+                }
+            )
             assert result.success_count == 2
             assert len(result.succeeded) == 2
 
@@ -197,11 +203,13 @@ class TestJobsResourceComplete:
         )
 
         with SpooledClient(api_key=API_KEY, base_url=BASE_URL) as client:
-            result = client.jobs.claim({
-                "queue_name": "test",
-                "worker_id": "worker_1",
-                "limit": 5,
-            })
+            result = client.jobs.claim(
+                {
+                    "queue_name": "test",
+                    "worker_id": "worker_1",
+                    "limit": 5,
+                }
+            )
             assert len(result.jobs) == 1
             assert result.jobs[0].id == "job_123"
 
@@ -213,10 +221,13 @@ class TestJobsResourceComplete:
         )
 
         with SpooledClient(api_key=API_KEY, base_url=BASE_URL) as client:
-            result = client.jobs.complete("job_123", {
-                "worker_id": "worker_1",
-                "result": {"processed": True},
-            })
+            result = client.jobs.complete(
+                "job_123",
+                {
+                    "worker_id": "worker_1",
+                    "result": {"processed": True},
+                },
+            )
             assert result.success is True
 
     @respx.mock
@@ -227,10 +238,13 @@ class TestJobsResourceComplete:
         )
 
         with SpooledClient(api_key=API_KEY, base_url=BASE_URL) as client:
-            result = client.jobs.fail("job_123", {
-                "worker_id": "worker_1",
-                "error": "Processing failed",
-            })
+            result = client.jobs.fail(
+                "job_123",
+                {
+                    "worker_id": "worker_1",
+                    "error": "Processing failed",
+                },
+            )
             assert result.success is True
 
     @respx.mock
@@ -242,10 +256,13 @@ class TestJobsResourceComplete:
 
         with SpooledClient(api_key=API_KEY, base_url=BASE_URL) as client:
             # Should not raise
-            client.jobs.heartbeat("job_123", {
-                "worker_id": "worker_1",
-                "lease_duration_secs": 60,
-            })
+            client.jobs.heartbeat(
+                "job_123",
+                {
+                    "worker_id": "worker_1",
+                    "lease_duration_secs": 60,
+                },
+            )
 
 
 class TestDlqResourceComplete:
@@ -311,8 +328,18 @@ class TestQueuesResourceComplete:
             return_value=httpx.Response(
                 200,
                 json=[
-                    {"queue_name": "emails", "max_retries": 3, "default_timeout": 300, "enabled": True},
-                    {"queue_name": "tasks", "max_retries": 5, "default_timeout": 600, "enabled": False},
+                    {
+                        "queue_name": "emails",
+                        "max_retries": 3,
+                        "default_timeout": 300,
+                        "enabled": True,
+                    },
+                    {
+                        "queue_name": "tasks",
+                        "max_retries": 5,
+                        "default_timeout": 600,
+                        "enabled": False,
+                    },
                 ],
             )
         )
@@ -344,10 +371,13 @@ class TestQueuesResourceComplete:
         )
 
         with SpooledClient(api_key=API_KEY, base_url=BASE_URL) as client:
-            queue = client.queues.update_config("test", {
-                "max_retries": 5,
-                "default_timeout": 600,
-            })
+            queue = client.queues.update_config(
+                "test",
+                {
+                    "max_retries": 5,
+                    "default_timeout": 600,
+                },
+            )
             assert queue.max_retries == 5
 
     @respx.mock
@@ -415,9 +445,7 @@ class TestQueuesResourceComplete:
     @respx.mock
     def test_delete_queue(self) -> None:
         """Test deleting a queue."""
-        respx.delete(f"{BASE_URL}/api/v1/queues/test").mock(
-            return_value=httpx.Response(204)
-        )
+        respx.delete(f"{BASE_URL}/api/v1/queues/test").mock(return_value=httpx.Response(204))
 
         with SpooledClient(api_key=API_KEY, base_url=BASE_URL) as client:
             client.queues.delete("test")  # Should not raise
@@ -442,11 +470,13 @@ class TestWorkersResourceComplete:
         )
 
         with SpooledClient(api_key=API_KEY, base_url=BASE_URL) as client:
-            result = client.workers.register({
-                "queue_name": "test",
-                "hostname": "worker-1.local",
-                "max_concurrency": 10,
-            })
+            result = client.workers.register(
+                {
+                    "queue_name": "test",
+                    "hostname": "worker-1.local",
+                    "max_concurrency": 10,
+                }
+            )
             assert result.id == "worker_123"
             assert result.heartbeat_interval_secs == 10
 
@@ -458,10 +488,13 @@ class TestWorkersResourceComplete:
         )
 
         with SpooledClient(api_key=API_KEY, base_url=BASE_URL) as client:
-            client.workers.heartbeat("worker_123", {
-                "current_jobs": 5,
-                "status": "healthy",
-            })
+            client.workers.heartbeat(
+                "worker_123",
+                {
+                    "current_jobs": 5,
+                    "status": "healthy",
+                },
+            )
 
     @respx.mock
     def test_deregister_worker(self) -> None:
@@ -493,13 +526,15 @@ class TestSchedulesResourceComplete:
         )
 
         with SpooledClient(api_key=API_KEY, base_url=BASE_URL) as client:
-            result = client.schedules.create({
-                "name": "Daily Job",
-                "cron_expression": "0 9 * * *",
-                "timezone": "UTC",
-                "queue_name": "tasks",
-                "payload_template": {"action": "run"},
-            })
+            result = client.schedules.create(
+                {
+                    "name": "Daily Job",
+                    "cron_expression": "0 9 * * *",
+                    "timezone": "UTC",
+                    "queue_name": "tasks",
+                    "payload_template": {"action": "run"},
+                }
+            )
             assert result.id == "sch_123"
 
     @respx.mock
@@ -541,11 +576,13 @@ class TestWebhooksResourceComplete:
         )
 
         with SpooledClient(api_key=API_KEY, base_url=BASE_URL) as client:
-            webhook = client.webhooks.create({
-                "name": "Notifications",
-                "url": "https://example.com/webhook",
-                "events": ["job.completed"],
-            })
+            webhook = client.webhooks.create(
+                {
+                    "name": "Notifications",
+                    "url": "https://example.com/webhook",
+                    "events": ["job.completed"],
+                }
+            )
             assert webhook.id == "wh_123"
 
     @respx.mock

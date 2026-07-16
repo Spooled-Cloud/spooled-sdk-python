@@ -22,9 +22,7 @@ class BillingResource(BaseResource):
         data = self._http.get("/billing/status")
         return BillingStatus.model_validate(data)
 
-    def create_portal(
-        self, params: CreatePortalParams | dict[str, Any]
-    ) -> CreatePortalResponse:
+    def create_portal(self, params: CreatePortalParams | dict[str, Any]) -> CreatePortalResponse:
         """Create a Stripe billing portal session."""
         if isinstance(params, dict):
             params = CreatePortalParams.model_validate(params)

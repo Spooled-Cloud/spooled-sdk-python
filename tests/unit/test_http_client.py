@@ -60,9 +60,7 @@ class TestHttpClientBasics:
 
     def test_build_url_encodes_special_characters(self, http_client: HttpClient) -> None:
         """Test query values with reserved characters are percent-encoded."""
-        url = http_client._build_url(
-            "/jobs", {"cursor": "a b+c/d=e&f", "tag": "x=1"}
-        )
+        url = http_client._build_url("/jobs", {"cursor": "a b+c/d=e&f", "tag": "x=1"})
         query = url.split("?", 1)[1]
         # Raw reserved characters must not leak into the query string as
         # separators/operators; only the intended '&' and '=' remain.
@@ -172,9 +170,7 @@ class TestHttpClientRequests:
     @respx.mock
     def test_delete_request(self, http_client: HttpClient) -> None:
         """Test DELETE request."""
-        respx.delete(f"{self.BASE_URL}/api/v1/jobs/job_123").mock(
-            return_value=httpx.Response(204)
-        )
+        respx.delete(f"{self.BASE_URL}/api/v1/jobs/job_123").mock(return_value=httpx.Response(204))
 
         result = http_client.delete("/jobs/job_123")
         assert result is None
@@ -356,9 +352,7 @@ class TestHttpClientRetrySafety:
         config = SpooledClientConfig(
             api_key="sp_test_xxxxxxxxxxxxxxxxxxxx",
             base_url=self.BASE_URL,
-            retry=RetryConfig(
-                max_retries=3, base_delay=0.001, max_delay=0.002, jitter=False
-            ),
+            retry=RetryConfig(max_retries=3, base_delay=0.001, max_delay=0.002, jitter=False),
             circuit_breaker=CircuitBreakerConfig(enabled=False),
         )
         resolved = resolve_config(config)
@@ -402,9 +396,7 @@ class TestHttpClientRetrySafety:
     def test_post_retried_on_rate_limit(self) -> None:
         """A 429 is always safe to retry, even for non-idempotent POST."""
         route = respx.post(f"{self.BASE_URL}/api/v1/jobs").mock(
-            return_value=httpx.Response(
-                429, json={"message": "slow"}, headers={"Retry-After": "0"}
-            )
+            return_value=httpx.Response(429, json={"message": "slow"}, headers={"Retry-After": "0"})
         )
         with pytest.raises(RateLimitError):
             self._client().post("/jobs", {"queue_name": "q", "payload": {}})

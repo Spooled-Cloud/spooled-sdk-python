@@ -23,9 +23,7 @@ def pytest_configure(config: pytest.Config) -> None:
     config.addinivalue_line(
         "markers", "slow: marks tests as slow (deselect with '-m \"not slow\"')"
     )
-    config.addinivalue_line(
-        "markers", "integration: marks tests as integration tests"
-    )
+    config.addinivalue_line("markers", "integration: marks tests as integration tests")
 
 
 @pytest.fixture(scope="session")
@@ -80,7 +78,7 @@ def fast_retry_config() -> RetryConfig:
     return RetryConfig(
         max_retries=2,
         base_delay=0.01,  # 10ms
-        max_delay=0.1,    # 100ms
+        max_delay=0.1,  # 100ms
         jitter=False,
     )
 

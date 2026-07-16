@@ -118,9 +118,7 @@ class TestAsyncHttpClientRequests:
     @respx.mock
     async def test_delete_request(self, http_client: AsyncHttpClient) -> None:
         """Test async DELETE request."""
-        respx.delete(f"{self.BASE_URL}/api/v1/jobs/job_123").mock(
-            return_value=httpx.Response(204)
-        )
+        respx.delete(f"{self.BASE_URL}/api/v1/jobs/job_123").mock(return_value=httpx.Response(204))
 
         result = await http_client.delete("/jobs/job_123")
         assert result is None

@@ -79,9 +79,7 @@ class AsyncQueuesResource(AsyncBaseResource):
         """Update queue configuration."""
         if isinstance(config, dict):
             config = UpdateQueueConfigParams.model_validate(config)
-        data = await self._http.put(
-            f"/queues/{name}/config", config.model_dump(exclude_none=True)
-        )
+        data = await self._http.put(f"/queues/{name}/config", config.model_dump(exclude_none=True))
         return QueueConfig.model_validate(data)
 
     async def get_stats(self, name: str) -> QueueStats:

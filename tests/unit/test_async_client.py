@@ -34,10 +34,12 @@ class TestAsyncSpooledClient:
             api_key="sp_test_xxxxxxxxxxxxxxxxxxxx",
             base_url="http://localhost:8080",
         ) as client:
-            result = await client.jobs.create({
-                "queue_name": "test-queue",
-                "payload": {"test": True},
-            })
+            result = await client.jobs.create(
+                {
+                    "queue_name": "test-queue",
+                    "payload": {"test": True},
+                }
+            )
             assert result.id == "job_123"
             assert result.created is True
 

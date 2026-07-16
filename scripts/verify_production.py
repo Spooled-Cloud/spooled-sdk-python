@@ -23,7 +23,7 @@ import sys
 import threading
 import time
 from dataclasses import dataclass, field
-from http.server import HTTPServer, BaseHTTPRequestHandler
+from http.server import BaseHTTPRequestHandler, HTTPServer
 from typing import Any
 
 # Add src to path if running from scripts directory
@@ -282,8 +282,8 @@ def verify_connectivity(ctx: VerificationContext) -> None:
     # Test basic connectivity with health endpoint
     log_step("Phase 2", "Testing API connectivity (health check)...")
 
-    import urllib.request
     import urllib.error
+    import urllib.request
 
     try:
         req = urllib.request.Request(f"{ctx.base_url}/health")
@@ -294,7 +294,7 @@ def verify_connectivity(ctx: VerificationContext) -> None:
             else:
                 log_warn(f"Health check returned {response.status}")
     except urllib.error.URLError as e:
-        raise RuntimeError(f"Cannot reach API at {ctx.base_url}: {e}")
+        raise RuntimeError(f"Cannot reach API at {ctx.base_url}: {e}") from e
 
     log_step("Phase 2", "Initializing SDK client...")
 
@@ -330,7 +330,9 @@ def verify_connectivity(ctx: VerificationContext) -> None:
                 log_error(f"Details: {error.details}")
             if error.request_id:
                 log_error(f"Request ID: {error.request_id}")
-            raise RuntimeError(f"API key verification failed: {error.message} ({error.code})")
+            raise RuntimeError(
+                f"API key verification failed: {error.message} ({error.code})"
+            ) from error
         raise
 
 
@@ -360,18 +362,22 @@ def create_resources(ctx: VerificationContext) -> None:
     log_info(f"Webhook URL: {webhook_url}")
 
     try:
-        webhook = ctx.client.webhooks.create({
-            "name": f"verify-prod-webhook-{timestamp}",
-            "url": webhook_url,
-            "events": ["job.created", "job.started", "job.completed", "job.failed"],
-            "enabled": True,
-        })
+        webhook = ctx.client.webhooks.create(
+            {
+                "name": f"verify-prod-webhook-{timestamp}",
+                "url": webhook_url,
+                "events": ["job.created", "job.started", "job.completed", "job.failed"],
+                "enabled": True,
+            }
+        )
         ctx.webhook_id = webhook.id
         log_success(f"Webhook registered: {webhook.id}")
         log_info(f"Events: {', '.join(webhook.events)}")
     except Exception as error:
         if is_spooled_error(error):
-            raise RuntimeError(f"Failed to create webhook: {error.message} ({error.code})")
+            raise RuntimeError(
+                f"Failed to create webhook: {error.message} ({error.code})"
+            ) from error
         raise
 
     # Test webhook connectivity
@@ -462,21 +468,23 @@ def process_jobs(ctx: VerificationContext) -> None:
     log_step("Phase 4", "Enqueueing test job...")
 
     try:
-        result = ctx.client.jobs.create({
-            "queue_name": ctx.queue_name,
-            "payload": {
-                "message": "Hello Production",
-                "source": "verify_production.py",
-                "timestamp": time.strftime("%Y-%m-%dT%H:%M:%SZ"),
-            },
-            "priority": 5,
-            "max_retries": 3,
-        })
+        result = ctx.client.jobs.create(
+            {
+                "queue_name": ctx.queue_name,
+                "payload": {
+                    "message": "Hello Production",
+                    "source": "verify_production.py",
+                    "timestamp": time.strftime("%Y-%m-%dT%H:%M:%SZ"),
+                },
+                "priority": 5,
+                "max_retries": 3,
+            }
+        )
         ctx.job_id = result.id
         log_success(f"Job enqueued: {result.id} (new: {result.created})")
     except Exception as error:
         if is_spooled_error(error):
-            raise RuntimeError(f"Failed to create job: {error.message} ({error.code})")
+            raise RuntimeError(f"Failed to create job: {error.message} ({error.code})") from error
         raise
 
     # Wait for job processing

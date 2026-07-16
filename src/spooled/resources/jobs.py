@@ -44,7 +44,9 @@ class DlqResource:
     def __init__(self, http: HttpClient) -> None:
         self._http = http
 
-    def list(self, params: ListDlqParams | dict[str, Any] | None = None) -> builtins.list[JobSummary]:
+    def list(
+        self, params: ListDlqParams | dict[str, Any] | None = None
+    ) -> builtins.list[JobSummary]:
         """List jobs in dead-letter queue."""
         if isinstance(params, dict):
             params = ListDlqParams.model_validate(params)
@@ -73,7 +75,9 @@ class AsyncDlqResource:
     def __init__(self, http: AsyncHttpClient) -> None:
         self._http = http
 
-    async def list(self, params: ListDlqParams | dict[str, Any] | None = None) -> builtins.list[JobSummary]:
+    async def list(
+        self, params: ListDlqParams | dict[str, Any] | None = None
+    ) -> builtins.list[JobSummary]:
         """List jobs in dead-letter queue."""
         if isinstance(params, dict):
             params = ListDlqParams.model_validate(params)
@@ -122,7 +126,9 @@ class JobsResource(BaseResource):
         result = self.create(params)
         return self.get(result.id)
 
-    def list(self, params: ListJobsParams | dict[str, Any] | None = None) -> builtins.list[JobSummary]:
+    def list(
+        self, params: ListJobsParams | dict[str, Any] | None = None
+    ) -> builtins.list[JobSummary]:
         """List jobs with optional filtering."""
         if isinstance(params, dict):
             params = ListJobsParams.model_validate(params)
@@ -163,9 +169,7 @@ class JobsResource(BaseResource):
         data = self._http.get("/jobs/status", params={"ids": ",".join(job_ids)})
         return [BatchJobStatus.model_validate(item) for item in data]
 
-    def bulk_enqueue(
-        self, params: BulkEnqueueParams | dict[str, Any]
-    ) -> BulkEnqueueResponse:
+    def bulk_enqueue(self, params: BulkEnqueueParams | dict[str, Any]) -> BulkEnqueueResponse:
         """Bulk enqueue multiple jobs."""
         if isinstance(params, dict):
             params = BulkEnqueueParams.model_validate(params)
@@ -275,9 +279,7 @@ class AsyncJobsResource(AsyncBaseResource):
         data = await self._http.get("/jobs/status", params={"ids": ",".join(job_ids)})
         return [BatchJobStatus.model_validate(item) for item in data]
 
-    async def bulk_enqueue(
-        self, params: BulkEnqueueParams | dict[str, Any]
-    ) -> BulkEnqueueResponse:
+    async def bulk_enqueue(self, params: BulkEnqueueParams | dict[str, Any]) -> BulkEnqueueResponse:
         """Bulk enqueue multiple jobs."""
         if isinstance(params, dict):
             params = BulkEnqueueParams.model_validate(params)
@@ -306,9 +308,7 @@ class AsyncJobsResource(AsyncBaseResource):
         )
         return CompleteJobResponse.model_validate(data)
 
-    async def fail(
-        self, job_id: str, params: FailJobParams | dict[str, Any]
-    ) -> FailJobResponse:
+    async def fail(self, job_id: str, params: FailJobParams | dict[str, Any]) -> FailJobResponse:
         """Fail a job (worker nack)."""
         if isinstance(params, dict):
             params = FailJobParams.model_validate(params)

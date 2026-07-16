@@ -60,10 +60,12 @@ class TestJobsResource:
             api_key="sp_test_xxxxxxxxxxxxxxxxxxxx",
             base_url="http://localhost:8080",
         ) as client:
-            result = client.jobs.create({
-                "queue_name": "test-queue",
-                "payload": {"test": True},
-            })
+            result = client.jobs.create(
+                {
+                    "queue_name": "test-queue",
+                    "payload": {"test": True},
+                }
+            )
             assert result.id == "job_123"
             assert result.created is True
 
@@ -110,10 +112,13 @@ class TestJobsResource:
             )
         )
 
-        with SpooledClient(
-            api_key="sp_test_xxxxxxxxxxxxxxxxxxxx",
-            base_url="http://localhost:8080",
-        ) as client, pytest.raises(NotFoundError):
+        with (
+            SpooledClient(
+                api_key="sp_test_xxxxxxxxxxxxxxxxxxxx",
+                base_url="http://localhost:8080",
+            ) as client,
+            pytest.raises(NotFoundError),
+        ):
             client.jobs.get("nonexistent")
 
     @respx.mock
@@ -251,9 +256,7 @@ class TestHealthResource:
     @respx.mock
     def test_liveness_check(self) -> None:
         """Test liveness probe."""
-        respx.get("http://localhost:8080/health/live").mock(
-            return_value=httpx.Response(200)
-        )
+        respx.get("http://localhost:8080/health/live").mock(return_value=httpx.Response(200))
 
         with SpooledClient(
             api_key="sp_test_xxxxxxxxxxxxxxxxxxxx",

@@ -43,12 +43,14 @@ def main() -> None:
 
     # Build environment
     env = os.environ.copy()
-    env.update({
-        "API_KEY": api_key,
-        "BASE_URL": base_url,
-        "SKIP_STRESS": skip_stress,
-        "VERBOSE": "1" if is_verbose else os.environ.get("VERBOSE", "0"),
-    })
+    env.update(
+        {
+            "API_KEY": api_key,
+            "BASE_URL": base_url,
+            "SKIP_STRESS": skip_stress,
+            "VERBOSE": "1" if is_verbose else os.environ.get("VERBOSE", "0"),
+        }
+    )
 
     # Determine script path
     script_dir = os.path.dirname(os.path.abspath(__file__))

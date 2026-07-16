@@ -21,10 +21,12 @@ class TestJobsIntegration:
     def test_create_and_get_job(self, client: SpooledClient) -> None:
         """Test creating and retrieving a job."""
         # Create job
-        result = client.jobs.create({
-            "queue_name": "test-integration",
-            "payload": {"test": True, "timestamp": "2024-01-01"},
-        })
+        result = client.jobs.create(
+            {
+                "queue_name": "test-integration",
+                "payload": {"test": True, "timestamp": "2024-01-01"},
+            }
+        )
         assert result.id is not None
         assert result.created is True
 
@@ -53,14 +55,16 @@ class TestJobsIntegration:
 
     def test_bulk_enqueue(self, client: SpooledClient) -> None:
         """Test bulk enqueueing jobs."""
-        result = client.jobs.bulk_enqueue({
-            "queue_name": "test-bulk",
-            "jobs": [
-                {"payload": {"index": 1}},
-                {"payload": {"index": 2}},
-                {"payload": {"index": 3}},
-            ],
-        })
+        result = client.jobs.bulk_enqueue(
+            {
+                "queue_name": "test-bulk",
+                "jobs": [
+                    {"payload": {"index": 1}},
+                    {"payload": {"index": 2}},
+                    {"payload": {"index": 3}},
+                ],
+            }
+        )
         assert result.total == 3
         assert result.success_count == 3
         assert result.failure_count == 0

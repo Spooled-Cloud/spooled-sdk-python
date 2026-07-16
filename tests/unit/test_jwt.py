@@ -15,11 +15,7 @@ from spooled.utils.jwt import (
 def _make_jwt(payload: dict[str, object]) -> str:
     """Build an unsigned JWT-shaped string with the given payload claims."""
     header = base64.urlsafe_b64encode(b'{"alg":"none"}').rstrip(b"=").decode()
-    body = (
-        base64.urlsafe_b64encode(json.dumps(payload).encode())
-        .rstrip(b"=")
-        .decode()
-    )
+    body = base64.urlsafe_b64encode(json.dumps(payload).encode()).rstrip(b"=").decode()
     return f"{header}.{body}.sig"
 
 

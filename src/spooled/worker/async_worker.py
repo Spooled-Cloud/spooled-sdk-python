@@ -157,7 +157,9 @@ class AsyncSpooledWorker:
         self._handler = handler
         return handler
 
-    def on(self, event: WorkerEvent, handler: Callable[..., Any] | None = None) -> Callable[..., Any]:
+    def on(
+        self, event: WorkerEvent, handler: Callable[..., Any] | None = None
+    ) -> Callable[..., Any]:
         """
         Register event handler (decorator).
 
@@ -195,14 +197,16 @@ class AsyncSpooledWorker:
 
         try:
             # Register with the API
-            registration = await self._client.workers.register({
-                "queue_name": self._options.queue_name,
-                "hostname": self._options.hostname,
-                "worker_type": self._options.worker_type,
-                "max_concurrency": self._options.concurrency,
-                "metadata": self._options.metadata,
-                "version": self._options.version,
-            })
+            registration = await self._client.workers.register(
+                {
+                    "queue_name": self._options.queue_name,
+                    "hostname": self._options.hostname,
+                    "worker_type": self._options.worker_type,
+                    "max_concurrency": self._options.concurrency,
+                    "metadata": self._options.metadata,
+                    "version": self._options.version,
+                }
+            )
 
             self._worker_id = registration.id
 
@@ -217,10 +221,13 @@ class AsyncSpooledWorker:
 
             # Start polling
             self._state = "running"
-            self._emit("started", StartedEventData(
-                worker_id=self._worker_id,
-                queue_name=self._options.queue_name,
-            ))
+            self._emit(
+                "started",
+                StartedEventData(
+                    worker_id=self._worker_id,
+                    queue_name=self._options.queue_name,
+                ),
+            )
 
             # Poll loop
             while self._state == "running":
@@ -274,9 +281,7 @@ class AsyncSpooledWorker:
                     None,
                 )
 
-            pending_tasks = [
-                a.process_task for a in self._active_jobs.values() if a.process_task
-            ]
+            pending_tasks = [a.process_task for a in self._active_jobs.values() if a.process_task]
             if pending_tasks:
                 done, pending = await asyncio.wait(
                     pending_tasks,
@@ -304,10 +309,13 @@ class AsyncSpooledWorker:
                     self._debug(f"Failed to deregister worker: {e}", None)
 
         self._state = "stopped"
-        self._emit("stopped", StoppedEventData(
-            worker_id=self._worker_id or "",
-            reason="graceful",
-        ))
+        self._emit(
+            "stopped",
+            StoppedEventData(
+                worker_id=self._worker_id or "",
+                reason="graceful",
+            ),
+        )
         self._worker_id = None
 
     async def _poll(self) -> None:
@@ -321,12 +329,14 @@ class AsyncSpooledWorker:
             return
 
         try:
-            result = await self._client.jobs.claim({
-                "queue_name": self._options.queue_name,
-                "worker_id": self._worker_id,
-                "limit": available_slots,
-                "lease_duration_secs": self._options.lease_duration,
-            })
+            result = await self._client.jobs.claim(
+                {
+                    "queue_name": self._options.queue_name,
+                    "worker_id": self._worker_id,
+                    "limit": available_slots,
+                    "lease_duration_secs": self._options.lease_duration,
+                }
+            )
 
             for job in result.jobs:
                 asyncio.create_task(self._process_job(job))
@@ -342,10 +352,13 @@ class AsyncSpooledWorker:
             return
 
         async with self._semaphore:
-            self._emit("job:claimed", JobClaimedEventData(
-                job_id=job.id,
-                queue_name=job.queue_name,
-            ))
+            self._emit(
+                "job:claimed",
+                JobClaimedEventData(
+                    job_id=job.id,
+                    queue_name=job.queue_name,
+                ),
+            )
 
             abort_event = asyncio.Event()
             active = ActiveJob(
@@ -358,9 +371,7 @@ class AsyncSpooledWorker:
                 self._active_jobs[job.id] = active
 
             # Start per-job heartbeat
-            heartbeat_interval = (
-                self._options.lease_duration * self._options.heartbeat_fraction
-            )
+            heartbeat_interval = self._options.lease_duration * self._options.heartbeat_fraction
             active.heartbeat_task = asyncio.create_task(
                 self._job_heartbeat_loop(active, heartbeat_interval)
             )
@@ -373,10 +384,13 @@ class AsyncSpooledWorker:
         """Execute job handler."""
         job = active.job
 
-        self._emit("job:started", JobStartedEventData(
-            job_id=job.id,
-            queue_name=job.queue_name,
-        ))
+        self._emit(
+            "job:started",
+            JobStartedEventData(
+                job_id=job.id,
+                queue_name=job.queue_name,
+            ),
+        )
 
         context = AsyncJobContext(
             job_id=job.id,
@@ -431,11 +445,14 @@ class AsyncSpooledWorker:
             async with self._active_jobs_lock:
                 if self._active_jobs.get(job.id) is not active:
                     return
-            self._emit("job:completed", JobCompletedEventData(
-                job_id=job.id,
-                queue_name=job.queue_name,
-                result=result,
-            ))
+            self._emit(
+                "job:completed",
+                JobCompletedEventData(
+                    job_id=job.id,
+                    queue_name=job.queue_name,
+                    result=result,
+                ),
+            )
 
         except Exception as e:
             if self._debug:
@@ -462,12 +479,15 @@ class AsyncSpooledWorker:
             async with self._active_jobs_lock:
                 if self._active_jobs.get(job.id) is not active:
                     return
-            self._emit("job:failed", JobFailedEventData(
-                job_id=job.id,
-                queue_name=job.queue_name,
-                error=error_message,
-                will_retry=will_retry,
-            ))
+            self._emit(
+                "job:failed",
+                JobFailedEventData(
+                    job_id=job.id,
+                    queue_name=job.queue_name,
+                    error=error_message,
+                    will_retry=will_retry,
+                ),
+            )
 
         except Exception as e:
             if self._debug:
@@ -519,10 +539,13 @@ class AsyncSpooledWorker:
                 break
 
             try:
-                await self._client.workers.heartbeat(self._worker_id, {
-                    "current_jobs": len(self._active_jobs),
-                    "status": "healthy",
-                })
+                await self._client.workers.heartbeat(
+                    self._worker_id,
+                    {
+                        "current_jobs": len(self._active_jobs),
+                        "status": "healthy",
+                    },
+                )
             except Exception as e:
                 if self._debug:
                     self._debug(f"Worker heartbeat failed: {e}", None)

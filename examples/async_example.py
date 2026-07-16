@@ -26,10 +26,12 @@ async def main() -> None:
 
         # Create multiple jobs concurrently
         tasks = [
-            client.jobs.create({
-                "queue_name": "async-example",
-                "payload": {"index": i},
-            })
+            client.jobs.create(
+                {
+                    "queue_name": "async-example",
+                    "payload": {"index": i},
+                }
+            )
             for i in range(5)
         ]
 

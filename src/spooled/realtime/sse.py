@@ -223,9 +223,7 @@ class SSEClient:
             with contextlib.suppress(ValueError):
                 self._all_events_handlers.remove(handler)
 
-    def on_state_change(
-        self, handler: StateChangeHandler | None = None
-    ) -> Callable[..., Any]:
+    def on_state_change(self, handler: StateChangeHandler | None = None) -> Callable[..., Any]:
         """
         Add a listener for connection state changes.
 
@@ -583,9 +581,7 @@ class AsyncSSEClient:
         self._all_events_handlers.append(handler)
         return lambda: self._all_events_handlers.remove(handler)
 
-    def on_state_change(
-        self, handler: StateChangeHandler | None = None
-    ) -> Callable[..., Any]:
+    def on_state_change(self, handler: StateChangeHandler | None = None) -> Callable[..., Any]:
         """
         Add a listener for connection state changes.
 

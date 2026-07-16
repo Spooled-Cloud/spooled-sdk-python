@@ -23,35 +23,41 @@ def main() -> None:
         # Create a workflow with dependencies
         print("Creating order processing workflow...")
 
-        workflow = client.workflows.create({
-            "name": "Order Processing",
-            "description": "Process an order through validation, payment, fulfillment, and notification",
-            "jobs": [
-                {
-                    "key": "validate",
-                    "queue_name": "orders",
-                    "payload": {"action": "validate", "order_id": "12345"},
-                },
-                {
-                    "key": "charge",
-                    "queue_name": "payments",
-                    "payload": {"action": "charge", "order_id": "12345", "amount": 99.99},
-                    "depends_on": ["validate"],
-                },
-                {
-                    "key": "fulfill",
-                    "queue_name": "fulfillment",
-                    "payload": {"action": "ship", "order_id": "12345"},
-                    "depends_on": ["charge"],
-                },
-                {
-                    "key": "notify",
-                    "queue_name": "notifications",
-                    "payload": {"action": "email", "order_id": "12345", "template": "order_complete"},
-                    "depends_on": ["fulfill"],
-                },
-            ],
-        })
+        workflow = client.workflows.create(
+            {
+                "name": "Order Processing",
+                "description": "Process an order through validation, payment, fulfillment, and notification",
+                "jobs": [
+                    {
+                        "key": "validate",
+                        "queue_name": "orders",
+                        "payload": {"action": "validate", "order_id": "12345"},
+                    },
+                    {
+                        "key": "charge",
+                        "queue_name": "payments",
+                        "payload": {"action": "charge", "order_id": "12345", "amount": 99.99},
+                        "depends_on": ["validate"],
+                    },
+                    {
+                        "key": "fulfill",
+                        "queue_name": "fulfillment",
+                        "payload": {"action": "ship", "order_id": "12345"},
+                        "depends_on": ["charge"],
+                    },
+                    {
+                        "key": "notify",
+                        "queue_name": "notifications",
+                        "payload": {
+                            "action": "email",
+                            "order_id": "12345",
+                            "template": "order_complete",
+                        },
+                        "depends_on": ["fulfill"],
+                    },
+                ],
+            }
+        )
 
         print(f"Created workflow: {workflow.workflow_id}")
         print("\nJob mappings:")

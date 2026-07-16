@@ -250,6 +250,7 @@ class TestSpooledWorkerMocked:
         worker._state = "running"  # Simulate running state
 
         with pytest.raises(RuntimeError, match="Cannot set handler"):
+
             @worker.process
             def handle_job(ctx):
                 pass
@@ -398,11 +399,14 @@ class TestWorkerLeaseFencing:
         active = self._active(worker, "lease-abc")
         worker._complete_job(active, {"ok": True})
 
-        mock_client.jobs.complete.assert_called_once_with("job_123", {
-            "worker_id": "worker_1",
-            "result": {"ok": True},
-            "lease_id": "lease-abc",
-        })
+        mock_client.jobs.complete.assert_called_once_with(
+            "job_123",
+            {
+                "worker_id": "worker_1",
+                "result": {"ok": True},
+                "lease_id": "lease-abc",
+            },
+        )
 
     def test_complete_omits_lease_id_when_none(self) -> None:
         """Test _complete_job omits lease_id for legacy servers."""
@@ -412,10 +416,13 @@ class TestWorkerLeaseFencing:
         active = self._active(worker, None)
         worker._complete_job(active, None)
 
-        mock_client.jobs.complete.assert_called_once_with("job_123", {
-            "worker_id": "worker_1",
-            "result": None,
-        })
+        mock_client.jobs.complete.assert_called_once_with(
+            "job_123",
+            {
+                "worker_id": "worker_1",
+                "result": None,
+            },
+        )
 
     def test_fail_echoes_lease_id(self) -> None:
         """Test _fail_job sends the claimed job's lease_id."""
@@ -425,11 +432,14 @@ class TestWorkerLeaseFencing:
         active = self._active(worker, "lease-abc")
         worker._fail_job(active, "boom")
 
-        mock_client.jobs.fail.assert_called_once_with("job_123", {
-            "worker_id": "worker_1",
-            "error": "boom",
-            "lease_id": "lease-abc",
-        })
+        mock_client.jobs.fail.assert_called_once_with(
+            "job_123",
+            {
+                "worker_id": "worker_1",
+                "error": "boom",
+                "lease_id": "lease-abc",
+            },
+        )
 
     def test_fail_omits_lease_id_when_none(self) -> None:
         """Test _fail_job omits lease_id for legacy servers."""
@@ -439,10 +449,13 @@ class TestWorkerLeaseFencing:
         active = self._active(worker, None)
         worker._fail_job(active, "boom")
 
-        mock_client.jobs.fail.assert_called_once_with("job_123", {
-            "worker_id": "worker_1",
-            "error": "boom",
-        })
+        mock_client.jobs.fail.assert_called_once_with(
+            "job_123",
+            {
+                "worker_id": "worker_1",
+                "error": "boom",
+            },
+        )
 
     def test_heartbeat_echoes_lease_id(self) -> None:
         """Test the job heartbeat sends the claimed job's lease_id."""
@@ -465,11 +478,14 @@ class TestWorkerLeaseFencing:
             worker._schedule_job_heartbeat(worker._active_jobs[job.id], interval=60.0)
             worker._active_jobs[job.id].heartbeat_timer.function()
 
-            mock_client.jobs.heartbeat.assert_called_once_with("job_123", {
-                "worker_id": "worker_1",
-                "lease_duration_secs": worker._options.lease_duration,
-                "lease_id": "lease-abc",
-            })
+            mock_client.jobs.heartbeat.assert_called_once_with(
+                "job_123",
+                {
+                    "worker_id": "worker_1",
+                    "lease_duration_secs": worker._options.lease_duration,
+                    "lease_id": "lease-abc",
+                },
+            )
         finally:
             worker._cleanup_job(worker._active_jobs[job.id])
 
@@ -492,10 +508,13 @@ class TestWorkerLeaseFencing:
             worker._schedule_job_heartbeat(worker._active_jobs[job.id], interval=60.0)
             worker._active_jobs[job.id].heartbeat_timer.function()
 
-            mock_client.jobs.heartbeat.assert_called_once_with("job_123", {
-                "worker_id": "worker_1",
-                "lease_duration_secs": worker._options.lease_duration,
-            })
+            mock_client.jobs.heartbeat.assert_called_once_with(
+                "job_123",
+                {
+                    "worker_id": "worker_1",
+                    "lease_duration_secs": worker._options.lease_duration,
+                },
+            )
         finally:
             worker._cleanup_job(worker._active_jobs[job.id])
 
@@ -533,11 +552,14 @@ class TestAsyncWorkerLeaseFencing:
         active = self._active(worker, "lease-abc")
         await worker._complete_job(active, {"ok": True})
 
-        mock_client.jobs.complete.assert_awaited_once_with("job_123", {
-            "worker_id": "worker_1",
-            "result": {"ok": True},
-            "lease_id": "lease-abc",
-        })
+        mock_client.jobs.complete.assert_awaited_once_with(
+            "job_123",
+            {
+                "worker_id": "worker_1",
+                "result": {"ok": True},
+                "lease_id": "lease-abc",
+            },
+        )
 
     @pytest.mark.asyncio
     async def test_async_complete_omits_lease_id_when_none(self) -> None:
@@ -551,10 +573,13 @@ class TestAsyncWorkerLeaseFencing:
         active = self._active(worker, None)
         await worker._complete_job(active, None)
 
-        mock_client.jobs.complete.assert_awaited_once_with("job_123", {
-            "worker_id": "worker_1",
-            "result": None,
-        })
+        mock_client.jobs.complete.assert_awaited_once_with(
+            "job_123",
+            {
+                "worker_id": "worker_1",
+                "result": None,
+            },
+        )
 
     @pytest.mark.asyncio
     async def test_async_fail_echoes_lease_id(self) -> None:
@@ -568,11 +593,14 @@ class TestAsyncWorkerLeaseFencing:
         active = self._active(worker, "lease-abc")
         await worker._fail_job(active, "boom")
 
-        mock_client.jobs.fail.assert_awaited_once_with("job_123", {
-            "worker_id": "worker_1",
-            "error": "boom",
-            "lease_id": "lease-abc",
-        })
+        mock_client.jobs.fail.assert_awaited_once_with(
+            "job_123",
+            {
+                "worker_id": "worker_1",
+                "error": "boom",
+                "lease_id": "lease-abc",
+            },
+        )
 
     @pytest.mark.asyncio
     async def test_async_fail_omits_lease_id_when_none(self) -> None:
@@ -586,10 +614,13 @@ class TestAsyncWorkerLeaseFencing:
         active = self._active(worker, None)
         await worker._fail_job(active, "boom")
 
-        mock_client.jobs.fail.assert_awaited_once_with("job_123", {
-            "worker_id": "worker_1",
-            "error": "boom",
-        })
+        mock_client.jobs.fail.assert_awaited_once_with(
+            "job_123",
+            {
+                "worker_id": "worker_1",
+                "error": "boom",
+            },
+        )
 
 
 class TestAsyncJobContext:

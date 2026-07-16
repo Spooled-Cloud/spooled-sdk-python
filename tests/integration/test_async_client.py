@@ -29,10 +29,12 @@ class TestAsyncClientIntegration:
     async def test_async_create_and_cancel_job(self, async_client: AsyncSpooledClient) -> None:
         """Test async job creation and cancellation."""
         # Create job
-        result = await async_client.jobs.create({
-            "queue_name": "test-async",
-            "payload": {"test": True},
-        })
+        result = await async_client.jobs.create(
+            {
+                "queue_name": "test-async",
+                "payload": {"test": True},
+            }
+        )
         assert result.id is not None
 
         # Cancel job

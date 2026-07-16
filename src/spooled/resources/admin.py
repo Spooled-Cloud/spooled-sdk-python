@@ -102,9 +102,7 @@ class AdminResource(BaseResource):
 
     def reset_usage(self, org_id: str) -> None:
         """Reset usage counters for an organization."""
-        self._http.post(
-            f"/admin/organizations/{org_id}/reset-usage", headers=self._get_headers()
-        )
+        self._http.post(f"/admin/organizations/{org_id}/reset-usage", headers=self._get_headers())
 
     def get_stats(self) -> AdminStats:
         """Get platform-wide statistics."""
@@ -144,9 +142,7 @@ class AsyncAdminResource(AsyncBaseResource):
 
     async def get_organization(self, org_id: str) -> Organization:
         """Get an organization by ID."""
-        data = await self._http.get(
-            f"/admin/organizations/{org_id}", headers=self._get_headers()
-        )
+        data = await self._http.get(f"/admin/organizations/{org_id}", headers=self._get_headers())
         return Organization.model_validate(data)
 
     async def create_organization(
