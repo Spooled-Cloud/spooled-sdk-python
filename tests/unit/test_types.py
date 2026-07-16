@@ -53,6 +53,30 @@ class TestCreateJobParams:
         assert params.priority == 0
         assert params.max_retries == 3
 
+    def test_minimal_create_dump_omits_queue_defaults(self) -> None:
+        """Unset queue defaults are omitted so the server can apply its policy."""
+        params = CreateJobParams(queue_name="test-queue", payload={"key": "value"})
+
+        data = params.model_dump(exclude_none=True, exclude_unset=True, mode="json")
+
+        assert data == {"queue_name": "test-queue", "payload": {"key": "value"}}
+        assert "max_retries" not in data
+        assert "timeout_seconds" not in data
+
+    def test_explicit_create_defaults_remain_in_dump(self) -> None:
+        """Explicit defaults are still sent when the caller chose them."""
+        params = CreateJobParams(
+            queue_name="test-queue",
+            payload={"key": "value"},
+            max_retries=3,
+            timeout_seconds=300,
+        )
+
+        data = params.model_dump(exclude_none=True, exclude_unset=True, mode="json")
+
+        assert data["max_retries"] == 3
+        assert data["timeout_seconds"] == 300
+
     def test_all_params(self) -> None:
         """Test all params."""
         now = datetime.now()

@@ -112,7 +112,9 @@ class JobsResource(BaseResource):
         """Create a new job."""
         if isinstance(params, dict):
             params = CreateJobParams.model_validate(params)
-        data = self._http.post("/jobs", params.model_dump(exclude_none=True, mode="json"))
+        data = self._http.post(
+            "/jobs", params.model_dump(exclude_none=True, exclude_unset=True, mode="json")
+        )
         return CreateJobResponse.model_validate(data)
 
     def create_and_get(self, params: CreateJobParams | dict[str, Any]) -> Job:
@@ -220,7 +222,9 @@ class AsyncJobsResource(AsyncBaseResource):
         """Create a new job."""
         if isinstance(params, dict):
             params = CreateJobParams.model_validate(params)
-        data = await self._http.post("/jobs", params.model_dump(exclude_none=True, mode="json"))
+        data = await self._http.post(
+            "/jobs", params.model_dump(exclude_none=True, exclude_unset=True, mode="json")
+        )
         return CreateJobResponse.model_validate(data)
 
     async def create_and_get(self, params: CreateJobParams | dict[str, Any]) -> Job:

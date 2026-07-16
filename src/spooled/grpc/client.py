@@ -53,8 +53,8 @@ class GrpcEnqueueRequest(BaseModel):
     queue_name: str = Field(..., min_length=1, max_length=100)
     payload: dict[str, Any]
     priority: int = Field(default=0, ge=-100, le=100)
-    max_retries: int = Field(default=3, ge=0, le=100)
-    timeout_seconds: int = Field(default=300, ge=1, le=86400)
+    max_retries: int | None = Field(default=None, ge=0, le=100)
+    timeout_seconds: int | None = Field(default=None, ge=1, le=86400)
     idempotency_key: str | None = None
     tags: dict[str, str] | None = None
 
@@ -287,14 +287,14 @@ def _job_status_to_str(status: int) -> str:
     return status_map.get(status, "unknown")
 
 
-def _map_grpc_error(error: Any, timeout_seconds: float) -> SpooledError:
+def _map_grpc_error(error: Any, timeout_seconds: float | None) -> SpooledError:
     """Map grpc.RpcError into the SDK's typed error hierarchy."""
     code = error.code() if hasattr(error, "code") else None
     details = error.details() if hasattr(error, "details") else str(error)
 
     if grpc is not None:
         if code == grpc.StatusCode.DEADLINE_EXCEEDED:
-            return TimeoutError(details or "gRPC request timed out", timeout_seconds)
+            return TimeoutError(details or "gRPC request timed out", timeout_seconds or 0.0)
         if code == grpc.StatusCode.UNAUTHENTICATED:
             return AuthenticationError(details or "Authentication failed")
         if code == grpc.StatusCode.PERMISSION_DENIED:
@@ -453,7 +453,7 @@ class ProcessJobsStream:
         self,
         call: Any,  # grpc.StreamStreamMultiCallable
         metadata: list[tuple[str, str]],
-        timeout_seconds: float = 30.0,
+        timeout_seconds: float | None = None,
         options: StreamOptions | None = None,
     ) -> None:
         self._call = call
@@ -485,11 +485,10 @@ class ProcessJobsStream:
                         break
                     continue
 
-        self._stream = self._call(
-            request_generator(),
-            metadata=self._metadata,
-            timeout=self._timeout_seconds,
-        )
+        kwargs: dict[str, Any] = {"metadata": self._metadata}
+        if self._timeout_seconds is not None:
+            kwargs["timeout"] = self._timeout_seconds
+        self._stream = self._call(request_generator(), **kwargs)
         self._started = True
 
     def send(self, request: ProcessRequest) -> None:
@@ -618,11 +617,16 @@ class GrpcQueueService:
     """
 
     def __init__(
-        self, stub: Any, metadata: list[tuple[str, str]], timeout_seconds: float = 30.0
+        self,
+        stub: Any,
+        metadata: list[tuple[str, str]],
+        timeout_seconds: float = 30.0,
+        stream_timeout_seconds: float | None = None,
     ) -> None:
         self._stub = stub
         self._metadata = metadata
         self._timeout_seconds = timeout_seconds
+        self._stream_timeout_seconds = stream_timeout_seconds
 
     def enqueue(
         self,
@@ -630,8 +634,8 @@ class GrpcQueueService:
         payload: dict[str, Any],
         *,
         priority: int = 0,
-        max_retries: int = 3,
-        timeout_seconds: int = 300,
+        max_retries: int | None = None,
+        timeout_seconds: int | None = None,
         idempotency_key: str | None = None,
         tags: dict[str, str] | None = None,
     ) -> GrpcEnqueueResponse:
@@ -656,10 +660,12 @@ class GrpcQueueService:
             queue_name=queue_name,
             payload=_dict_to_struct(payload),
             priority=priority,
-            max_retries=max_retries,
-            timeout_seconds=timeout_seconds,
             idempotency_key=idempotency_key or "",
         )
+        if max_retries is not None:
+            request.max_retries = max_retries
+        if timeout_seconds is not None:
+            request.timeout_seconds = timeout_seconds
 
         if tags:
             request.tags.update(tags)
@@ -903,9 +909,10 @@ class GrpcQueueService:
             lease_duration_secs=lease_duration_secs,
         )
 
-        call = self._stub.StreamJobs(
-            request, metadata=self._metadata, timeout=self._timeout_seconds
-        )
+        kwargs: dict[str, Any] = {"metadata": self._metadata}
+        if self._stream_timeout_seconds is not None:
+            kwargs["timeout"] = self._stream_timeout_seconds
+        call = self._stub.StreamJobs(request, **kwargs)
 
         if options and options.on_connected:
             options.on_connected()
@@ -951,7 +958,7 @@ class GrpcQueueService:
         return ProcessJobsStream(
             self._stub.ProcessJobs,
             self._metadata,
-            self._timeout_seconds,
+            self._stream_timeout_seconds,
             options,
         )
 
@@ -1119,6 +1126,7 @@ class SpooledGrpcClient:
         root_certificates: bytes | None = None,
         options: list[tuple[str, Any]] | None = None,
         timeout: float = 30.0,
+        stream_timeout: float | None = None,
     ) -> None:
         """
         Initialize gRPC client.
@@ -1130,6 +1138,7 @@ class SpooledGrpcClient:
             root_certificates: Custom root certificates for TLS
             options: Additional gRPC channel options
             timeout: Default per-call timeout in seconds
+            stream_timeout: Optional timeout for long-lived streaming RPCs. Defaults to no deadline.
         """
         if not HAS_GRPC:
             raise ImportError("grpcio package required. Install with: pip install spooled[grpc]")
@@ -1163,7 +1172,9 @@ class SpooledGrpcClient:
         self._worker_stub = WorkerServiceStub(self._channel)  # type: ignore[no-untyped-call]
 
         # Create service instances
-        self._queue = GrpcQueueService(self._queue_stub, self._metadata, self._timeout)
+        self._queue = GrpcQueueService(
+            self._queue_stub, self._metadata, self._timeout, stream_timeout
+        )
         self._workers = GrpcWorkersService(self._worker_stub, self._metadata, self._timeout)
 
     @property

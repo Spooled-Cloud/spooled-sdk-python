@@ -25,7 +25,7 @@ class TestGrpcModels:
         assert req.queue_name == "test-queue"
         assert req.payload == {"key": "value"}
         assert req.priority == 5
-        assert req.max_retries == 3  # default
+        assert req.max_retries is None  # omitted means server queue default
 
     def test_enqueue_request_invalid_queue_name(self):
         """Test GrpcEnqueueRequest rejects empty queue_name."""
@@ -445,6 +445,29 @@ class TestGrpcQueueService:
         assert result.job_id == "job-123"
         assert result.created is True
         mock_stub.Enqueue.assert_called_once()
+        request = mock_stub.Enqueue.call_args[0][0]
+        assert request.max_retries == 0
+        assert request.timeout_seconds == 0
+
+    def test_enqueue_explicit_defaults_are_sent(self, mock_queue_service):
+        """Test explicit retry/timeout values are sent to gRPC."""
+        service, mock_stub = mock_queue_service
+
+        mock_response = MagicMock()
+        mock_response.job_id = "job-123"
+        mock_response.created = True
+        mock_stub.Enqueue.return_value = mock_response
+
+        service.enqueue(
+            queue_name="test-queue",
+            payload={"key": "value"},
+            max_retries=3,
+            timeout_seconds=300,
+        )
+
+        request = mock_stub.Enqueue.call_args[0][0]
+        assert request.max_retries == 3
+        assert request.timeout_seconds == 300
 
     def test_dequeue(self, mock_queue_service):
         """Test dequeue method."""
@@ -483,6 +506,46 @@ class TestGrpcQueueService:
         assert len(result.jobs) == 1
         assert result.jobs[0].id == "job-1"
         assert result.jobs[0].lease_id == "lease-abc"
+
+    def test_stream_jobs_omits_timeout_by_default(self, mock_queue_service):
+        """Long-lived streams default to no deadline."""
+        service, mock_stub = mock_queue_service
+        mock_stub.StreamJobs.return_value = MagicMock()
+
+        service.stream_jobs("test-queue", "worker-1")
+
+        kwargs = mock_stub.StreamJobs.call_args.kwargs
+        assert kwargs["metadata"] == [("x-api-key", "test-key")]
+        assert "timeout" not in kwargs
+
+    def test_stream_jobs_uses_custom_stream_timeout(self):
+        """Callers can opt into a stream deadline explicitly."""
+        from spooled.grpc.client import GrpcQueueService
+
+        mock_stub = MagicMock()
+        mock_stub.StreamJobs.return_value = MagicMock()
+        service = GrpcQueueService(
+            mock_stub,
+            [("x-api-key", "test-key")],
+            timeout_seconds=30.0,
+            stream_timeout_seconds=120.0,
+        )
+
+        service.stream_jobs("test-queue", "worker-1")
+
+        assert mock_stub.StreamJobs.call_args.kwargs["timeout"] == 120.0
+
+    def test_process_jobs_omits_timeout_by_default(self, mock_queue_service):
+        """Bidirectional processing streams default to no deadline."""
+        service, mock_stub = mock_queue_service
+        mock_stub.ProcessJobs.return_value = iter([])
+
+        stream = service.process_jobs()
+        stream._ensure_started()
+
+        kwargs = mock_stub.ProcessJobs.call_args.kwargs
+        assert kwargs["metadata"] == [("x-api-key", "test-key")]
+        assert "timeout" not in kwargs
 
     def test_complete(self, mock_queue_service):
         """Test complete method."""
