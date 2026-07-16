@@ -1,4 +1,4 @@
 {"id":"PS-01","sev":"P3","summary":"REST/gRPC create always sent retry/timeout defaults","path":"src/spooled/grpc/client.py","status":"fixed","note":"Working tree omits unset defaults; explicit values still sent"}
 {"id":"PS-02","sev":"P3","summary":"worker progress no-op","path":"src/spooled/worker/types.py","status":"open"}
 {"id":"PS-03","sev":"P3","summary":"no GitHub/Stripe ingest helpers","status":"open"}
-{"id":"PS-04","sev":"P2","summary":"gRPC streams inherited unary 30s deadline","path":"src/spooled/grpc/client.py","status":"fixed","note":"Working tree defaults stream_timeout to None"}
+{"id":"PS-04","sev":"P2","summary":"gRPC streams inherited unary 30s deadline","path":"src/spooled/grpc/client.py","status":"fixed","note":"Working tree defaults stream_timeout to None and maps stream deadline errors with the configured stream timeout"}

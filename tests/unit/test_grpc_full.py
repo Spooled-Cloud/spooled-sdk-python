@@ -284,6 +284,35 @@ class TestJobStream:
 
         mock_call.cancel.assert_called_once()
 
+    def test_job_stream_maps_deadline_with_stream_timeout(self):
+        """Test JobStream maps DEADLINE_EXCEEDED with stream timeout."""
+        from spooled.errors import TimeoutError
+        from spooled.grpc.client import JobStream, grpc
+
+        if grpc is None:
+            pytest.skip("grpcio not installed")
+
+        class DeadlineExceeded(grpc.RpcError):
+            def code(self):
+                return grpc.StatusCode.DEADLINE_EXCEEDED
+
+            def details(self):
+                return "stream deadline exceeded"
+
+        class FailingCall:
+            def __iter__(self):
+                return self
+
+            def __next__(self):
+                raise DeadlineExceeded()
+
+        stream = JobStream(FailingCall(), timeout_seconds=12.5)
+
+        with pytest.raises(TimeoutError) as exc:
+            next(stream)
+
+        assert exc.value.timeout_seconds == 12.5
+
 
 class TestProcessRequest:
     """Tests for ProcessRequest."""

@@ -7,7 +7,7 @@ All notable changes to the Spooled Python SDK are documented here.
 ### Fixed
 
 - REST and gRPC job creation now omit unset retry/timeout defaults so the backend queue/server policy can apply; explicitly provided values are still sent.
-- Long-lived gRPC `StreamJobs` / `ProcessJobs` calls no longer inherit the unary 30-second deadline by default. Use `stream_timeout` to opt into a stream deadline.
+- Long-lived gRPC `StreamJobs` / `ProcessJobs` calls no longer inherit the unary 30-second deadline by default. Use `stream_timeout` to opt into a stream deadline; stream deadline errors now preserve that timeout in the SDK `TimeoutError`.
 
 ## [1.0.23] - 2026-07-13
 

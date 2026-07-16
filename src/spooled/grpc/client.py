@@ -378,9 +378,11 @@ class JobStream:
         self,
         call: Any,  # grpc.CallIterator
         options: StreamOptions | None = None,
+        timeout_seconds: float | None = None,
     ) -> None:
         self._call = call
         self._options = options or StreamOptions()
+        self._timeout_seconds = timeout_seconds
         self._cancelled = False
 
     def __iter__(self) -> Iterator[GrpcJob]:
@@ -399,7 +401,7 @@ class JobStream:
             raise
         except Exception as e:
             if grpc is not None and isinstance(e, grpc.RpcError):
-                mapped = _map_grpc_error(e, 0)
+                mapped = _map_grpc_error(e, self._timeout_seconds)
                 if self._options.on_error:
                     self._options.on_error(mapped)
                 raise mapped from e
@@ -917,7 +919,7 @@ class GrpcQueueService:
         if options and options.on_connected:
             options.on_connected()
 
-        return JobStream(call, options)
+        return JobStream(call, options, self._stream_timeout_seconds)
 
     def process_jobs(self, options: StreamOptions | None = None) -> ProcessJobsStream:
         """
