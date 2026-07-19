@@ -2,7 +2,7 @@
 
 All notable changes to the Spooled Python SDK are documented here.
 
-## [Unreleased]
+## [1.0.24] - 2026-07-19
 
 ### Fixed
 
