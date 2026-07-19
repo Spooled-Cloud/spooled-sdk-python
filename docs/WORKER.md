@@ -72,7 +72,8 @@ def handle_job(ctx):
     # Logging
     ctx.log("info", "Processing started", {"key": "value"})
     
-    # Progress is currently a no-op placeholder
+    # Progress is recorded as a local job log entry (percent clamped to 0-100);
+    # it is not persisted server-side
     ctx.progress(50, "Halfway done")
     
     return {"result": "done"}
