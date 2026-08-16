@@ -46,7 +46,7 @@ worker = SpooledWorker(
     hostname="worker-1",      # Custom hostname
     worker_id="worker-1",     # Stable id: registration becomes an upsert
     worker_type="python",     # Worker type identifier
-    # version defaults to spooled.__version__ (1.0.24 for this release)
+    # version defaults to spooled.__version__ (1.1.0 for this release)
     metadata={"env": "prod"}, # Custom metadata
 )
 ```
