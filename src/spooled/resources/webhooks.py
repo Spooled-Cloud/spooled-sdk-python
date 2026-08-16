@@ -42,12 +42,16 @@ class WebhooksResource(BaseResource):
     def update(
         self, webhook_id: str, params: UpdateOutgoingWebhookParams | dict[str, Any]
     ) -> OutgoingWebhook:
-        """Update an outgoing webhook."""
+        """Update an outgoing webhook.
+
+        Omitted fields keep their current values. Passing ``secret=None``
+        explicitly clears the signing secret, after which deliveries go out
+        unsigned with no ``X-Spooled-Signature`` header — so only include
+        ``secret`` when you mean to replace or clear it.
+        """
         if isinstance(params, dict):
             params = UpdateOutgoingWebhookParams.model_validate(params)
-        data = self._http.put(
-            f"/outgoing-webhooks/{webhook_id}", params.model_dump(exclude_none=True)
-        )
+        data = self._http.put(f"/outgoing-webhooks/{webhook_id}", params.to_payload())
         return OutgoingWebhook.model_validate(data)
 
     def delete(self, webhook_id: str) -> None:
@@ -98,12 +102,16 @@ class AsyncWebhooksResource(AsyncBaseResource):
     async def update(
         self, webhook_id: str, params: UpdateOutgoingWebhookParams | dict[str, Any]
     ) -> OutgoingWebhook:
-        """Update an outgoing webhook."""
+        """Update an outgoing webhook.
+
+        Omitted fields keep their current values. Passing ``secret=None``
+        explicitly clears the signing secret, after which deliveries go out
+        unsigned with no ``X-Spooled-Signature`` header — so only include
+        ``secret`` when you mean to replace or clear it.
+        """
         if isinstance(params, dict):
             params = UpdateOutgoingWebhookParams.model_validate(params)
-        data = await self._http.put(
-            f"/outgoing-webhooks/{webhook_id}", params.model_dump(exclude_none=True)
-        )
+        data = await self._http.put(f"/outgoing-webhooks/{webhook_id}", params.to_payload())
         return OutgoingWebhook.model_validate(data)
 
     async def delete(self, webhook_id: str) -> None:

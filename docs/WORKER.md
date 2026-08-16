@@ -44,9 +44,30 @@ worker = SpooledWorker(
     heartbeat_fraction=0.5,   # Heartbeat at 50% of lease
     shutdown_timeout=30.0,    # Graceful shutdown timeout
     hostname="worker-1",      # Custom hostname
+    worker_id="worker-1",     # Stable id: registration becomes an upsert
     worker_type="python",     # Worker type identifier
     # version defaults to spooled.__version__ (1.0.24 for this release)
     metadata={"env": "prod"}, # Custom metadata
+)
+```
+
+## Stable Worker Identity
+
+`worker_id` is optional, and what it changes is what happens when a worker restarts.
+
+Pass a stable id (1-128 characters from `A-Z a-z 0-9 . _ -`) and registration becomes an upsert: the worker reuses the same row every time it starts, and re-registering an id you already own is not charged against the plan worker cap.
+
+Omit it and the server mints a fresh UUID on every registration. The row from the previous run keeps occupying the plan worker cap until the stale-worker reaper clears it, which takes about two minutes — so a worker that crash-loops on a tight plan can register itself into a `RateLimitError` with code `QUOTA_EXCEEDED`. Give any long-lived or supervised worker a stable id; the UUID default is fine for one-off and short-lived workers.
+
+An id that already belongs to a different organization is rejected with a 409 `ConflictError`, so derive ids from something you control, such as the pod or machine name:
+
+```python
+import os
+
+worker = SpooledWorker(
+    client,
+    queue_name="my-queue",
+    worker_id=os.environ.get("HOSTNAME", "worker-local"),
 )
 ```
 
@@ -160,6 +181,7 @@ async def main():
             client,
             queue_name="my-queue",
             concurrency=10,
+            worker_id="worker-1",
         )
 
         @worker.process
@@ -186,3 +208,4 @@ Heartbeat failures are logged through the client's debug hook; handlers should s
 3. **Handle graceful shutdown** — Always call `worker.stop()` on SIGTERM/SIGINT
 4. **Use idempotent handlers** — Jobs may be retried, so handle duplicates gracefully
 5. **Return meaningful results** — Include relevant data in the return value for debugging
+6. **Give long-lived workers a stable `worker_id`** — Restarts then reuse one row instead of leaving stale ones against the plan worker cap

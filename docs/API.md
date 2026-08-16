@@ -251,8 +251,41 @@ webhook = client.webhooks.create({
     "name": "Job Notifications",
     "url": "https://myapp.com/webhooks/spooled",
     "events": ["job.completed", "job.failed"],
+    "secret": "whsec_...",  # Optional: signs deliveries with X-Spooled-Signature
 })
 ```
+
+### Update Outgoing Webhook
+
+Fields you leave out keep their current values. `secret` is the one to handle carefully, because it has three states and one of them is destructive:
+
+```python
+# Keep the current secret - omit the field entirely
+client.webhooks.update("wh_xxx", {"name": "Renamed"})
+
+# Replace the secret
+client.webhooks.update("wh_xxx", {"secret": "whsec_new"})
+
+# Clear the secret - deliveries then go out UNSIGNED, with no
+# X-Spooled-Signature header for your endpoint to verify
+client.webhooks.update("wh_xxx", {"secret": None})
+```
+
+Do not build the update body by dumping a whole webhook object and sending every field back: an unchanged `secret` serialised as an explicit `None` wipes a live secret. Pass only the fields you mean to change.
+
+### Auto-Disable
+
+After 20 consecutive failed deliveries the backend disables the webhook itself — `enabled` becomes `False` and `last_status` becomes `"auto_disabled"`. It receives no further events until you turn it back on:
+
+```python
+webhook = client.webhooks.get("wh_xxx")
+if webhook.last_status == "auto_disabled":
+    client.webhooks.update("wh_xxx", {"enabled": True})
+```
+
+Re-enabling is charged against the plan webhook cap, so it raises `RateLimitError` with code `QUOTA_EXCEEDED` if the organization is already at its limit.
+
+`failure_count` counts failed *deliveries*, not individual retry attempts, so it is roughly 5x smaller than an attempt-based count for the same failures. Any successful delivery resets it to 0, including a successful manual retry.
 
 ### Test Webhook
 
@@ -265,6 +298,17 @@ print(result.success, result.status_code)
 
 ```python
 deliveries = client.webhooks.get_deliveries("wh_xxx")
+```
+
+Deliveries are dispatched under a process-wide concurrency cap, so under heavy load they queue rather than all firing at once, and delivery order is not guaranteed.
+
+Delivery history is retained, not archived. The per-organization retention sweep deletes rows older than your plan's window — 1 day on free, 7 on starter, 30 on pro, 90 on enterprise — and only the newest 100 deliveries per webhook are readable through the API in any case. Copy anything you need for long-term auditing into your own store.
+
+### Retry Delivery
+
+```python
+result = client.webhooks.retry_delivery("wh_xxx", "whd_xxx")
+print(result.status)
 ```
 
 ## Error Handling

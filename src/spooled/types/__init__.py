@@ -120,6 +120,7 @@ from spooled.types.webhooks import (
     TestWebhookResponse,
     UpdateOutgoingWebhookParams,
     WebhookEvent,
+    WebhookLastStatus,
 )
 from spooled.types.workers import (
     RegisterWorkerParams,
@@ -209,6 +210,7 @@ __all__ = [
     "AddDependenciesResponse",
     # Webhooks
     "WebhookEvent",
+    "WebhookLastStatus",
     "OutgoingWebhook",
     "OutgoingWebhookDelivery",
     "CreateOutgoingWebhookParams",

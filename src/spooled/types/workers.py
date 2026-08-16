@@ -47,10 +47,23 @@ class WorkerSummary(BaseModel):
 
 
 class RegisterWorkerParams(BaseModel):
-    """Parameters for registering a worker."""
+    """Parameters for registering a worker.
+
+    ``worker_id`` is optional. Supplying a stable id makes registration an
+    upsert, so a worker that restarts reuses the same row, and re-registering
+    an id you already own is not charged against the plan worker cap. Omit it
+    and the server mints a UUID instead — but then every restart leaves the
+    previous row occupying the cap until the stale-worker reaper clears it
+    (~2 minutes), so a crash-looping worker on a tight plan can rate-limit
+    itself out of registering. An id owned by a different organization is
+    rejected with 409.
+    """
 
     queue_name: str = Field(..., min_length=1, max_length=100)
     hostname: str
+    worker_id: str | None = Field(
+        default=None, min_length=1, max_length=128, pattern=r"^[A-Za-z0-9._-]+$"
+    )
     worker_type: str | None = None
     max_concurrency: int = Field(default=5, ge=1, le=100)
     metadata: dict[str, Any] | None = None

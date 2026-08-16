@@ -75,6 +75,7 @@ class SpooledWorker:
         heartbeat_fraction: float = 0.5,
         shutdown_timeout: float = 30.0,
         hostname: str | None = None,
+        worker_id: str | None = None,
         worker_type: str = "python",
         version: str = __version__,
         metadata: dict[str, Any] | None = None,
@@ -92,6 +93,11 @@ class SpooledWorker:
             heartbeat_fraction: Fraction of lease to wait before heartbeat
             shutdown_timeout: Seconds to wait for jobs to complete on shutdown
             hostname: Worker hostname (auto-detected if not provided)
+            worker_id: Stable worker id (1-128 chars, ``[A-Za-z0-9._-]``).
+                Supplying one makes registration an upsert so a restarting
+                worker reuses its row instead of leaving a stale one against
+                the plan worker cap; omit it and the server mints a UUID
+                per registration
             worker_type: Type identifier for this worker
             version: Version string for this worker
             metadata: Additional metadata to attach to worker
@@ -106,6 +112,7 @@ class SpooledWorker:
             heartbeat_fraction=heartbeat_fraction,
             shutdown_timeout=shutdown_timeout,
             hostname=hostname or socket.gethostname(),
+            worker_id=worker_id,
             worker_type=worker_type,
             version=version,
             metadata=metadata or {},
@@ -205,6 +212,8 @@ class SpooledWorker:
                 {
                     "queue_name": self._options.queue_name,
                     "hostname": self._options.hostname,
+                    # Dropped when None, so the server mints a UUID instead.
+                    "worker_id": self._options.worker_id,
                     "worker_type": self._options.worker_type,
                     "max_concurrency": self._options.concurrency,
                     "metadata": self._options.metadata,

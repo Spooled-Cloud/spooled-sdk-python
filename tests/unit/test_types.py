@@ -29,6 +29,8 @@ from spooled.types.schedules import (
 )
 from spooled.types.webhooks import (
     CreateOutgoingWebhookParams,
+    OutgoingWebhook,
+    UpdateOutgoingWebhookParams,
 )
 from spooled.types.workers import (
     RegisterWorkerParams,
@@ -362,6 +364,26 @@ class TestRegisterWorkerParams:
         with pytest.raises(PydanticValidationError):
             RegisterWorkerParams(queue_name="q", hostname="h", max_concurrency=101)
 
+    def test_worker_id_optional(self) -> None:
+        """Test worker_id defaults to None and is omitted from the payload."""
+        params = RegisterWorkerParams(queue_name="q", hostname="h")
+        assert params.worker_id is None
+        assert "worker_id" not in params.model_dump(exclude_none=True)
+
+    def test_worker_id_accepted(self) -> None:
+        """Test a stable worker_id survives to the payload."""
+        params = RegisterWorkerParams(queue_name="q", hostname="h", worker_id="pod-7.worker_1-a")
+        assert params.model_dump(exclude_none=True)["worker_id"] == "pod-7.worker_1-a"
+
+    def test_worker_id_charset_and_length(self) -> None:
+        """Test worker_id validation."""
+        with pytest.raises(PydanticValidationError):
+            RegisterWorkerParams(queue_name="q", hostname="h", worker_id="")
+        with pytest.raises(PydanticValidationError):
+            RegisterWorkerParams(queue_name="q", hostname="h", worker_id="not valid!")
+        with pytest.raises(PydanticValidationError):
+            RegisterWorkerParams(queue_name="q", hostname="h", worker_id="x" * 129)
+
 
 class TestCreateScheduleParams:
     """Tests for CreateScheduleParams."""
@@ -463,6 +485,56 @@ class TestCreateOutgoingWebhookParams:
             events=["job.completed", "job.failed", "job.created"],
         )
         assert len(params.events) == 3
+
+
+class TestUpdateOutgoingWebhookParams:
+    """Tests for UpdateOutgoingWebhookParams three-state secret handling."""
+
+    def test_omitted_secret_is_not_sent(self) -> None:
+        """Test an unmentioned secret stays out of the payload."""
+        payload = UpdateOutgoingWebhookParams(name="Renamed").to_payload()
+        assert payload == {"name": "Renamed"}
+        assert "secret" not in payload
+
+    def test_explicit_none_clears_secret(self) -> None:
+        """Test an explicit None is serialised as null so the server clears it."""
+        assert UpdateOutgoingWebhookParams(secret=None).to_payload() == {"secret": None}
+        assert UpdateOutgoingWebhookParams.model_validate({"secret": None}).to_payload() == {
+            "secret": None
+        }
+
+    def test_string_replaces_secret(self) -> None:
+        """Test a string secret is sent as-is."""
+        assert UpdateOutgoingWebhookParams(secret="whsec_new").to_payload() == {
+            "secret": "whsec_new"
+        }
+
+    def test_false_enabled_survives(self) -> None:
+        """Test falsy-but-set values are not dropped."""
+        assert UpdateOutgoingWebhookParams(enabled=False).to_payload() == {"enabled": False}
+
+
+class TestOutgoingWebhook:
+    """Tests for the OutgoingWebhook response model."""
+
+    def test_auto_disabled_last_status(self) -> None:
+        """Test an auto-disabled webhook parses instead of raising."""
+        webhook = OutgoingWebhook.model_validate(
+            {
+                "id": "wh_123",
+                "organization_id": "org_123",
+                "name": "Notifications",
+                "url": "https://example.com/webhook",
+                "events": ["job.completed"],
+                "enabled": False,
+                "failure_count": 20,
+                "last_status": "auto_disabled",
+                "created_at": "2026-01-01T00:00:00Z",
+                "updated_at": "2026-01-01T00:00:00Z",
+            }
+        )
+        assert webhook.enabled is False
+        assert webhook.last_status == "auto_disabled"
 
 
 class TestCreateOrganizationParams:

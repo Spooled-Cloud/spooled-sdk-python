@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import json
+
 import httpx
 import pytest
 import respx
@@ -481,6 +483,34 @@ class TestWorkersResourceComplete:
             assert result.heartbeat_interval_secs == 10
 
     @respx.mock
+    def test_register_worker_with_stable_id(self) -> None:
+        """Test a stable worker_id is forwarded and omitted when unset."""
+        sent: list[dict[str, object]] = []
+
+        def record(request: httpx.Request) -> httpx.Response:
+            sent.append(json.loads(request.content))
+            return httpx.Response(
+                200,
+                json={
+                    "id": "worker-1",
+                    "queue_name": "test",
+                    "lease_duration_secs": 30,
+                    "heartbeat_interval_secs": 10,
+                },
+            )
+
+        respx.post(f"{BASE_URL}/api/v1/workers/register").mock(side_effect=record)
+
+        with SpooledClient(api_key=API_KEY, base_url=BASE_URL) as client:
+            client.workers.register(
+                {"queue_name": "test", "hostname": "h", "worker_id": "worker-1"}
+            )
+            client.workers.register({"queue_name": "test", "hostname": "h"})
+
+        assert sent[0]["worker_id"] == "worker-1"
+        assert "worker_id" not in sent[1]
+
+    @respx.mock
     def test_worker_heartbeat(self) -> None:
         """Test worker heartbeat."""
         respx.post(f"{BASE_URL}/api/v1/workers/worker_123/heartbeat").mock(
@@ -603,6 +633,42 @@ class TestWebhooksResourceComplete:
             result = client.webhooks.test("wh_123")
             assert result.success is True
             assert result.status_code == 200
+
+    @respx.mock
+    def test_update_webhook_secret_states(self) -> None:
+        """Test omit keeps the secret while explicit None clears it."""
+        sent: list[dict[str, object]] = []
+
+        def record(request: httpx.Request) -> httpx.Response:
+            sent.append(json.loads(request.content))
+            return httpx.Response(
+                200,
+                json={
+                    "id": "wh_123",
+                    "organization_id": "org_1",
+                    "name": "Notifications",
+                    "url": "https://example.com/webhook",
+                    "events": ["job.completed"],
+                    "enabled": False,
+                    "failure_count": 20,
+                    "last_status": "auto_disabled",
+                    "created_at": "2024-01-01T00:00:00Z",
+                    "updated_at": "2024-01-01T00:00:00Z",
+                },
+            )
+
+        respx.put(f"{BASE_URL}/api/v1/outgoing-webhooks/wh_123").mock(side_effect=record)
+
+        with SpooledClient(api_key=API_KEY, base_url=BASE_URL) as client:
+            webhook = client.webhooks.update("wh_123", {"name": "Renamed"})
+            assert webhook.last_status == "auto_disabled"
+
+            client.webhooks.update("wh_123", {"secret": None})
+            client.webhooks.update("wh_123", {"secret": "whsec_new"})
+
+        assert sent[0] == {"name": "Renamed"}
+        assert sent[1] == {"secret": None}
+        assert sent[2] == {"secret": "whsec_new"}
 
 
 class TestAuthResourceComplete:

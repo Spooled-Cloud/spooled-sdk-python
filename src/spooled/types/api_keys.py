@@ -10,7 +10,13 @@ from pydantic import BaseModel, Field
 
 
 class ApiKey(BaseModel):
-    """Full API key model."""
+    """Full API key model.
+
+    ``last_used`` is coarse by design: the backend writes it at most once per
+    key per 5 minutes rather than on every request, so it can lag real usage
+    by that much (and stay ``None`` for a freshly used key). Do not poll it to
+    detect live activity or assert on it immediately after a request.
+    """
 
     id: str
     organization_id: str | None = None
@@ -25,7 +31,12 @@ class ApiKey(BaseModel):
 
 
 class ApiKeySummary(BaseModel):
-    """Summary view of an API key."""
+    """Summary view of an API key.
+
+    ``last_used`` carries the same 5-minute write coalescing as
+    :class:`ApiKey`, so treat it as an approximate "recently used" marker
+    rather than a per-request timestamp.
+    """
 
     id: str
     name: str

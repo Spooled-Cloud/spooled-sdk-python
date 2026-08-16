@@ -25,13 +25,16 @@ def main() -> None:
     # Create client
     client = SpooledClient(api_key=api_key)
 
-    # Create worker
+    # Create worker.
+    # A stable worker_id makes registration an upsert, so restarts reuse the
+    # same row instead of leaving stale ones against the plan worker cap.
     worker = SpooledWorker(
         client,
         queue_name="example-queue",
         concurrency=5,
         poll_interval=1.0,
         lease_duration=30,
+        worker_id="example-worker-1",
     )
 
     # Register job handler

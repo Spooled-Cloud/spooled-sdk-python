@@ -2,6 +2,20 @@
 
 All notable changes to the Spooled Python SDK are documented here.
 
+## [Unreleased]
+
+### Added
+
+- `SpooledWorker`, `AsyncSpooledWorker`, `SpooledWorkerOptions`, and `RegisterWorkerParams` accept an optional `worker_id`. A stable id makes registration an upsert, so a restarting worker reuses its row instead of leaving a stale one against the plan worker cap for ~2 minutes; omitting it keeps the previous behaviour of a server-minted UUID.
+- `WebhookLastStatus` is exported alongside `WebhookEvent`.
+
+### Changed
+
+- **Breaking for callers that pass `secret=None`.** `client.webhooks.update()` now distinguishes an omitted `secret` from an explicit `None`: omitting keeps the current signing secret, and passing `None` clears it, after which deliveries go out unsigned with no `X-Spooled-Signature` header. Previously `None` was stripped from the request body and behaved as a no-op. Do not serialise unchanged fields as explicit `None`.
+- `OutgoingWebhook.last_status` accepts `"auto_disabled"`, which the backend sets after 20 consecutive failed deliveries when it disables a webhook. Without this, every webhook read on an affected organization raised a validation error.
+- `OutgoingWebhook.failure_count` counts failed deliveries rather than individual retry attempts, so it is roughly 5x smaller than before for the same failures; documented on the model.
+- `ApiKey.last_used` and `ApiKeySummary.last_used` are documented as coarse — the backend writes them at most once per key per 5 minutes.
+
 ## [1.0.24] - 2026-07-19
 
 ### Fixed

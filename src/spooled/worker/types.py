@@ -162,7 +162,15 @@ class JobFailedEventData:
 
 
 class SpooledWorkerOptions(BaseModel):
-    """Options for SpooledWorker."""
+    """Options for SpooledWorker.
+
+    ``worker_id`` is optional but recommended for long-lived deployments: a
+    stable id turns registration into an upsert, so a restarting worker reuses
+    its existing row instead of leaving the old one occupying the plan worker
+    cap until the stale-worker reaper clears it (~2 minutes). Leave it unset
+    and the server mints a UUID per registration, which is fine for one-off
+    or short-lived workers.
+    """
 
     queue_name: str = Field(..., min_length=1, max_length=100)
     concurrency: int = Field(default=5, ge=1, le=100)
@@ -171,6 +179,9 @@ class SpooledWorkerOptions(BaseModel):
     heartbeat_fraction: float = Field(default=0.5, gt=0, le=1)
     shutdown_timeout: float = Field(default=30.0, gt=0)  # seconds
     hostname: str | None = None
+    worker_id: str | None = Field(
+        default=None, min_length=1, max_length=128, pattern=r"^[A-Za-z0-9._-]+$"
+    )
     worker_type: str = Field(default="python")
     version: str = Field(default=__version__)
     metadata: dict[str, Any] = Field(default_factory=dict)
