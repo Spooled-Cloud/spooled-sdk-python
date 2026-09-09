@@ -47,6 +47,9 @@ All notable changes to the Spooled Python SDK are documented here.
 - `auth.start_email_login` now reads `email_sent_to` from
   `POST /auth/email/start`. It previously looked for `email_to`, which the API
   never sends, so the masked address was always `None`.
+- `workflows.jobs.get_dependencies` now derives `JobDependency.completed` from
+  `status == "completed"`. The API never sends `completed`, so the flag was
+  always `False`.
 
 ### Added
 

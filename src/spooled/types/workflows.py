@@ -7,7 +7,7 @@ from __future__ import annotations
 from datetime import datetime
 from typing import Any, Literal
 
-from pydantic import AliasChoices, BaseModel, ConfigDict, Field
+from pydantic import AliasChoices, BaseModel, ConfigDict, Field, model_validator
 
 WorkflowStatus = Literal["pending", "running", "completed", "failed", "cancelled"]
 
@@ -80,12 +80,20 @@ class ListWorkflowsParams(BaseModel):
 
 
 class JobDependency(BaseModel):
-    """A job dependency."""
+    """A job dependency edge from GET /jobs/{id}/dependencies."""
 
     job_id: str
     status: str
     queue_name: str | None = None
     completed: bool = False
+
+    @model_validator(mode="after")
+    def derive_completed(self) -> JobDependency:
+        # API sends status, not completed. Without this, completed stayed False
+        # even when status was "completed".
+        if not self.completed:
+            self.completed = self.status == "completed"
+        return self
 
 
 class JobWithDependencies(BaseModel):

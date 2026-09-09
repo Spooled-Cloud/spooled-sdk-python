@@ -861,3 +861,37 @@ class TestWorkflowJobsResource:
             )
             assert result.added_count == 1
             assert result.dependencies_met is False
+
+    @respx.mock
+    def test_get_dependencies_maps_backend_shape(self) -> None:
+        respx.get(f"{BASE_URL}/api/v1/jobs/job_2/dependencies").mock(
+            return_value=httpx.Response(
+                200,
+                json={
+                    "job_id": "job_2",
+                    "dependencies": [
+                        {
+                            "job_id": "job_1",
+                            "queue_name": "etl",
+                            "status": "completed",
+                        }
+                    ],
+                    "dependents": [
+                        {
+                            "job_id": "job_3",
+                            "queue_name": "etl",
+                            "status": "pending",
+                        }
+                    ],
+                    "dependencies_met": True,
+                },
+            )
+        )
+
+        with SpooledClient(api_key=API_KEY, base_url=BASE_URL) as client:
+            got = client.workflows.jobs.get_dependencies("job_2")
+            assert got.job_id == "job_2"
+            assert got.dependencies_met is True
+            assert got.dependencies[0].queue_name == "etl"
+            assert got.dependencies[0].completed is True
+            assert got.dependents[0].completed is False
