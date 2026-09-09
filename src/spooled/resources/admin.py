@@ -23,6 +23,26 @@ if TYPE_CHECKING:
     from spooled.utils.http import HttpClient
 
 
+def _organizations_from_admin_list(data: Any) -> list[Organization]:
+    """GET /admin/organizations returns `{organizations, total, limit, offset}`."""
+    if isinstance(data, list):
+        items = data
+    elif isinstance(data, dict):
+        raw = data.get("organizations")
+        items = raw if isinstance(raw, list) else []
+    else:
+        items = []
+    orgs: list[Organization] = []
+    for item in items:
+        if not isinstance(item, dict):
+            continue
+        # List rows omit `settings`, which Organization requires on GET-by-id.
+        if "settings" not in item:
+            item = {**item, "settings": {}}
+        orgs.append(Organization.model_validate(item))
+    return orgs
+
+
 class AdminResource(BaseResource):
     """Admin resource (sync). Requires admin_key."""
 
@@ -46,7 +66,7 @@ class AdminResource(BaseResource):
         data = self._http.get(
             "/admin/organizations", params=query_params, headers=self._get_headers()
         )
-        return [Organization.model_validate(item) for item in data]
+        return _organizations_from_admin_list(data)
 
     def get_organization(self, org_id: str) -> Organization:
         """Get an organization by ID."""
@@ -138,7 +158,7 @@ class AsyncAdminResource(AsyncBaseResource):
         data = await self._http.get(
             "/admin/organizations", params=query_params, headers=self._get_headers()
         )
-        return [Organization.model_validate(item) for item in data]
+        return _organizations_from_admin_list(data)
 
     async def get_organization(self, org_id: str) -> Organization:
         """Get an organization by ID."""

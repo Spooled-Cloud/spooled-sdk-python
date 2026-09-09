@@ -992,3 +992,34 @@ class TestAdminResource:
 
         assert captured.get("hard_delete") == "true"
         assert captured.get("hard") is None
+
+    @respx.mock
+    def test_list_organizations_reads_wrapped_payload(self) -> None:
+        respx.get(f"{BASE_URL}/api/v1/admin/organizations").mock(
+            return_value=httpx.Response(
+                200,
+                json={
+                    "organizations": [
+                        {
+                            "id": "org_1",
+                            "name": "Acme",
+                            "slug": "acme",
+                            "plan_tier": "pro",
+                            "created_at": "2024-01-01T00:00:00Z",
+                            "updated_at": "2024-01-02T00:00:00Z",
+                            "usage": {"jobs_today": 1, "active_jobs": 0},
+                        }
+                    ],
+                    "total": 1,
+                    "limit": 50,
+                    "offset": 0,
+                },
+            )
+        )
+
+        with SpooledClient(api_key=API_KEY, base_url=BASE_URL, admin_key="adminkey") as client:
+            got = client.admin.list_organizations()
+
+        assert len(got) == 1
+        assert got[0].id == "org_1"
+        assert got[0].plan_tier == "pro"
