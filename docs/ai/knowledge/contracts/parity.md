@@ -10,6 +10,7 @@
 - `GET /jobs/{id}/dependencies` is `{ job_id, dependencies, dependents, dependencies_met }` with `{ job_id, queue_name, status }` edges. `completed` is derived from `status == "completed"`.
 - Email availability is `GET /auth/check-email?email=`, not `/auth/email/check`. The body is `available`, `exists`, `signup_enabled`.
 - Email login start is `POST /auth/email/start` → `{ message, email_sent_to }`, not `{ email_to }` / `{ success, message }`.
+- `POST /auth/validate` is `{ valid, error?, claims? }`. Claims are `org_id`, `api_key_id`, `queues`, `exp`. `ValidateResponse` maps those onto `organization_id` / `api_key_id` / `queues` / `expires_at`.
 - Slug check is `GET /organizations/check-slug?slug=` → `{ available, valid, error, suggestion }`, not `{ slug }`.
 - Admin hard delete is `DELETE /admin/organizations/{id}?hard_delete=true`, not `?hard=true`.
 - `GET /admin/organizations` is `{ organizations, total, limit, offset }`, not a bare array. List rows omit `settings`.

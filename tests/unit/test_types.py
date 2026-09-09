@@ -2,13 +2,14 @@
 
 from __future__ import annotations
 
-from datetime import datetime
+from datetime import datetime, timezone
 
 import pytest
 from pydantic import ValidationError as PydanticValidationError
 
 from spooled.types.auth import (
     LoginParams,
+    ValidateResponse,
 )
 from spooled.types.jobs import (
     BulkEnqueueParams,
@@ -41,6 +42,38 @@ from spooled.types.workflows import (
     WorkflowJobDefinition,
     WorkflowResponse,
 )
+
+
+class TestValidateResponse:
+    """POST /auth/validate is {valid, error?, claims?}."""
+
+    def test_maps_claims_onto_organization_id(self) -> None:
+        got = ValidateResponse.model_validate(
+            {
+                "valid": True,
+                "claims": {
+                    "org_id": "org_1",
+                    "api_key_id": "key_1",
+                    "queues": ["emails"],
+                    "exp": 1700003600,
+                    "iat": 1700000000,
+                },
+            }
+        )
+        assert got.valid is True
+        assert got.organization_id == "org_1"
+        assert got.api_key_id == "key_1"
+        assert got.queues == ["emails"]
+        assert got.expires_at == datetime.fromtimestamp(1700003600, tz=timezone.utc)
+        assert got.error is None
+
+    def test_maps_error_when_invalid(self) -> None:
+        got = ValidateResponse.model_validate(
+            {"valid": False, "error": "Invalid token"}
+        )
+        assert got.valid is False
+        assert got.error == "Invalid token"
+        assert got.organization_id is None
 
 
 class TestCreateJobParams:

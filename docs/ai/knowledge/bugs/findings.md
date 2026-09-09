@@ -17,3 +17,4 @@
 | PS-13 | P2 | ~~`JobSummary` dropped `job_type` from `GET /jobs`~~ **FIXED** | `src/spooled/types/jobs.py`; summaries send `job_type` from payload |
 | PS-14 | P2 | ~~`JobSummary` dropped `last_error` from list/DLQ~~ **FIXED** | `src/spooled/types/jobs.py`; summaries send `last_error` |
 | PS-15 | P1 | ~~`admin.create_organization` validated `{organization, api_key}` as `Organization`~~ **FIXED** | `src/spooled/resources/admin.py`; returns `CreateOrganizationResponse` |
+| PS-16 | P1 | ~~`auth.validate` dropped `claims` (org/queues/exp always empty)~~ **FIXED** | `src/spooled/types/auth.py`; POST `/auth/validate` is `{valid,error,claims}` |

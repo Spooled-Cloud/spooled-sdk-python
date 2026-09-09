@@ -40,6 +40,10 @@ All notable changes to the Spooled Python SDK are documented here.
 
 ### Fixed
 
+- `auth.validate` now maps `claims.org_id` / `api_key_id` / `queues` / `exp`
+  onto `organization_id` / `api_key_id` / `queues` / `expires_at`. It previously
+  looked for top-level `organization_id` and `expires_at`, which the API never
+  sends, so a valid token looked empty.
 - `auth.check_email` (sync and async) now calls `GET /auth/check-email`. It
   previously requested `GET /auth/email/check`, which is not a backend route, so
   every check 404'd. The response model now also reads `available` and

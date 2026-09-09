@@ -4,9 +4,10 @@ Authentication-related types.
 
 from __future__ import annotations
 
-from datetime import datetime
+from datetime import datetime, timezone
+from typing import Any
 
-from pydantic import AliasChoices, BaseModel, ConfigDict, Field
+from pydantic import AliasChoices, BaseModel, ConfigDict, Field, model_validator
 
 
 class LoginParams(BaseModel):
@@ -62,11 +63,43 @@ class ValidateParams(BaseModel):
 
 
 class ValidateResponse(BaseModel):
-    """Response from token validation."""
+    """POST /auth/validate — `{ valid, error?, claims? }`.
+
+    Claims carry `org_id`, `api_key_id`, `queues`, `exp`. The API never sends
+    top-level `organization_id` / `expires_at`.
+    """
 
     valid: bool
+    error: str | None = None
     organization_id: str | None = None
+    api_key_id: str | None = None
+    queues: list[str] | None = None
     expires_at: datetime | None = None
+
+    @model_validator(mode="before")
+    @classmethod
+    def map_claims(cls, data: Any) -> Any:
+        if not isinstance(data, dict):
+            return data
+        claims = data.get("claims")
+        if not isinstance(claims, dict):
+            return data
+        data = dict(data)
+        if data.get("organization_id") is None:
+            org = claims.get("org_id") or claims.get("organization_id")
+            if org is not None:
+                data["organization_id"] = org
+        if data.get("api_key_id") is None and claims.get("api_key_id") is not None:
+            data["api_key_id"] = claims["api_key_id"]
+        if data.get("queues") is None and isinstance(claims.get("queues"), list):
+            data["queues"] = claims["queues"]
+        if data.get("expires_at") is None and claims.get("exp") is not None:
+            exp = claims["exp"]
+            if isinstance(exp, (int, float)):
+                data["expires_at"] = datetime.fromtimestamp(int(exp), tz=timezone.utc)
+            else:
+                data["expires_at"] = exp
+        return data
 
 
 class StartEmailLoginResponse(BaseModel):
