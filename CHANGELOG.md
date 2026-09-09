@@ -40,6 +40,10 @@ All notable changes to the Spooled Python SDK are documented here.
 
 ### Fixed
 
+- `auth.logout` (sync and async) now sends the refresh token in the body.
+  Without it the access token is blacklisted but `/auth/refresh` still mints a
+  new pair, so logout did not end the session. The stored refresh token is used
+  when the argument is omitted, matching the Node and PHP SDKs.
 - `auth.validate` now maps `claims.org_id` / `api_key_id` / `queues` / `exp`
   onto `organization_id` / `api_key_id` / `queues` / `expires_at`. It previously
   looked for top-level `organization_id` and `expires_at`, which the API never

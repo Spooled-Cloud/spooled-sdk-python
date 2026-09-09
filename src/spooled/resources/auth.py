@@ -20,6 +20,14 @@ from spooled.types.auth import (
 )
 
 
+def _logout_body(http: Any, refresh_token: str | None) -> dict[str, str] | None:
+    """POST /auth/logout needs refresh_token in the body or /auth/refresh survives."""
+    token = refresh_token or getattr(getattr(http, "config", None), "refresh_token", None)
+    if token:
+        return {"refresh_token": token}
+    return None
+
+
 class AuthResource(BaseResource):
     """Auth resource (sync)."""
 
@@ -37,9 +45,14 @@ class AuthResource(BaseResource):
         data = self._http.post("/auth/refresh", params.model_dump(exclude_none=True))
         return RefreshResponse.model_validate(data)
 
-    def logout(self) -> None:
-        """Invalidate current token."""
-        self._http.post("/auth/logout")
+    def logout(self, refresh_token: str | None = None) -> None:
+        """Invalidate the access token and, when supplied, the refresh token.
+
+        POST /auth/logout blacklists the access token from Authorization.
+        Without ``refresh_token`` in the body, ``/auth/refresh`` still mints a
+        new pair. The client's stored refresh token is sent when omitted.
+        """
+        self._http.post("/auth/logout", _logout_body(self._http, refresh_token))
 
     def me(self) -> MeResponse:
         """Get current user info."""
@@ -81,9 +94,14 @@ class AsyncAuthResource(AsyncBaseResource):
         data = await self._http.post("/auth/refresh", params.model_dump(exclude_none=True))
         return RefreshResponse.model_validate(data)
 
-    async def logout(self) -> None:
-        """Invalidate current token."""
-        await self._http.post("/auth/logout")
+    async def logout(self, refresh_token: str | None = None) -> None:
+        """Invalidate the access token and, when supplied, the refresh token.
+
+        POST /auth/logout blacklists the access token from Authorization.
+        Without ``refresh_token`` in the body, ``/auth/refresh`` still mints a
+        new pair. The client's stored refresh token is sent when omitted.
+        """
+        await self._http.post("/auth/logout", _logout_body(self._http, refresh_token))
 
     async def me(self) -> MeResponse:
         """Get current user info."""

@@ -11,6 +11,7 @@
 - Email availability is `GET /auth/check-email?email=`, not `/auth/email/check`. The body is `available`, `exists`, `signup_enabled`.
 - Email login start is `POST /auth/email/start` → `{ message, email_sent_to }`, not `{ email_to }` / `{ success, message }`.
 - `POST /auth/validate` is `{ valid, error?, claims? }`. Claims are `org_id`, `api_key_id`, `queues`, `exp`. `ValidateResponse` maps those onto `organization_id` / `api_key_id` / `queues` / `expires_at`.
+- `POST /auth/logout` blacklists the access token from `Authorization`. The refresh JWT stays usable until expiry unless `refresh_token` is in the body. `auth.logout()` sends the stored refresh token (or an explicit argument).
 - Slug check is `GET /organizations/check-slug?slug=` → `{ available, valid, error, suggestion }`, not `{ slug }`.
 - Admin hard delete is `DELETE /admin/organizations/{id}?hard_delete=true`, not `?hard=true`.
 - `GET /admin/organizations` is `{ organizations, total, limit, offset }`, not a bare array. List rows omit `settings`.

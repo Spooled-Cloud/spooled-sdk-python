@@ -788,6 +788,36 @@ class TestAuthResourceComplete:
             assert result.message == "Login code sent to your email"
             assert result.email_sent_to == "n***@example.com"
 
+    @respx.mock
+    def test_logout_sends_refresh_token(self) -> None:
+        """Without refresh_token in the body, /auth/refresh still mints a pair."""
+        route = respx.post(f"{BASE_URL}/api/v1/auth/logout").mock(
+            return_value=httpx.Response(204)
+        )
+
+        with SpooledClient(
+            api_key=API_KEY, base_url=BASE_URL, refresh_token="rt_1"
+        ) as client:
+            client.auth.logout()
+
+        assert route.called
+        body = json.loads(route.calls.last.request.content)
+        assert body == {"refresh_token": "rt_1"}
+
+    @respx.mock
+    def test_logout_prefers_explicit_refresh_token(self) -> None:
+        route = respx.post(f"{BASE_URL}/api/v1/auth/logout").mock(
+            return_value=httpx.Response(204)
+        )
+
+        with SpooledClient(
+            api_key=API_KEY, base_url=BASE_URL, refresh_token="rt_stored"
+        ) as client:
+            client.auth.logout("rt_explicit")
+
+        body = json.loads(route.calls.last.request.content)
+        assert body == {"refresh_token": "rt_explicit"}
+
 
 class TestOrganizationsResource:
     """Organization routes must match the backend contract."""
