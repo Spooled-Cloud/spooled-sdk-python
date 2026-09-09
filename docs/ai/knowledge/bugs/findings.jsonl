@@ -4,3 +4,4 @@
 {"id":"PS-04","sev":"P2","summary":"gRPC streams inherited unary 30s deadline","path":"src/spooled/grpc/client.py","status":"fixed","note":"Working tree defaults stream_timeout to None and maps stream deadline errors with the configured stream timeout"}
 {"id":"PS-05","sev":"P3","summary":"maintainer scripts failed Ruff unused-code checks","path":"scripts/test_local.py scripts/verify_production.py","status":"fixed","note":"Working tree removes dead imports/vars and chains RuntimeError exceptions"}
 {"id":"PS-06","sev":"P1","summary":"check_email called GET /auth/email/check which 404s","path":"src/spooled/resources/auth.py","status":"fixed","note":"Route is GET /auth/check-email; response includes available and signup_enabled"}
+{"id":"PS-07","sev":"P2","summary":"start_email_login read email_to; API sends email_sent_to","path":"src/spooled/types/auth.py","status":"fixed","note":"POST /auth/email/start is message+email_sent_to"}

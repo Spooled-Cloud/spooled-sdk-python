@@ -44,6 +44,9 @@ All notable changes to the Spooled Python SDK are documented here.
   previously requested `GET /auth/email/check`, which is not a backend route, so
   every check 404'd. The response model now also reads `available` and
   `signup_enabled`, which the handler always sends.
+- `auth.start_email_login` now reads `email_sent_to` from
+  `POST /auth/email/start`. It previously looked for `email_to`, which the API
+  never sends, so the masked address was always `None`.
 
 ### Added
 

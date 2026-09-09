@@ -754,6 +754,24 @@ class TestAuthResourceComplete:
             assert result.available is True
             assert result.signup_enabled is True
 
+    @respx.mock
+    def test_start_email_login_maps_email_sent_to(self) -> None:
+        """POST /auth/email/start returns email_sent_to, not email_to."""
+        respx.post(f"{BASE_URL}/api/v1/auth/email/start").mock(
+            return_value=httpx.Response(
+                200,
+                json={
+                    "message": "Login code sent to your email",
+                    "email_sent_to": "n***@example.com",
+                },
+            )
+        )
+
+        with SpooledClient(api_key=API_KEY, base_url=BASE_URL) as client:
+            result = client.auth.start_email_login("new@example.com")
+            assert result.message == "Login code sent to your email"
+            assert result.email_sent_to == "n***@example.com"
+
 
 class TestWorkflowJobsResource:
     """Workflow jobs must use GET /workflows/{id}; /jobs subpaths do not exist."""

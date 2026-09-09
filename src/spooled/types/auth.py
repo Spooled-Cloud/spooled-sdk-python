@@ -6,7 +6,7 @@ from __future__ import annotations
 
 from datetime import datetime
 
-from pydantic import BaseModel, Field
+from pydantic import AliasChoices, BaseModel, ConfigDict, Field
 
 
 class LoginParams(BaseModel):
@@ -70,11 +70,16 @@ class ValidateResponse(BaseModel):
 
 
 class StartEmailLoginResponse(BaseModel):
-    """Response from starting email login."""
+    """Response from POST /auth/email/start."""
+
+    model_config = ConfigDict(populate_by_name=True)
 
     message: str
-    expires_in: int | None = None  # seconds
-    email_to: str | None = None  # masked email
+    email_sent_to: str | None = Field(
+        default=None,
+        validation_alias=AliasChoices("email_sent_to", "email_to"),
+    )
+    expires_in: int | None = None
 
 
 class CheckEmailResponse(BaseModel):

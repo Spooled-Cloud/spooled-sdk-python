@@ -7,3 +7,4 @@
 - Worker registration forwards an optional `worker_id` (upsert on restart); sync worker, async worker, and `SpooledWorkerOptions` all expose it and drop it when unset.
 - Workflow job list/get/status are not their own REST routes. `GET /workflows/{id}` carries jobs + dependencies; `workflows.jobs.list` reads that document. `POST /jobs/{id}/dependencies` takes `depends_on` + `dependency_mode` and returns `dependencies_added` / `dependencies_met`.
 - Email availability is `GET /auth/check-email?email=`, not `/auth/email/check`. The body is `available`, `exists`, `signup_enabled`.
+- Email login start is `POST /auth/email/start` → `{ message, email_sent_to }`, not `{ email_to }` / `{ success, message }`.
