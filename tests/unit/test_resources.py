@@ -973,3 +973,22 @@ class TestWorkflowJobsResource:
             assert got.dependencies[0].queue_name == "etl"
             assert got.dependencies[0].completed is True
             assert got.dependents[0].completed is False
+
+
+class TestAdminResource:
+    @respx.mock
+    def test_delete_organization_sends_hard_delete_query(self) -> None:
+        captured: dict[str, str | None] = {}
+
+        def handler(request: httpx.Request) -> httpx.Response:
+            captured["hard_delete"] = request.url.params.get("hard_delete")
+            captured["hard"] = request.url.params.get("hard")
+            return httpx.Response(204)
+
+        respx.delete(f"{BASE_URL}/api/v1/admin/organizations/org_1").mock(side_effect=handler)
+
+        with SpooledClient(api_key=API_KEY, base_url=BASE_URL, admin_key="adminkey") as client:
+            client.admin.delete_organization("org_1", hard=True)
+
+        assert captured.get("hard_delete") == "true"
+        assert captured.get("hard") is None

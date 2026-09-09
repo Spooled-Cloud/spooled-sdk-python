@@ -83,7 +83,7 @@ class AdminResource(BaseResource):
         """Delete an organization."""
         self._http.delete(
             f"/admin/organizations/{org_id}",
-            params={"hard": hard} if hard else None,
+            params={"hard_delete": "true"} if hard else None,
             headers=self._get_headers(),
         )
 
@@ -175,7 +175,7 @@ class AsyncAdminResource(AsyncBaseResource):
         """Delete an organization."""
         await self._http.delete(
             f"/admin/organizations/{org_id}",
-            params={"hard": hard} if hard else None,
+            params={"hard_delete": "true"} if hard else None,
             headers=self._get_headers(),
         )
 
