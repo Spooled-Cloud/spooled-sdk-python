@@ -90,6 +90,8 @@ class JobSummary(BaseModel):
         validation_alias=AliasChoices("retry_count", "attempt"),
     )
     max_retries: int | None = None
+    # GET /jobs summaries send payload.job_type as job_type (empty if absent).
+    job_type: str = ""
     created_at: datetime
     scheduled_at: datetime | None = None
     started_at: datetime | None = None

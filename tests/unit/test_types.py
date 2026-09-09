@@ -258,6 +258,22 @@ class TestJobSummary:
         assert job.retry_count == 2
         assert job.max_retries == 5
 
+    def test_maps_job_type_from_list_json(self) -> None:
+        """GET /jobs summaries send job_type from payload.job_type."""
+        job = JobSummary.model_validate(
+            {
+                "id": "job_1",
+                "queue_name": "emails",
+                "status": "pending",
+                "priority": 0,
+                "attempt": 0,
+                "max_retries": 3,
+                "job_type": "send_email",
+                "created_at": "2024-01-01T00:00:00Z",
+            }
+        )
+        assert job.job_type == "send_email"
+
 
 class TestClaimedJob:
     """Tests for ClaimedJob."""
