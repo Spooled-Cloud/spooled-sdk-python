@@ -20,6 +20,7 @@ from spooled.types.jobs import (
     FailJobParams,
     Job,
     JobHeartbeatParams,
+    JobSummary,
 )
 from spooled.types.organizations import (
     CreateOrganizationParams,
@@ -235,6 +236,26 @@ class TestClaimJobsParams:
             ClaimJobsParams(queue_name="q", worker_id="w", lease_duration_secs=4)
         with pytest.raises(PydanticValidationError):
             ClaimJobsParams(queue_name="q", worker_id="w", lease_duration_secs=3601)
+
+
+class TestJobSummary:
+    """Tests for JobSummary list/DLQ shape."""
+
+    def test_maps_attempt_from_list_json(self) -> None:
+        """GET /jobs sends attempt, not retry_count."""
+        job = JobSummary.model_validate(
+            {
+                "id": "job_1",
+                "queue_name": "emails",
+                "status": "pending",
+                "priority": 0,
+                "attempt": 2,
+                "max_retries": 5,
+                "created_at": "2024-01-01T00:00:00Z",
+            }
+        )
+        assert job.retry_count == 2
+        assert job.max_retries == 5
 
 
 class TestClaimedJob:

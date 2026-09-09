@@ -7,7 +7,7 @@ from __future__ import annotations
 from datetime import datetime
 from typing import Any, Literal
 
-from pydantic import BaseModel, Field
+from pydantic import AliasChoices, BaseModel, Field
 
 # Job status enum
 JobStatus = Literal[
@@ -85,7 +85,11 @@ class JobSummary(BaseModel):
     queue_name: str
     status: JobStatus
     priority: int
-    retry_count: int | None = None  # Not always returned by API
+    retry_count: int = Field(
+        default=0,
+        validation_alias=AliasChoices("retry_count", "attempt"),
+    )
+    max_retries: int | None = None
     created_at: datetime
     scheduled_at: datetime | None = None
     started_at: datetime | None = None

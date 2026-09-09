@@ -10,3 +10,4 @@
 - Email availability is `GET /auth/check-email?email=`, not `/auth/email/check`. The body is `available`, `exists`, `signup_enabled`.
 - Email login start is `POST /auth/email/start` → `{ message, email_sent_to }`, not `{ email_to }` / `{ success, message }`.
 - Slug check is `GET /organizations/check-slug?slug=` → `{ available, valid, error, suggestion }`, not `{ slug }`.
+- Job list/DLQ summaries send `attempt` and `max_retries`, not `retry_count`. `JobSummary.retry_count` maps from `attempt`.

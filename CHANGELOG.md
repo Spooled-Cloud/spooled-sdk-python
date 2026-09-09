@@ -53,6 +53,9 @@ All notable changes to the Spooled Python SDK are documented here.
 - `organizations.check_slug` now reads `error` and `suggestion` from
   `GET /organizations/check-slug`. It previously typed `slug`, which the API
   never sends, so a taken slug never offered an alternative.
+- `JobSummary.retry_count` now maps `attempt` from `GET /jobs` and
+  `GET /jobs/dlq`. Those list bodies send `attempt` and `max_retries`, not
+  `retry_count`, so the count was always `None`.
 
 ### Added
 
