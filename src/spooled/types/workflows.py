@@ -7,7 +7,7 @@ from __future__ import annotations
 from datetime import datetime
 from typing import Any, Literal
 
-from pydantic import BaseModel, Field
+from pydantic import AliasChoices, BaseModel, ConfigDict, Field
 
 WorkflowStatus = Literal["pending", "running", "completed", "failed", "cancelled"]
 
@@ -84,16 +84,18 @@ class JobDependency(BaseModel):
 
     job_id: str
     status: str
-    completed: bool
+    queue_name: str | None = None
+    completed: bool = False
 
 
 class JobWithDependencies(BaseModel):
     """Job with its dependencies."""
 
     job_id: str
-    dependencies: list[JobDependency]
-    dependency_mode: Literal["all", "any"]
-    dependencies_met: bool
+    dependencies: list[JobDependency] = Field(default_factory=list)
+    dependents: list[JobDependency] = Field(default_factory=list)
+    dependency_mode: Literal["all", "any"] = "all"
+    dependencies_met: bool = False
 
 
 class AddDependenciesParams(BaseModel):
@@ -104,23 +106,44 @@ class AddDependenciesParams(BaseModel):
 
     model_config = {"extra": "forbid"}
 
+    def to_payload(self) -> dict[str, Any]:
+        """Backend body: ``depends_on`` + ``dependency_mode``."""
+        return {
+            "depends_on": self.dependency_job_ids,
+            "dependency_mode": self.dependency_mode,
+        }
+
 
 class AddDependenciesResponse(BaseModel):
     """Response from adding dependencies."""
 
-    job_id: str
-    added_count: int
+    model_config = ConfigDict(populate_by_name=True)
+
+    added_count: int = Field(
+        default=0,
+        validation_alias=AliasChoices("added_count", "dependencies_added"),
+    )
+    dependencies_met: bool = False
+    job_id: str | None = None
 
 
 class WorkflowJob(BaseModel):
     """A job within a workflow."""
 
+    model_config = ConfigDict(populate_by_name=True)
+
     id: str
-    key: str
-    queue_name: str
+    key: str = ""
+    queue_name: str = Field(
+        default="",
+        validation_alias=AliasChoices("queue_name", "queue"),
+    )
     status: str
-    payload: dict[str, Any]
+    payload: dict[str, Any] = Field(default_factory=dict)
     priority: int = 0
+    max_retries: int | None = None
+    attempt: int | None = None
+    timeout_seconds: int | None = None
     depends_on: list[str] | None = None
     dependency_mode: Literal["all", "any"] | None = None
     created_at: datetime | None = None
@@ -131,7 +154,7 @@ class WorkflowJob(BaseModel):
 class WorkflowJobStatus(BaseModel):
     """Status summary of a job within a workflow."""
 
-    key: str
+    key: str = ""
     job_id: str
     status: str
     progress: float | None = None

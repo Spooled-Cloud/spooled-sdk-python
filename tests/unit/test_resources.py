@@ -733,3 +733,93 @@ class TestAuthResourceComplete:
             result = client.auth.me()
             assert result.organization_id == "org_1"
             assert "emails" in result.queues
+
+
+class TestWorkflowJobsResource:
+    """Workflow jobs must use GET /workflows/{id}; /jobs subpaths do not exist."""
+
+    @respx.mock
+    def test_list_jobs_from_workflow_detail(self) -> None:
+        respx.get(f"{BASE_URL}/api/v1/workflows/wf_1").mock(
+            return_value=httpx.Response(
+                200,
+                json={
+                    "id": "wf_1",
+                    "name": "ETL",
+                    "status": "running",
+                    "created_at": "2024-01-01T00:00:00Z",
+                    "jobs": [
+                        {
+                            "id": "job_1",
+                            "organization_id": "org_1",
+                            "queue": "etl",
+                            "payload": {"step": "extract"},
+                            "status": "completed",
+                            "priority": 0,
+                            "attempt": 1,
+                            "max_retries": 3,
+                            "timeout_ms": 30000,
+                            "created_at": "2024-01-01T00:00:00Z",
+                            "workflow_id": "wf_1",
+                        },
+                        {
+                            "id": "job_2",
+                            "organization_id": "org_1",
+                            "queue": "etl",
+                            "payload": {"step": "transform"},
+                            "status": "pending",
+                            "priority": 0,
+                            "attempt": 0,
+                            "max_retries": 3,
+                            "timeout_ms": 60000,
+                            "created_at": "2024-01-01T00:00:00Z",
+                            "workflow_id": "wf_1",
+                        },
+                    ],
+                    "dependencies": [
+                        {
+                            "parent_job_id": "job_1",
+                            "child_job_id": "job_2",
+                            "dependency_type": "all",
+                        }
+                    ],
+                    "progress": {
+                        "total": 2,
+                        "completed": 1,
+                        "failed": 0,
+                        "pending": 1,
+                        "processing": 0,
+                    },
+                },
+            )
+        )
+
+        with SpooledClient(api_key=API_KEY, base_url=BASE_URL) as client:
+            jobs = client.workflows.jobs.list("wf_1")
+            assert len(jobs) == 2
+            assert jobs[0].queue_name == "etl"
+            assert jobs[0].timeout_seconds == 30
+            assert jobs[1].depends_on == ["job_1"]
+            one = client.workflows.jobs.get("wf_1", "job_2")
+            assert one.id == "job_2"
+
+    @respx.mock
+    def test_add_dependencies_sends_depends_on(self) -> None:
+        def _handler(request: httpx.Request) -> httpx.Response:
+            body = json.loads(request.content.decode())
+            assert body["depends_on"] == ["job_1"]
+            assert body["dependency_mode"] == "all"
+            assert "dependency_job_ids" not in body
+            return httpx.Response(
+                200,
+                json={"dependencies_added": 1, "dependencies_met": False},
+            )
+
+        respx.post(f"{BASE_URL}/api/v1/jobs/job_2/dependencies").mock(side_effect=_handler)
+
+        with SpooledClient(api_key=API_KEY, base_url=BASE_URL) as client:
+            result = client.workflows.jobs.add_dependencies(
+                "job_2", {"dependency_job_ids": ["job_1"]}
+            )
+            assert result.added_count == 1
+            assert result.dependencies_met is False

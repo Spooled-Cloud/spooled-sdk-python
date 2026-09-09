@@ -7,6 +7,7 @@ from __future__ import annotations
 import builtins
 from typing import TYPE_CHECKING, Any
 
+from spooled.errors import NotFoundError
 from spooled.resources.base import AsyncBaseResource, BaseResource
 from spooled.types.workflows import (
     AddDependenciesParams,
@@ -25,6 +26,40 @@ if TYPE_CHECKING:
     from spooled.utils.http import HttpClient
 
 
+def jobs_from_workflow_detail(detail: Any) -> list[WorkflowJob]:
+    """Map GET /workflows/{id} onto WorkflowJob rows.
+
+    The backend has no /workflows/{id}/jobs routes; job rows and dependency
+    edges live on the workflow detail document.
+    """
+    if not isinstance(detail, dict):
+        return []
+    deps = detail.get("dependencies") or []
+    jobs: list[WorkflowJob] = []
+    for raw in detail.get("jobs") or []:
+        if not isinstance(raw, dict):
+            continue
+        job_id = str(raw.get("id") or "")
+        timeout_ms = raw.get("timeout_ms")
+        timeout_seconds = None
+        if isinstance(timeout_ms, (int, float)):
+            timeout_seconds = max(1, int(timeout_ms) // 1000)
+        depends_on = [
+            str(edge.get("parent_job_id") or "")
+            for edge in deps
+            if isinstance(edge, dict) and str(edge.get("child_job_id") or "") == job_id
+        ]
+        item = dict(raw)
+        item.setdefault("key", "")
+        if "queue_name" not in item and "queue" in item:
+            item["queue_name"] = item["queue"]
+        item["depends_on"] = depends_on or None
+        item["timeout_seconds"] = timeout_seconds
+        item.setdefault("payload", {})
+        jobs.append(WorkflowJob.model_validate(item))
+    return jobs
+
+
 class WorkflowJobsResource:
     """Workflow jobs operations (sync)."""
 
@@ -33,18 +68,23 @@ class WorkflowJobsResource:
 
     def list(self, workflow_id: str) -> list[WorkflowJob]:
         """List all jobs in a workflow."""
-        data = self._http.get(f"/workflows/{workflow_id}/jobs")
-        return [WorkflowJob.model_validate(item) for item in data]
+        data = self._http.get(f"/workflows/{workflow_id}")
+        return jobs_from_workflow_detail(data)
 
     def get(self, workflow_id: str, job_id: str) -> WorkflowJob:
         """Get a specific job within a workflow."""
-        data = self._http.get(f"/workflows/{workflow_id}/jobs/{job_id}")
-        return WorkflowJob.model_validate(data)
+        jobs = self.list(workflow_id)
+        for job in jobs:
+            if job.id == job_id:
+                return job
+        raise NotFoundError(f"Job {job_id} not found in workflow {workflow_id}")
 
     def get_status(self, workflow_id: str) -> builtins.list[WorkflowJobStatus]:
         """Get the status of all jobs in a workflow."""
-        data = self._http.get(f"/workflows/{workflow_id}/jobs/status")
-        return [WorkflowJobStatus.model_validate(item) for item in data]
+        jobs = self.list(workflow_id)
+        return [
+            WorkflowJobStatus(key=job.key, job_id=job.id, status=job.status) for job in jobs
+        ]
 
     def get_dependencies(self, job_id: str) -> JobWithDependencies:
         """Get job dependencies."""
@@ -57,7 +97,7 @@ class WorkflowJobsResource:
         """Add dependencies to a job."""
         if isinstance(params, dict):
             params = AddDependenciesParams.model_validate(params)
-        data = self._http.post(f"/jobs/{job_id}/dependencies", params.model_dump(exclude_none=True))
+        data = self._http.post(f"/jobs/{job_id}/dependencies", params.to_payload())
         return AddDependenciesResponse.model_validate(data)
 
 
@@ -69,18 +109,23 @@ class AsyncWorkflowJobsResource:
 
     async def list(self, workflow_id: str) -> list[WorkflowJob]:
         """List all jobs in a workflow."""
-        data = await self._http.get(f"/workflows/{workflow_id}/jobs")
-        return [WorkflowJob.model_validate(item) for item in data]
+        data = await self._http.get(f"/workflows/{workflow_id}")
+        return jobs_from_workflow_detail(data)
 
     async def get(self, workflow_id: str, job_id: str) -> WorkflowJob:
         """Get a specific job within a workflow."""
-        data = await self._http.get(f"/workflows/{workflow_id}/jobs/{job_id}")
-        return WorkflowJob.model_validate(data)
+        jobs = await self.list(workflow_id)
+        for job in jobs:
+            if job.id == job_id:
+                return job
+        raise NotFoundError(f"Job {job_id} not found in workflow {workflow_id}")
 
     async def get_status(self, workflow_id: str) -> builtins.list[WorkflowJobStatus]:
         """Get the status of all jobs in a workflow."""
-        data = await self._http.get(f"/workflows/{workflow_id}/jobs/status")
-        return [WorkflowJobStatus.model_validate(item) for item in data]
+        jobs = await self.list(workflow_id)
+        return [
+            WorkflowJobStatus(key=job.key, job_id=job.id, status=job.status) for job in jobs
+        ]
 
     async def get_dependencies(self, job_id: str) -> JobWithDependencies:
         """Get job dependencies."""
@@ -93,9 +138,7 @@ class AsyncWorkflowJobsResource:
         """Add dependencies to a job."""
         if isinstance(params, dict):
             params = AddDependenciesParams.model_validate(params)
-        data = await self._http.post(
-            f"/jobs/{job_id}/dependencies", params.model_dump(exclude_none=True)
-        )
+        data = await self._http.post(f"/jobs/{job_id}/dependencies", params.to_payload())
         return AddDependenciesResponse.model_validate(data)
 
 
