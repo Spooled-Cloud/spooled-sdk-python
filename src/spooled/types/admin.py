@@ -12,15 +12,47 @@ from pydantic import BaseModel, Field
 from spooled.types.organizations import PlanTier
 
 
-class AdminStats(BaseModel):
-    """Platform-wide statistics."""
+class AdminOrgStats(BaseModel):
+    """Organization counts from GET /admin/stats."""
 
-    total_organizations: int
-    total_jobs: int
-    total_queues: int
-    total_workers: int
-    jobs_today: int
-    active_organizations: int
+    total: int
+    by_plan: list[dict[str, Any]] = Field(default_factory=list)
+    created_today: int
+    created_this_week: int
+
+
+class AdminJobStats(BaseModel):
+    """Job counts from GET /admin/stats."""
+
+    total_active: int
+    pending: int
+    processing: int
+    completed_24h: int
+    failed_24h: int
+
+
+class AdminWorkerStats(BaseModel):
+    """Worker counts from GET /admin/stats."""
+
+    total: int
+    healthy: int
+    degraded: int
+
+
+class AdminSystemStats(BaseModel):
+    """Process info from GET /admin/stats."""
+
+    api_version: str
+    uptime_seconds: int
+
+
+class AdminStats(BaseModel):
+    """GET /admin/stats — nested org/job/worker/system counts, not flat totals."""
+
+    organizations: AdminOrgStats
+    jobs: AdminJobStats
+    workers: AdminWorkerStats
+    system: AdminSystemStats
 
 
 class PlanInfo(BaseModel):

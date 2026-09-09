@@ -1023,3 +1023,36 @@ class TestAdminResource:
         assert len(got) == 1
         assert got[0].id == "org_1"
         assert got[0].plan_tier == "pro"
+
+    @respx.mock
+    def test_get_stats_reads_nested_platform_payload(self) -> None:
+        respx.get(f"{BASE_URL}/api/v1/admin/stats").mock(
+            return_value=httpx.Response(
+                200,
+                json={
+                    "organizations": {
+                        "total": 4,
+                        "by_plan": [{"plan": "free", "count": 3}],
+                        "created_today": 1,
+                        "created_this_week": 2,
+                    },
+                    "jobs": {
+                        "total_active": 5,
+                        "pending": 2,
+                        "processing": 1,
+                        "completed_24h": 10,
+                        "failed_24h": 0,
+                    },
+                    "workers": {"total": 3, "healthy": 2, "degraded": 1},
+                    "system": {"api_version": "0.1.111", "uptime_seconds": 9},
+                },
+            )
+        )
+
+        with SpooledClient(api_key=API_KEY, base_url=BASE_URL, admin_key="adminkey") as client:
+            got = client.admin.get_stats()
+
+        assert got.organizations.total == 4
+        assert got.jobs.pending == 2
+        assert got.workers.healthy == 2
+        assert got.system.api_version == "0.1.111"
