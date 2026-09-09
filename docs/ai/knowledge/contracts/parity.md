@@ -13,4 +13,5 @@
 - Slug check is `GET /organizations/check-slug?slug=` → `{ available, valid, error, suggestion }`, not `{ slug }`.
 - Job list/DLQ summaries send `attempt` and `max_retries`, not `retry_count`. `JobSummary.retry_count` maps from `attempt`.
 - `GET /jobs` summaries include `job_type` from `payload.job_type` (empty string when absent). `JobSummary.job_type` maps that field.
+- List/DLQ summaries include `last_error` (null when none). `JobSummary.last_error` maps that field.
 - `GET /jobs/status` returns `{ id, status, queue_name, retry_count, created_at, completed_at }` (no `attempt`/`max_retries`).

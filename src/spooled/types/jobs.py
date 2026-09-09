@@ -92,6 +92,8 @@ class JobSummary(BaseModel):
     max_retries: int | None = None
     # GET /jobs summaries send payload.job_type as job_type (empty if absent).
     job_type: str = ""
+    # List/DLQ summaries send last_error (null when none).
+    last_error: str | None = None
     created_at: datetime
     scheduled_at: datetime | None = None
     started_at: datetime | None = None

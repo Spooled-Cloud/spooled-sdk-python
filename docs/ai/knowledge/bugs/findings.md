@@ -15,3 +15,4 @@
 | PS-11 | P1 | ~~`BatchJobStatus` dropped `retry_count`/`created_at`/`completed_at`~~ **FIXED** | `src/spooled/types/jobs.py` |
 | PS-12 | P1 | ~~`workflows.get()` left `total_jobs`/`completed_jobs`/`failed_jobs` None~~ **FIXED** | `src/spooled/types/workflows.py`; GET detail puts counts under `progress` |
 | PS-13 | P2 | ~~`JobSummary` dropped `job_type` from `GET /jobs`~~ **FIXED** | `src/spooled/types/jobs.py`; summaries send `job_type` from payload |
+| PS-14 | P2 | ~~`JobSummary` dropped `last_error` from list/DLQ~~ **FIXED** | `src/spooled/types/jobs.py`; summaries send `last_error` |

@@ -274,6 +274,23 @@ class TestJobSummary:
         )
         assert job.job_type == "send_email"
 
+    def test_maps_last_error_from_list_json(self) -> None:
+        """GET /jobs and /jobs/dlq summaries send last_error."""
+        job = JobSummary.model_validate(
+            {
+                "id": "job_1",
+                "queue_name": "emails",
+                "status": "deadletter",
+                "priority": 0,
+                "attempt": 3,
+                "max_retries": 3,
+                "job_type": "send_email",
+                "last_error": "Connection refused",
+                "created_at": "2024-01-01T00:00:00Z",
+            }
+        )
+        assert job.last_error == "Connection refused"
+
 
 class TestClaimedJob:
     """Tests for ClaimedJob."""
