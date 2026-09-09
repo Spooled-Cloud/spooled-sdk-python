@@ -651,6 +651,25 @@ class TestWebhooksResourceComplete:
             assert result.status_code == 200
 
     @respx.mock
+    def test_retry_delivery_posts_retry_id_not_deliveries_retry(self) -> None:
+        """POST /outgoing-webhooks/{id}/retry/{delivery_id}, body is success/message."""
+        route = respx.post(
+            f"{BASE_URL}/api/v1/outgoing-webhooks/wh_123/retry/del_1"
+        ).mock(
+            return_value=httpx.Response(
+                200,
+                json={"success": True, "message": "Delivery retried successfully"},
+            )
+        )
+
+        with SpooledClient(api_key=API_KEY, base_url=BASE_URL) as client:
+            result = client.webhooks.retry_delivery("wh_123", "del_1")
+
+        assert route.called
+        assert result.success is True
+        assert "retried" in result.message
+
+    @respx.mock
     def test_update_webhook_secret_states(self) -> None:
         """Test omit keeps the secret while explicit None clears it."""
         sent: list[dict[str, object]] = []

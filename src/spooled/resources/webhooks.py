@@ -75,7 +75,7 @@ class WebhooksResource(BaseResource):
 
     def retry_delivery(self, webhook_id: str, delivery_id: str) -> RetryDeliveryResponse:
         """Retry a failed webhook delivery."""
-        data = self._http.post(f"/outgoing-webhooks/{webhook_id}/deliveries/{delivery_id}/retry")
+        data = self._http.post(f"/outgoing-webhooks/{webhook_id}/retry/{delivery_id}")
         return RetryDeliveryResponse.model_validate(data)
 
 
@@ -138,6 +138,6 @@ class AsyncWebhooksResource(AsyncBaseResource):
     async def retry_delivery(self, webhook_id: str, delivery_id: str) -> RetryDeliveryResponse:
         """Retry a failed webhook delivery."""
         data = await self._http.post(
-            f"/outgoing-webhooks/{webhook_id}/deliveries/{delivery_id}/retry"
+            f"/outgoing-webhooks/{webhook_id}/retry/{delivery_id}"
         )
         return RetryDeliveryResponse.model_validate(data)

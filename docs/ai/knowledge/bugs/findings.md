@@ -19,3 +19,4 @@
 | PS-15 | P1 | ~~`admin.create_organization` validated `{organization, api_key}` as `Organization`~~ **FIXED** | `src/spooled/resources/admin.py`; returns `CreateOrganizationResponse` |
 | PS-16 | P1 | ~~`auth.validate` dropped `claims` (org/queues/exp always empty)~~ **FIXED** | `src/spooled/types/auth.py`; POST `/auth/validate` is `{valid,error,claims}` |
 | PS-17 | P1 | ~~`auth.logout` omitted refresh token so `/auth/refresh` survived~~ **FIXED** | `src/spooled/resources/auth.py`; POST `/auth/logout` body `refresh_token` |
+| PS-18 | P1 | ~~`retry_delivery` POSTed `/deliveries/{id}/retry` and typed `{delivery_id,status}`~~ **FIXED** | `src/spooled/resources/webhooks.py`; route is `/retry/{delivery_id}` → `{success,message}` |

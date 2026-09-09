@@ -21,3 +21,4 @@
 - `GET /jobs` summaries include `job_type` from `payload.job_type` (empty string when absent). `JobSummary.job_type` maps that field.
 - List/DLQ summaries include `last_error` (null when none). `JobSummary.last_error` maps that field.
 - `GET /jobs/status` returns `{ id, status, queue_name, retry_count, created_at, completed_at }` (no `attempt`/`max_retries`).
+- Webhook delivery retry is `POST /outgoing-webhooks/{id}/retry/{delivery_id}` → `{ success, message }`, not `/deliveries/{id}/retry` or `{ delivery_id, status }`.

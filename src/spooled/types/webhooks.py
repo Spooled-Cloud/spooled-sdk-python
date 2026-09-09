@@ -156,7 +156,7 @@ class ListDeliveriesParams(BaseModel):
 
 
 class RetryDeliveryResponse(BaseModel):
-    """Response from retrying a delivery."""
+    """POST /outgoing-webhooks/{id}/retry/{delivery_id} — success + message."""
 
-    delivery_id: str
-    status: str
+    success: bool
+    message: str
