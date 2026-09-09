@@ -56,6 +56,9 @@ All notable changes to the Spooled Python SDK are documented here.
 - `JobSummary.retry_count` now maps `attempt` from `GET /jobs` and
   `GET /jobs/dlq`. Those list bodies send `attempt` and `max_retries`, not
   `retry_count`, so the count was always `None`.
+- `BatchJobStatus` now reads `retry_count`, `created_at`, and `completed_at`
+  from `GET /jobs/status`. It previously typed only `id`/`status`/`queue_name`,
+  so retry count and timestamps were dropped.
 
 ### Added
 

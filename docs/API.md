@@ -104,7 +104,7 @@ print(stats.pending, stats.processing, stats.completed)
 ```python
 statuses = client.jobs.batch_status(["job_1", "job_2", "job_3"])
 for s in statuses:
-    print(s.id, s.status)
+    print(s.id, s.status, s.retry_count)
 ```
 
 ### Bulk Enqueue

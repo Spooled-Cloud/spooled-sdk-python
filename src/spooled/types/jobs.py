@@ -125,11 +125,18 @@ class ListJobsParams(BaseModel):
 
 
 class BatchJobStatus(BaseModel):
-    """Status of a single job in batch status lookup."""
+    """Status of a single job in batch status lookup.
+
+    ``GET /jobs/status`` sends ``retry_count``, not ``attempt``, and has no
+    ``max_retries``.
+    """
 
     id: str
     status: JobStatus
     queue_name: str
+    retry_count: int
+    created_at: datetime
+    completed_at: datetime | None = None
 
 
 class BoostPriorityResponse(BaseModel):

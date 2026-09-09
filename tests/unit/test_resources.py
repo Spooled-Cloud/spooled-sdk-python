@@ -127,8 +127,21 @@ class TestJobsResourceComplete:
             return_value=httpx.Response(
                 200,
                 json=[
-                    {"id": "job_1", "status": "pending", "queue_name": "test"},
-                    {"id": "job_2", "status": "completed", "queue_name": "test"},
+                    {
+                        "id": "job_1",
+                        "status": "pending",
+                        "queue_name": "test",
+                        "retry_count": 0,
+                        "created_at": "2024-01-01T00:00:00Z",
+                    },
+                    {
+                        "id": "job_2",
+                        "status": "completed",
+                        "queue_name": "test",
+                        "retry_count": 3,
+                        "created_at": "2024-01-01T00:00:00Z",
+                        "completed_at": "2024-01-01T00:01:00Z",
+                    },
                 ],
             )
         )
@@ -137,7 +150,10 @@ class TestJobsResourceComplete:
             statuses = client.jobs.batch_status(["job_1", "job_2"])
             assert len(statuses) == 2
             assert statuses[0].status == "pending"
+            assert statuses[0].retry_count == 0
             assert statuses[1].status == "completed"
+            assert statuses[1].retry_count == 3
+            assert statuses[1].completed_at is not None
 
     def test_batch_status_empty_list(self) -> None:
         """Test batch status with empty list."""

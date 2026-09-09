@@ -12,3 +12,4 @@
 | PS-08 | P2 | ~~`JobDependency.completed` always False (API never sends it)~~ **FIXED** | `src/spooled/types/workflows.py`; derived from `status == "completed"` |
 | PS-09 | P2 | ~~`CheckSlugResponse` typed `slug`; dropped `error`/`suggestion`~~ **FIXED** | `src/spooled/types/organizations.py` |
 | PS-10 | P1 | ~~`JobSummary.retry_count` always None; list JSON sends `attempt`~~ **FIXED** | `src/spooled/types/jobs.py` |
+| PS-11 | P1 | ~~`BatchJobStatus` dropped `retry_count`/`created_at`/`completed_at`~~ **FIXED** | `src/spooled/types/jobs.py` |
