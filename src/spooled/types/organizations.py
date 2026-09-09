@@ -150,11 +150,12 @@ class UsageInfo(BaseModel):
 
 
 class CheckSlugResponse(BaseModel):
-    """Response from checking slug availability."""
+    """Response from GET /organizations/check-slug."""
 
     available: bool
     valid: bool = True
-    slug: str | None = None
+    error: str | None = None
+    suggestion: str | None = None
 
 
 class GenerateSlugResponse(BaseModel):

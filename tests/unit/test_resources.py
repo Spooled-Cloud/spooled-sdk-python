@@ -773,6 +773,32 @@ class TestAuthResourceComplete:
             assert result.email_sent_to == "n***@example.com"
 
 
+class TestOrganizationsResource:
+    """Organization routes must match the backend contract."""
+
+    @respx.mock
+    def test_check_slug_maps_suggestion_not_slug(self) -> None:
+        """GET /organizations/check-slug returns suggestion/valid/error, not slug."""
+        respx.get(f"{BASE_URL}/api/v1/organizations/check-slug").mock(
+            return_value=httpx.Response(
+                200,
+                json={
+                    "available": False,
+                    "valid": True,
+                    "suggestion": "acme-2",
+                },
+            )
+        )
+
+        with SpooledClient(api_key=API_KEY, base_url=BASE_URL) as client:
+            result = client.organizations.check_slug("acme")
+            assert result.available is False
+            assert result.valid is True
+            assert result.suggestion == "acme-2"
+            assert result.error is None
+            assert not hasattr(result, "slug")
+
+
 class TestWorkflowJobsResource:
     """Workflow jobs must use GET /workflows/{id}; /jobs subpaths do not exist."""
 

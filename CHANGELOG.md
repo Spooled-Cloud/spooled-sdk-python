@@ -50,6 +50,9 @@ All notable changes to the Spooled Python SDK are documented here.
 - `workflows.jobs.get_dependencies` now derives `JobDependency.completed` from
   `status == "completed"`. The API never sends `completed`, so the flag was
   always `False`.
+- `organizations.check_slug` now reads `error` and `suggestion` from
+  `GET /organizations/check-slug`. It previously typed `slug`, which the API
+  never sends, so a taken slug never offered an alternative.
 
 ### Added
 

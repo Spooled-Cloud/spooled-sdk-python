@@ -10,3 +10,4 @@
 | PS-06 | P1 | ~~`check_email` called GET `/auth/email/check` (404)~~ **FIXED** | `src/spooled/resources/auth.py`; backend is `GET /auth/check-email` |
 | PS-07 | P2 | ~~`start_email_login` read `email_to`; API sends `email_sent_to`~~ **FIXED** | `src/spooled/types/auth.py` |
 | PS-08 | P2 | ~~`JobDependency.completed` always False (API never sends it)~~ **FIXED** | `src/spooled/types/workflows.py`; derived from `status == "completed"` |
+| PS-09 | P2 | ~~`CheckSlugResponse` typed `slug`; dropped `error`/`suggestion`~~ **FIXED** | `src/spooled/types/organizations.py` |

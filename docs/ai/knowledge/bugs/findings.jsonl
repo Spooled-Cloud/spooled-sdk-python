@@ -6,3 +6,4 @@
 {"id":"PS-06","sev":"P1","summary":"check_email called GET /auth/email/check which 404s","path":"src/spooled/resources/auth.py","status":"fixed","note":"Route is GET /auth/check-email; response includes available and signup_enabled"}
 {"id":"PS-07","sev":"P2","summary":"start_email_login read email_to; API sends email_sent_to","path":"src/spooled/types/auth.py","status":"fixed","note":"POST /auth/email/start is message+email_sent_to"}
 {"id":"PS-08","sev":"P2","summary":"JobDependency.completed always False because API never sends completed","path":"src/spooled/types/workflows.py","status":"fixed","note":"Derived from status == completed, matching PHP isMet"}
+{"id":"PS-09","sev":"P2","summary":"CheckSlugResponse typed slug the API never sends; dropped error/suggestion","path":"src/spooled/types/organizations.py","status":"fixed","note":"GET /organizations/check-slug is available+valid+error+suggestion"}
