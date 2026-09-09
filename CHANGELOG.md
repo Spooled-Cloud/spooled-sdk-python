@@ -59,6 +59,10 @@ All notable changes to the Spooled Python SDK are documented here.
 - `BatchJobStatus` now reads `retry_count`, `created_at`, and `completed_at`
   from `GET /jobs/status`. It previously typed only `id`/`status`/`queue_name`,
   so retry count and timestamps were dropped.
+- `admin.create_organization` (sync and async) now returns
+  `CreateOrganizationResponse`. `POST /admin/organizations` sends
+  `{organization, api_key}`; validating that wrapper as `Organization` raised
+  on every create and dropped the one-time key.
 
 ### Added
 

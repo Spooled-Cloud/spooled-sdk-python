@@ -16,7 +16,7 @@ from spooled.types.admin import (
     ListOrganizationsParams,
     PlanInfo,
 )
-from spooled.types.organizations import Organization
+from spooled.types.organizations import CreateOrganizationResponse, Organization
 
 if TYPE_CHECKING:
     from spooled.utils.async_http import AsyncHttpClient
@@ -75,8 +75,12 @@ class AdminResource(BaseResource):
 
     def create_organization(
         self, params: AdminCreateOrganizationParams | dict[str, Any]
-    ) -> Organization:
-        """Create a new organization."""
+    ) -> CreateOrganizationResponse:
+        """Create a new organization.
+
+        POST /admin/organizations returns `{organization, api_key}`. The raw
+        key is only in this response.
+        """
         if isinstance(params, dict):
             params = AdminCreateOrganizationParams.model_validate(params)
         data = self._http.post(
@@ -84,7 +88,7 @@ class AdminResource(BaseResource):
             params.model_dump(exclude_none=True),
             headers=self._get_headers(),
         )
-        return Organization.model_validate(data)
+        return CreateOrganizationResponse.model_validate(data)
 
     def update_organization(
         self, org_id: str, params: AdminUpdateOrganizationParams | dict[str, Any]
@@ -167,8 +171,12 @@ class AsyncAdminResource(AsyncBaseResource):
 
     async def create_organization(
         self, params: AdminCreateOrganizationParams | dict[str, Any]
-    ) -> Organization:
-        """Create a new organization."""
+    ) -> CreateOrganizationResponse:
+        """Create a new organization.
+
+        POST /admin/organizations returns `{organization, api_key}`. The raw
+        key is only in this response.
+        """
         if isinstance(params, dict):
             params = AdminCreateOrganizationParams.model_validate(params)
         data = await self._http.post(
@@ -176,7 +184,7 @@ class AsyncAdminResource(AsyncBaseResource):
             params.model_dump(exclude_none=True),
             headers=self._get_headers(),
         )
-        return Organization.model_validate(data)
+        return CreateOrganizationResponse.model_validate(data)
 
     async def update_organization(
         self, org_id: str, params: AdminUpdateOrganizationParams | dict[str, Any]

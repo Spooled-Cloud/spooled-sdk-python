@@ -13,6 +13,7 @@
 - Slug check is `GET /organizations/check-slug?slug=` → `{ available, valid, error, suggestion }`, not `{ slug }`.
 - Admin hard delete is `DELETE /admin/organizations/{id}?hard_delete=true`, not `?hard=true`.
 - `GET /admin/organizations` is `{ organizations, total, limit, offset }`, not a bare array. List rows omit `settings`.
+- `POST /admin/organizations` is `{ organization, api_key }`, same wrap as public create. `admin.create_organization` returns `CreateOrganizationResponse`; validating the wrapper as `Organization` raises and drops the one-time key.
 - `GET /admin/stats` is nested `{ organizations, jobs, workers, system }`, not flat `total_organizations` / `jobs_today`.
 - Job list/DLQ summaries send `attempt` and `max_retries`, not `retry_count`. `JobSummary.retry_count` maps from `attempt`.
 - `GET /jobs` summaries include `job_type` from `payload.job_type` (empty string when absent). `JobSummary.job_type` maps that field.

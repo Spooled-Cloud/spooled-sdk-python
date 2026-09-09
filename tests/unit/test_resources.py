@@ -1025,6 +1025,40 @@ class TestAdminResource:
         assert got[0].plan_tier == "pro"
 
     @respx.mock
+    def test_create_organization_reads_wrapped_payload(self) -> None:
+        respx.post(f"{BASE_URL}/api/v1/admin/organizations").mock(
+            return_value=httpx.Response(
+                201,
+                json={
+                    "organization": {
+                        "id": "org_1",
+                        "name": "Acme",
+                        "slug": "acme",
+                        "plan_tier": "pro",
+                        "settings": {},
+                        "created_at": "2024-01-01T00:00:00Z",
+                        "updated_at": "2024-01-01T00:00:00Z",
+                    },
+                    "api_key": {
+                        "id": "key_1",
+                        "key": "sp_live_abc123",
+                        "name": "Default API Key",
+                        "created_at": "2024-01-01T00:00:00Z",
+                    },
+                },
+            )
+        )
+
+        with SpooledClient(api_key=API_KEY, base_url=BASE_URL, admin_key="adminkey") as client:
+            got = client.admin.create_organization(
+                {"name": "Acme", "slug": "acme", "plan_tier": "pro"}
+            )
+
+        assert got.organization.id == "org_1"
+        assert got.organization.plan_tier == "pro"
+        assert got.api_key.key == "sp_live_abc123"
+
+    @respx.mock
     def test_get_stats_reads_nested_platform_payload(self) -> None:
         respx.get(f"{BASE_URL}/api/v1/admin/stats").mock(
             return_value=httpx.Response(
