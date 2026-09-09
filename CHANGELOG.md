@@ -38,6 +38,13 @@ All notable changes to the Spooled Python SDK are documented here.
 
 ## [Unreleased]
 
+### Fixed
+
+- `auth.check_email` (sync and async) now calls `GET /auth/check-email`. It
+  previously requested `GET /auth/email/check`, which is not a backend route, so
+  every check 404'd. The response model now also reads `available` and
+  `signup_enabled`, which the handler always sends.
+
 ### Added
 
 - `SpooledWorker`, `AsyncSpooledWorker`, `SpooledWorkerOptions`, and `RegisterWorkerParams` accept an optional `worker_id`. A stable id makes registration an upsert, so a restarting worker reuses its row instead of leaving a stale one against the plan worker cap for ~2 minutes; omitting it keeps the previous behaviour of a server-minted UUID.

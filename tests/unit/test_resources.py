@@ -734,6 +734,26 @@ class TestAuthResourceComplete:
             assert result.organization_id == "org_1"
             assert "emails" in result.queues
 
+    @respx.mock
+    def test_check_email_hits_check_email_not_email_check(self) -> None:
+        """Backend route is GET /auth/check-email; /auth/email/check does not exist."""
+        respx.get(f"{BASE_URL}/api/v1/auth/check-email").mock(
+            return_value=httpx.Response(
+                200,
+                json={
+                    "available": True,
+                    "exists": False,
+                    "signup_enabled": True,
+                },
+            )
+        )
+
+        with SpooledClient(api_key=API_KEY, base_url=BASE_URL) as client:
+            result = client.auth.check_email("new@example.com")
+            assert result.exists is False
+            assert result.available is True
+            assert result.signup_enabled is True
+
 
 class TestWorkflowJobsResource:
     """Workflow jobs must use GET /workflows/{id}; /jobs subpaths do not exist."""

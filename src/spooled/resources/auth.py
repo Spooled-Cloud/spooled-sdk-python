@@ -59,8 +59,8 @@ class AuthResource(BaseResource):
         return StartEmailLoginResponse.model_validate(data)
 
     def check_email(self, email: str) -> CheckEmailResponse:
-        """Check if email exists."""
-        data = self._http.get("/auth/email/check", params={"email": email})
+        """Check if an email is registered (GET /auth/check-email)."""
+        data = self._http.get("/auth/check-email", params={"email": email})
         return CheckEmailResponse.model_validate(data)
 
 
@@ -103,6 +103,6 @@ class AsyncAuthResource(AsyncBaseResource):
         return StartEmailLoginResponse.model_validate(data)
 
     async def check_email(self, email: str) -> CheckEmailResponse:
-        """Check if email exists."""
-        data = await self._http.get("/auth/email/check", params={"email": email})
+        """Check if an email is registered (GET /auth/check-email)."""
+        data = await self._http.get("/auth/check-email", params={"email": email})
         return CheckEmailResponse.model_validate(data)

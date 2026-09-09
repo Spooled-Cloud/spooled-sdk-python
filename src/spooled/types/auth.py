@@ -78,7 +78,9 @@ class StartEmailLoginResponse(BaseModel):
 
 
 class CheckEmailResponse(BaseModel):
-    """Response from checking email."""
+    """Response from GET /auth/check-email."""
 
     exists: bool
+    available: bool | None = None
+    signup_enabled: bool | None = None
     has_organizations: bool | None = None
