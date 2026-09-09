@@ -13,3 +13,4 @@
 | PS-09 | P2 | ~~`CheckSlugResponse` typed `slug`; dropped `error`/`suggestion`~~ **FIXED** | `src/spooled/types/organizations.py` |
 | PS-10 | P1 | ~~`JobSummary.retry_count` always None; list JSON sends `attempt`~~ **FIXED** | `src/spooled/types/jobs.py` |
 | PS-11 | P1 | ~~`BatchJobStatus` dropped `retry_count`/`created_at`/`completed_at`~~ **FIXED** | `src/spooled/types/jobs.py` |
+| PS-12 | P1 | ~~`workflows.get()` left `total_jobs`/`completed_jobs`/`failed_jobs` None~~ **FIXED** | `src/spooled/types/workflows.py`; GET detail puts counts under `progress` |

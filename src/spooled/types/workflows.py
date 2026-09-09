@@ -28,6 +28,28 @@ class WorkflowResponse(BaseModel):
     description: str | None = None
     metadata: dict[str, Any] | None = None
 
+    @model_validator(mode="before")
+    @classmethod
+    def map_detail_progress(cls, data: Any) -> Any:
+        """GET /workflows/{id} puts counts under progress, not total_jobs."""
+        if not isinstance(data, dict):
+            return data
+        progress = data.get("progress")
+        if not isinstance(progress, dict):
+            return data
+        data = dict(data)
+        if data.get("total_jobs") is None:
+            data["total_jobs"] = progress.get("total")
+        if data.get("completed_jobs") is None:
+            data["completed_jobs"] = progress.get("completed")
+        if data.get("failed_jobs") is None:
+            data["failed_jobs"] = progress.get("failed")
+        if data.get("progress_percent") is None:
+            total = progress.get("total") or 0
+            completed = progress.get("completed") or 0
+            data["progress_percent"] = (completed / total * 100.0) if total else 0.0
+        return data
+
 
 class WorkflowJobDefinition(BaseModel):
     """Job definition within a workflow."""

@@ -815,6 +815,42 @@ class TestOrganizationsResource:
             assert not hasattr(result, "slug")
 
 
+class TestWorkflowsResource:
+    """GET /workflows/{id} is WorkflowDetailResponse, not the list summary."""
+
+    @respx.mock
+    def test_get_maps_progress_counts(self) -> None:
+        respx.get(f"{BASE_URL}/api/v1/workflows/wf_1").mock(
+            return_value=httpx.Response(
+                200,
+                json={
+                    "id": "wf_1",
+                    "name": "ETL",
+                    "status": "running",
+                    "created_at": "2024-01-01T00:00:00Z",
+                    "jobs": [
+                        {"id": "job_1", "queue": "etl", "status": "completed"},
+                        {"id": "job_2", "queue": "etl", "status": "pending"},
+                    ],
+                    "progress": {
+                        "total": 2,
+                        "completed": 1,
+                        "failed": 0,
+                        "pending": 1,
+                        "processing": 0,
+                    },
+                },
+            )
+        )
+
+        with SpooledClient(api_key=API_KEY, base_url=BASE_URL) as client:
+            got = client.workflows.get("wf_1")
+            assert got.total_jobs == 2
+            assert got.completed_jobs == 1
+            assert got.failed_jobs == 0
+            assert got.progress_percent == 50.0
+
+
 class TestWorkflowJobsResource:
     """Workflow jobs must use GET /workflows/{id}; /jobs subpaths do not exist."""
 

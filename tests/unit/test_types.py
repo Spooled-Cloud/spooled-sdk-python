@@ -39,6 +39,7 @@ from spooled.types.workers import (
 from spooled.types.workflows import (
     CreateWorkflowParams,
     WorkflowJobDefinition,
+    WorkflowResponse,
 )
 
 
@@ -484,6 +485,50 @@ class TestCreateWorkflowParams:
         )
         assert len(params.jobs) == 3
         assert params.jobs[1].depends_on == ["extract"]
+
+
+class TestWorkflowResponse:
+    """GET /workflows/{id} is a detail document; list is the summary shape."""
+
+    def test_maps_progress_counts_from_get_detail(self) -> None:
+        got = WorkflowResponse.model_validate(
+            {
+                "id": "wf_1",
+                "name": "ETL",
+                "status": "running",
+                "created_at": "2024-01-01T00:00:00Z",
+                "jobs": [{"id": "job_1"}, {"id": "job_2"}],
+                "progress": {
+                    "total": 2,
+                    "completed": 1,
+                    "failed": 0,
+                    "pending": 1,
+                    "processing": 0,
+                },
+            }
+        )
+        assert got.total_jobs == 2
+        assert got.completed_jobs == 1
+        assert got.failed_jobs == 0
+        assert got.progress_percent == 50.0
+
+    def test_keeps_list_total_jobs(self) -> None:
+        got = WorkflowResponse.model_validate(
+            {
+                "id": "wf_1",
+                "name": "ETL",
+                "status": "running",
+                "total_jobs": 4,
+                "completed_jobs": 3,
+                "failed_jobs": 1,
+                "progress_percent": 75.0,
+                "created_at": "2024-01-01T00:00:00Z",
+            }
+        )
+        assert got.total_jobs == 4
+        assert got.completed_jobs == 3
+        assert got.failed_jobs == 1
+        assert got.progress_percent == 75.0
 
 
 class TestCreateOutgoingWebhookParams:
