@@ -28,6 +28,7 @@ from spooled.types.organizations import (
 )
 from spooled.types.schedules import (
     CreateScheduleParams,
+    Schedule,
 )
 from spooled.types.webhooks import (
     CreateOutgoingWebhookParams,
@@ -133,6 +134,13 @@ class TestCreateJobParams:
         assert params.priority == 5
         assert params.idempotency_key == "unique-123"
 
+    def test_tags_accept_object_and_string_array(self) -> None:
+        """POST /jobs tags is JSON: object with bool values, or a string array."""
+        object_tags = CreateJobParams(queue_name="q", payload={}, tags={"urgent": True})
+        assert object_tags.tags == {"urgent": True}
+        array_tags = CreateJobParams(queue_name="q", payload={}, tags=["urgent"])
+        assert array_tags.tags == ["urgent"]
+
     def test_queue_name_validation(self) -> None:
         """Test queue_name validation."""
         # Empty name
@@ -232,6 +240,28 @@ class TestJob:
                 timeout_seconds=300,
             )
             assert job.status == status
+
+    def test_tags_accept_object_and_string_array(self) -> None:
+        """GET /jobs/{id} tags is JSON: object with bool values, or a string array."""
+        now = datetime.now(timezone.utc)
+        base = {
+            "id": "job_123",
+            "organization_id": "org_1",
+            "queue_name": "emails",
+            "status": "pending",
+            "payload": {},
+            "retry_count": 0,
+            "max_retries": 3,
+            "created_at": now,
+            "priority": 0,
+            "timeout_seconds": 300,
+        }
+        object_tags = Job.model_validate({**base, "tags": {"urgent": True}})
+        assert object_tags.tags == {"urgent": True}
+        array_tags = Job.model_validate({**base, "tags": ["urgent", "billing"]})
+        assert array_tags.tags == ["urgent", "billing"]
+        none_tags = Job.model_validate({**base, "tags": None})
+        assert none_tags.tags is None
 
 
 class TestClaimJobsParams:
@@ -504,6 +534,30 @@ class TestCreateScheduleParams:
         )
         assert params.timezone == "America/New_York"
         assert params.priority == 10
+
+    def test_tags_accept_object_and_string_array(self) -> None:
+        """GET /schedules/{id} tags is JSON: object with bool values, or a string array."""
+        now = datetime.now(timezone.utc)
+        base = {
+            "id": "sched_1",
+            "organization_id": "org_1",
+            "name": "Daily Job",
+            "cron_expression": "0 9 * * *",
+            "timezone": "UTC",
+            "queue_name": "tasks",
+            "payload_template": {},
+            "priority": 0,
+            "max_retries": 3,
+            "timeout_seconds": 300,
+            "is_active": True,
+            "run_count": 0,
+            "created_at": now,
+            "updated_at": now,
+        }
+        object_tags = Schedule.model_validate({**base, "tags": {"urgent": True}})
+        assert object_tags.tags == {"urgent": True}
+        array_tags = Schedule.model_validate({**base, "tags": ["urgent"]})
+        assert array_tags.tags == ["urgent"]
 
 
 class TestCreateWorkflowParams:

@@ -9,6 +9,9 @@ from typing import Any
 
 from pydantic import BaseModel, Field
 
+# Backend `tags` is serde_json::Value: object (`{"urgent": true}`) or string array.
+JsonTags = dict[str, Any] | list[Any] | None
+
 
 class Schedule(BaseModel):
     """Full schedule model."""
@@ -28,7 +31,7 @@ class Schedule(BaseModel):
     last_run_at: datetime | None = None
     next_run_at: datetime | None = None
     run_count: int
-    tags: dict[str, str] | None = None
+    tags: JsonTags = None
     metadata: dict[str, Any] | None = None
     created_at: datetime
     updated_at: datetime
@@ -58,7 +61,7 @@ class CreateScheduleParams(BaseModel):
     priority: int = Field(default=0, ge=-100, le=100)
     max_retries: int = Field(default=3, ge=0, le=100)
     timeout_seconds: int = Field(default=300, ge=1, le=86400)
-    tags: dict[str, str] | None = None
+    tags: JsonTags = None
     metadata: dict[str, Any] | None = None
 
     model_config = {"extra": "forbid"}
@@ -85,7 +88,7 @@ class UpdateScheduleParams(BaseModel):
     priority: int | None = Field(default=None, ge=-100, le=100)
     max_retries: int | None = Field(default=None, ge=0, le=100)
     timeout_seconds: int | None = Field(default=None, ge=1, le=86400)
-    tags: dict[str, str] | None = None
+    tags: JsonTags = None
     metadata: dict[str, Any] | None = None
 
     model_config = {"extra": "forbid"}

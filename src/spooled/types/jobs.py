@@ -9,6 +9,9 @@ from typing import Any, Literal
 
 from pydantic import AliasChoices, BaseModel, Field
 
+# Backend `tags` is serde_json::Value: object (`{"urgent": true}`) or string array.
+JsonTags = dict[str, Any] | list[Any] | None
+
 # Job status enum
 JobStatus = Literal[
     "pending",
@@ -32,7 +35,7 @@ class CreateJobParams(BaseModel):
     scheduled_at: datetime | None = None
     expires_at: datetime | None = None
     idempotency_key: str | None = Field(default=None, max_length=255)
-    tags: dict[str, str] | None = None
+    tags: JsonTags = None
     parent_job_id: str | None = None
     completion_webhook: str | None = None
 
@@ -64,7 +67,7 @@ class Job(BaseModel):
     completed_at: datetime | None = None
     expires_at: datetime | None = None
     priority: int
-    tags: dict[str, str] | None = None
+    tags: JsonTags = None
     timeout_seconds: int
     parent_job_id: str | None = None
     completion_webhook: str | None = None

@@ -40,6 +40,10 @@ All notable changes to the Spooled Python SDK are documented here.
 
 ### Fixed
 
+- `Job.tags` and `Schedule.tags` now accept the API's JSON tags: an object
+  (`{"urgent": true}`) or a string array (`["urgent"]`). They were typed
+  `dict[str, str]`, so `GET /jobs/{id}` and `GET /schedules/{id}` raised
+  `ValidationError` on either documented shape. Create/update params match.
 - `ingest.custom` (sync and async) now maps OpenAPI `WebhookResponse`
   (`job_id`, `queue_name`, `status`). It previously required `{job_id, created}`
   (raised on empty 200) then returned `None` and dropped the job id the API
