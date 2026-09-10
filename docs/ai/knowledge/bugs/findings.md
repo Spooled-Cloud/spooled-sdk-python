@@ -29,3 +29,4 @@
 | PS-25 | P1 | ~~Create/bulk/workflow-def/webhook-delivery `payload` still `dict` so non-object JSON raised~~ **FIXED** | `src/spooled/types/jobs.py`, `workflows.py`, `webhooks.py` |
 | PS-26 | P1 | ~~`ingest.custom` `payload` as `dict` raised on string/array/bool JSON~~ **FIXED** | `src/spooled/resources/ingest.py`; backend `CustomWebhookRequest.payload` is `serde_json::Value` |
 | PS-27 | P1 | ~~DLQ purge sent `older_than_days`/`job_ids` and omitted required `confirm`~~ **FIXED** | `src/spooled/types/jobs.py`; backend is `{queue_name?, older_than?, limit?, confirm}` |
+| PS-28 | P1 | ~~`queues.delete` never sent `delete_jobs`, so a busy queue always 409'd~~ **FIXED** | `src/spooled/resources/queues.py`; backend `DELETE /queues/{name}?delete_jobs=true` |

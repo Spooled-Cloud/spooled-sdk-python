@@ -482,10 +482,28 @@ class TestQueuesResourceComplete:
     @respx.mock
     def test_delete_queue(self) -> None:
         """Test deleting a queue."""
-        respx.delete(f"{BASE_URL}/api/v1/queues/test").mock(return_value=httpx.Response(204))
+        route = respx.delete(f"{BASE_URL}/api/v1/queues/test").mock(
+            return_value=httpx.Response(204)
+        )
 
         with SpooledClient(api_key=API_KEY, base_url=BASE_URL) as client:
             client.queues.delete("test")  # Should not raise
+        assert route.calls.last.request.url.params.get("delete_jobs") is None
+
+    @respx.mock
+    def test_delete_queue_sends_delete_jobs_query(self) -> None:
+        """DELETE /queues/{name}?delete_jobs=true deletes jobs; omit 409s if busy."""
+        captured: dict[str, str | None] = {}
+
+        def handler(request: httpx.Request) -> httpx.Response:
+            captured["delete_jobs"] = request.url.params.get("delete_jobs")
+            return httpx.Response(204)
+
+        respx.delete(f"{BASE_URL}/api/v1/queues/test").mock(side_effect=handler)
+
+        with SpooledClient(api_key=API_KEY, base_url=BASE_URL) as client:
+            client.queues.delete("test", delete_jobs=True)
+        assert captured.get("delete_jobs") == "true"
 
 
 class TestWorkersResourceComplete:

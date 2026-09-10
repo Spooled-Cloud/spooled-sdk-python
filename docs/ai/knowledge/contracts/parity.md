@@ -15,6 +15,7 @@
 - `POST /auth/logout` blacklists the access token from `Authorization`. The refresh JWT stays usable until expiry unless `refresh_token` is in the body. `auth.logout()` sends the stored refresh token (or an explicit argument).
 - Slug check is `GET /organizations/check-slug?slug=` → `{ available, valid, error, suggestion }`, not `{ slug }`.
 - Admin hard delete is `DELETE /admin/organizations/{id}?hard_delete=true`, not `?hard=true`.
+- `DELETE /queues/{name}` without `delete_jobs` 409s while pending/processing jobs exist. `queues.delete(name, delete_jobs=True)` sends `?delete_jobs=true` (same as PHP / dashboard). There is no `POST /queues/{name}/purge`.
 - `GET /admin/organizations` is `{ organizations, total, limit, offset }`, not a bare array. List rows omit `settings`.
 - `POST /admin/organizations` is `{ organization, api_key }`, same wrap as public create. `admin.create_organization` returns `CreateOrganizationResponse`; validating the wrapper as `Organization` raises and drops the one-time key.
 - `GET /admin/stats` is nested `{ organizations, jobs, workers, system }`, not flat `total_organizations` / `jobs_today`.

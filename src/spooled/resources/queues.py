@@ -55,9 +55,15 @@ class QueuesResource(BaseResource):
         data = self._http.post(f"/queues/{name}/resume")
         return ResumeQueueResponse.model_validate(data)
 
-    def delete(self, name: str) -> None:
-        """Delete a queue."""
-        self._http.delete(f"/queues/{name}")
+    def delete(self, name: str, delete_jobs: bool = False) -> None:
+        """Delete a queue.
+
+        Without ``delete_jobs`` this 409s while pending/processing jobs exist.
+        With ``delete_jobs=True`` the API also deletes every job in the queue
+        (``DELETE /queues/{name}?delete_jobs=true``).
+        """
+        params = {"delete_jobs": True} if delete_jobs else None
+        self._http.delete(f"/queues/{name}", params=params)
 
 
 class AsyncQueuesResource(AsyncBaseResource):
@@ -98,6 +104,12 @@ class AsyncQueuesResource(AsyncBaseResource):
         data = await self._http.post(f"/queues/{name}/resume")
         return ResumeQueueResponse.model_validate(data)
 
-    async def delete(self, name: str) -> None:
-        """Delete a queue."""
-        await self._http.delete(f"/queues/{name}")
+    async def delete(self, name: str, delete_jobs: bool = False) -> None:
+        """Delete a queue.
+
+        Without ``delete_jobs`` this 409s while pending/processing jobs exist.
+        With ``delete_jobs=True`` the API also deletes every job in the queue
+        (``DELETE /queues/{name}?delete_jobs=true``).
+        """
+        params = {"delete_jobs": True} if delete_jobs else None
+        await self._http.delete(f"/queues/{name}", params=params)
