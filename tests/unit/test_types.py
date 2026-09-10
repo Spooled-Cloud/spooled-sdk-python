@@ -609,6 +609,30 @@ class TestCreateScheduleParams:
         array_tags = Schedule.model_validate({**base, "tags": ["urgent"]})
         assert array_tags.tags == ["urgent"]
 
+    def test_payload_template_and_metadata_accept_any_json(self) -> None:
+        """GET /schedules/{id} payload_template/metadata is serde_json::Value."""
+        now = datetime.now(timezone.utc)
+        base = {
+            "id": "sched_1",
+            "organization_id": "org_1",
+            "name": "Daily Job",
+            "cron_expression": "0 9 * * *",
+            "timezone": "UTC",
+            "queue_name": "tasks",
+            "payload_template": {},
+            "priority": 0,
+            "max_retries": 3,
+            "timeout_seconds": 300,
+            "is_active": True,
+            "run_count": 0,
+            "created_at": now,
+            "updated_at": now,
+        }
+        array_payload = Schedule.model_validate({**base, "payload_template": ["a"]})
+        assert array_payload.payload_template == ["a"]
+        meta = Schedule.model_validate({**base, "metadata": True})
+        assert meta.metadata is True
+
 
 class TestCreateWorkflowParams:
     """Tests for CreateWorkflowParams."""

@@ -11,6 +11,8 @@ from pydantic import BaseModel, Field
 
 # Backend `tags` is serde_json::Value: object (`{"urgent": true}`) or string array.
 JsonTags = dict[str, Any] | list[Any] | None
+# Backend payload_template / metadata is serde_json::Value (any JSON).
+JsonValue = Any
 
 
 class Schedule(BaseModel):
@@ -23,7 +25,7 @@ class Schedule(BaseModel):
     cron_expression: str
     timezone: str
     queue_name: str
-    payload_template: dict[str, Any]
+    payload_template: JsonValue
     priority: int
     max_retries: int
     timeout_seconds: int
@@ -32,7 +34,7 @@ class Schedule(BaseModel):
     next_run_at: datetime | None = None
     run_count: int
     tags: JsonTags = None
-    metadata: dict[str, Any] | None = None
+    metadata: JsonValue = None
     created_at: datetime
     updated_at: datetime
 
@@ -57,12 +59,12 @@ class CreateScheduleParams(BaseModel):
     cron_expression: str
     timezone: str = Field(default="UTC")
     queue_name: str = Field(..., min_length=1, max_length=100)
-    payload_template: dict[str, Any]
+    payload_template: JsonValue
     priority: int = Field(default=0, ge=-100, le=100)
     max_retries: int = Field(default=3, ge=0, le=100)
     timeout_seconds: int = Field(default=300, ge=1, le=86400)
     tags: JsonTags = None
-    metadata: dict[str, Any] | None = None
+    metadata: JsonValue = None
 
     model_config = {"extra": "forbid"}
 
@@ -84,12 +86,12 @@ class UpdateScheduleParams(BaseModel):
     cron_expression: str | None = None
     timezone: str | None = None
     queue_name: str | None = Field(default=None, min_length=1, max_length=100)
-    payload_template: dict[str, Any] | None = None
+    payload_template: JsonValue = None
     priority: int | None = Field(default=None, ge=-100, le=100)
     max_retries: int | None = Field(default=None, ge=0, le=100)
     timeout_seconds: int | None = Field(default=None, ge=1, le=86400)
     tags: JsonTags = None
-    metadata: dict[str, Any] | None = None
+    metadata: JsonValue = None
 
     model_config = {"extra": "forbid"}
 

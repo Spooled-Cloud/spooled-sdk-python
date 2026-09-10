@@ -40,6 +40,9 @@ All notable changes to the Spooled Python SDK are documented here.
 
 ### Fixed
 
+- `Schedule.payload_template` and `Schedule.metadata` now accept any JSON.
+  They were typed `dict[str, Any]`, so `GET /schedules/{id}` raised
+  `ValidationError` on a string, array, or boolean.
 - `Job.payload` / `Job.result`, `ClaimedJob.payload`, and
   `CompleteJobParams.result` now accept any JSON. They were typed
   `dict[str, Any]`, so `GET /jobs/{id}` and claim/complete raised
