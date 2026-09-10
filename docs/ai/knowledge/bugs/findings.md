@@ -31,3 +31,4 @@
 | PS-27 | P1 | ~~DLQ purge sent `older_than_days`/`job_ids` and omitted required `confirm`~~ **FIXED** | `src/spooled/types/jobs.py`; backend is `{queue_name?, older_than?, limit?, confirm}` |
 | PS-28 | P1 | ~~`queues.delete` never sent `delete_jobs`, so a busy queue always 409'd~~ **FIXED** | `src/spooled/resources/queues.py`; backend `DELETE /queues/{name}?delete_jobs=true` |
 | PS-29 | P1 | ~~`WorkflowJob` dropped `result`/`error`/`metadata` from GET /workflows/{id}~~ **FIXED** | `src/spooled/types/workflows.py`; backend `WorkflowJobResponse` |
+| PS-30 | P2  | ~~`CreateWorkflowResponse` dropped `status` from POST /workflows~~ **FIXED** | `src/spooled/types/workflows.py`; backend always sends `status` |

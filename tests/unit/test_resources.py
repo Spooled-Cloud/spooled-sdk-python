@@ -895,6 +895,37 @@ class TestWorkflowsResource:
     """GET /workflows/{id} is WorkflowDetailResponse, not the list summary."""
 
     @respx.mock
+    def test_create_keeps_status(self) -> None:
+        """POST /workflows returns status along with workflow_id and job_ids."""
+        respx.post(f"{BASE_URL}/api/v1/workflows").mock(
+            return_value=httpx.Response(
+                201,
+                json={
+                    "workflow_id": "wf_1",
+                    "job_ids": [{"key": "extract", "job_id": "job_1"}],
+                    "status": "pending",
+                },
+            )
+        )
+
+        with SpooledClient(api_key=API_KEY, base_url=BASE_URL) as client:
+            created = client.workflows.create(
+                {
+                    "name": "ETL",
+                    "jobs": [
+                        {
+                            "key": "extract",
+                            "queue_name": "etl",
+                            "payload": {"step": 1},
+                        }
+                    ],
+                }
+            )
+        assert created.workflow_id == "wf_1"
+        assert created.status == "pending"
+        assert created.job_ids[0].job_id == "job_1"
+
+    @respx.mock
     def test_get_maps_progress_counts(self) -> None:
         respx.get(f"{BASE_URL}/api/v1/workflows/wf_1").mock(
             return_value=httpx.Response(

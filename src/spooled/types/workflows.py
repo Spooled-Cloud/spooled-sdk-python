@@ -88,10 +88,15 @@ class CreateWorkflowParams(BaseModel):
 
 
 class CreateWorkflowResponse(BaseModel):
-    """Response from creating a workflow."""
+    """Response from creating a workflow.
+
+    Backend ``CreateWorkflowResponse`` also sends ``status`` (usually
+    ``pending``).
+    """
 
     workflow_id: str
     job_ids: list[WorkflowJobMapping]
+    status: str = ""
 
 
 class ListWorkflowsParams(BaseModel):
