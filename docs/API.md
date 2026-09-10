@@ -130,7 +130,7 @@ dlq_jobs = client.jobs.dlq.list({"queue_name": "my-queue"})
 result = client.jobs.dlq.retry({"queue_name": "my-queue", "limit": 10})
 
 # Purge DLQ
-result = client.jobs.dlq.purge({"queue_name": "my-queue"})
+result = client.jobs.dlq.purge({"queue_name": "my-queue", "older_than_days": 7})
 ```
 
 ## Queues

@@ -4,7 +4,7 @@ Job-related types.
 
 from __future__ import annotations
 
-from datetime import datetime
+from datetime import datetime, timedelta, timezone
 from typing import Any, Literal
 
 from pydantic import AliasChoices, BaseModel, Field
@@ -305,13 +305,38 @@ class RetryDlqResponse(BaseModel):
 
 
 class PurgeDlqParams(BaseModel):
-    """Parameters for purging DLQ jobs."""
+    """Parameters for purging DLQ jobs.
+
+    ``POST /jobs/dlq/purge`` is ``{ queue_name?, older_than?, limit?, confirm }``.
+    ``confirm`` must be true or the API returns 400. There is no ``job_ids``
+    filter (retry has that). ``older_than_days`` is converted to ``older_than``.
+    """
 
     queue_name: str | None = None
-    job_ids: list[str] | None = None
+    older_than: datetime | None = None
     older_than_days: int | None = Field(default=None, ge=1)
+    limit: int | None = Field(default=None, ge=1, le=10000)
+    confirm: bool = True
 
     model_config = {"extra": "forbid"}
+
+    def to_payload(self) -> dict[str, Any]:
+        """Build the API body: ``confirm`` plus ``older_than``, never ``older_than_days``."""
+        if not self.confirm:
+            raise ValueError("Must set confirm=True to purge dead-letter queue")
+        payload: dict[str, Any] = {"confirm": True}
+        if self.queue_name is not None:
+            payload["queue_name"] = self.queue_name
+        if self.limit is not None:
+            payload["limit"] = self.limit
+        older_than = self.older_than
+        if older_than is None and self.older_than_days is not None:
+            older_than = datetime.now(timezone.utc) - timedelta(days=self.older_than_days)
+        if older_than is not None:
+            if older_than.tzinfo is None:
+                older_than = older_than.replace(tzinfo=timezone.utc)
+            payload["older_than"] = older_than.isoformat()
+        return payload
 
 
 class PurgeDlqResponse(BaseModel):

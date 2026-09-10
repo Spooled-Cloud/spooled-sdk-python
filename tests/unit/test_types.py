@@ -22,6 +22,7 @@ from spooled.types.jobs import (
     Job,
     JobHeartbeatParams,
     JobSummary,
+    PurgeDlqParams,
 )
 from spooled.types.organizations import (
     CreateOrganizationParams,
@@ -70,9 +71,7 @@ class TestValidateResponse:
         assert got.error is None
 
     def test_maps_error_when_invalid(self) -> None:
-        got = ValidateResponse.model_validate(
-            {"valid": False, "error": "Invalid token"}
-        )
+        got = ValidateResponse.model_validate({"valid": False, "error": "Invalid token"})
         assert got.valid is False
         assert got.error == "Invalid token"
         assert got.organization_id is None
@@ -309,6 +308,35 @@ class TestClaimedJob:
         )
         assert job.payload == ["item"]
 
+    def test_parses_lease_id(self) -> None:
+        """Test lease_id fencing token is parsed from the claim response."""
+        job = ClaimedJob.model_validate(
+            {
+                "id": "job_123",
+                "queue_name": "test",
+                "payload": {"key": "value"},
+                "retry_count": 0,
+                "max_retries": 3,
+                "timeout_seconds": 300,
+                "lease_id": "lease-abc",
+            }
+        )
+        assert job.lease_id == "lease-abc"
+
+    def test_lease_id_defaults_to_none(self) -> None:
+        """Test lease_id is None when absent (legacy server)."""
+        job = ClaimedJob.model_validate(
+            {
+                "id": "job_123",
+                "queue_name": "test",
+                "payload": {},
+                "retry_count": 0,
+                "max_retries": 3,
+                "timeout_seconds": 300,
+            }
+        )
+        assert job.lease_id is None
+
 
 class TestCompleteJobParams:
     """Tests for CompleteJobParams."""
@@ -412,37 +440,23 @@ class TestJobSummary:
         assert job.last_error == "Connection refused"
 
 
-class TestClaimedJob:
-    """Tests for ClaimedJob."""
+class TestPurgeDlqParams:
+    """POST /jobs/dlq/purge is {queue_name?, older_than?, limit?, confirm}."""
 
-    def test_parses_lease_id(self) -> None:
-        """Test lease_id fencing token is parsed from the claim response."""
-        job = ClaimedJob.model_validate(
-            {
-                "id": "job_123",
-                "queue_name": "test",
-                "payload": {"key": "value"},
-                "retry_count": 0,
-                "max_retries": 3,
-                "timeout_seconds": 300,
-                "lease_id": "lease-abc",
-            }
-        )
-        assert job.lease_id == "lease-abc"
+    def test_to_payload_sends_confirm_and_older_than(self) -> None:
+        payload = PurgeDlqParams(queue_name="emails", older_than_days=7).to_payload()
+        assert payload["confirm"] is True
+        assert payload["queue_name"] == "emails"
+        assert "older_than_days" not in payload
+        assert "older_than" in payload
 
-    def test_lease_id_defaults_to_none(self) -> None:
-        """Test lease_id is None when absent (legacy server)."""
-        job = ClaimedJob.model_validate(
-            {
-                "id": "job_123",
-                "queue_name": "test",
-                "payload": {},
-                "retry_count": 0,
-                "max_retries": 3,
-                "timeout_seconds": 300,
-            }
-        )
-        assert job.lease_id is None
+    def test_rejects_job_ids(self) -> None:
+        with pytest.raises(PydanticValidationError):
+            PurgeDlqParams.model_validate({"queue_name": "emails", "job_ids": ["j1"]})
+
+    def test_confirm_false_raises(self) -> None:
+        with pytest.raises(ValueError, match="confirm"):
+            PurgeDlqParams(confirm=False).to_payload()
 
 
 class TestLeaseFencingParams:

@@ -65,7 +65,7 @@ class DlqResource:
         """Purge jobs from DLQ."""
         if isinstance(params, dict):
             params = PurgeDlqParams.model_validate(params)
-        data = self._http.post("/jobs/dlq/purge", params.model_dump(exclude_none=True))
+        data = self._http.post("/jobs/dlq/purge", params.to_payload())
         return PurgeDlqResponse.model_validate(data)
 
 
@@ -96,7 +96,7 @@ class AsyncDlqResource:
         """Purge jobs from DLQ."""
         if isinstance(params, dict):
             params = PurgeDlqParams.model_validate(params)
-        data = await self._http.post("/jobs/dlq/purge", params.model_dump(exclude_none=True))
+        data = await self._http.post("/jobs/dlq/purge", params.to_payload())
         return PurgeDlqResponse.model_validate(data)
 
 

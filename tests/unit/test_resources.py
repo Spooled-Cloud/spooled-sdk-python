@@ -327,13 +327,32 @@ class TestDlqResourceComplete:
     @respx.mock
     def test_purge_dlq(self) -> None:
         """Test purging DLQ."""
-        respx.post(f"{BASE_URL}/api/v1/jobs/dlq/purge").mock(
+        route = respx.post(f"{BASE_URL}/api/v1/jobs/dlq/purge").mock(
             return_value=httpx.Response(200, json={"purged_count": 5})
         )
 
         with SpooledClient(api_key=API_KEY, base_url=BASE_URL) as client:
             result = client.jobs.dlq.purge({"queue_name": "test"})
             assert result.purged_count == 5
+        body = json.loads(route.calls.last.request.content)
+        assert body["confirm"] is True
+        assert body["queue_name"] == "test"
+        assert "older_than_days" not in body
+        assert "job_ids" not in body
+
+    @respx.mock
+    def test_purge_dlq_maps_older_than_days_to_older_than(self) -> None:
+        """Backend PurgeDlqRequest.older_than is a datetime, not a day count."""
+        route = respx.post(f"{BASE_URL}/api/v1/jobs/dlq/purge").mock(
+            return_value=httpx.Response(200, json={"purged_count": 1})
+        )
+
+        with SpooledClient(api_key=API_KEY, base_url=BASE_URL) as client:
+            client.jobs.dlq.purge({"queue_name": "test", "older_than_days": 7})
+        body = json.loads(route.calls.last.request.content)
+        assert "older_than_days" not in body
+        assert "older_than" in body
+        assert body["confirm"] is True
 
 
 class TestQueuesResourceComplete:
@@ -653,9 +672,7 @@ class TestWebhooksResourceComplete:
     @respx.mock
     def test_retry_delivery_posts_retry_id_not_deliveries_retry(self) -> None:
         """POST /outgoing-webhooks/{id}/retry/{delivery_id}, body is success/message."""
-        route = respx.post(
-            f"{BASE_URL}/api/v1/outgoing-webhooks/wh_123/retry/del_1"
-        ).mock(
+        route = respx.post(f"{BASE_URL}/api/v1/outgoing-webhooks/wh_123/retry/del_1").mock(
             return_value=httpx.Response(
                 200,
                 json={"success": True, "message": "Delivery retried successfully"},
@@ -810,13 +827,9 @@ class TestAuthResourceComplete:
     @respx.mock
     def test_logout_sends_refresh_token(self) -> None:
         """Without refresh_token in the body, /auth/refresh still mints a pair."""
-        route = respx.post(f"{BASE_URL}/api/v1/auth/logout").mock(
-            return_value=httpx.Response(204)
-        )
+        route = respx.post(f"{BASE_URL}/api/v1/auth/logout").mock(return_value=httpx.Response(204))
 
-        with SpooledClient(
-            api_key=API_KEY, base_url=BASE_URL, refresh_token="rt_1"
-        ) as client:
+        with SpooledClient(api_key=API_KEY, base_url=BASE_URL, refresh_token="rt_1") as client:
             client.auth.logout()
 
         assert route.called
@@ -825,13 +838,9 @@ class TestAuthResourceComplete:
 
     @respx.mock
     def test_logout_prefers_explicit_refresh_token(self) -> None:
-        route = respx.post(f"{BASE_URL}/api/v1/auth/logout").mock(
-            return_value=httpx.Response(204)
-        )
+        route = respx.post(f"{BASE_URL}/api/v1/auth/logout").mock(return_value=httpx.Response(204))
 
-        with SpooledClient(
-            api_key=API_KEY, base_url=BASE_URL, refresh_token="rt_stored"
-        ) as client:
+        with SpooledClient(api_key=API_KEY, base_url=BASE_URL, refresh_token="rt_stored") as client:
             client.auth.logout("rt_explicit")
 
         body = json.loads(route.calls.last.request.content)
