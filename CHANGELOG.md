@@ -2,41 +2,12 @@
 
 All notable changes to the Spooled Python SDK are documented here.
 
-## [1.1.0] - 2026-08-16
+## [1.2.0] - 2026-09-10
 
-### Added
-
-- Optional stable `worker_id` on worker registration. Supplying the same id
-  across restarts makes registration an upsert, so a restarting worker reuses
-  its row instead of leaving the old one against the plan worker cap until the
-  stale-worker reaper clears it (~2 minutes). Omitting it keeps the previous
-  behaviour of a server-minted UUID. An id owned by another organization
-  returns 409.
-- `auto_disabled` in the outgoing-webhook `last_status` domain. The backend now
-  disables a webhook after 20 consecutive failed deliveries; re-enable it by
-  setting `enabled: true`, which is charged against the plan webhook cap and can
-  therefore return `429 QUOTA_EXCEEDED`.
-
-### Changed
-
-- Webhook updates can now express clearing the signing secret distinctly from
-  leaving it alone. Backend 0.1.111 treats an explicit `null` as a destructive
-  clear, so an untouched secret must be omitted rather than serialised.
-- `failure_count` on outgoing webhooks is now counted once per delivery rather
-  than once per retry attempt, so for the same failures it is roughly 5x smaller
-  than before.
-- Documented that `last_used` on API keys is coarse (written at most once per
-  key per five minutes) and that webhook delivery history is retained by plan
-  rather than kept indefinitely.
-
-### Note
-
-- Backend 0.1.111 no longer accepts API keys in the query string on REST
-  endpoints. This SDK sends credentials as an `Authorization` header on REST;
-  SSE and WebSocket connections continue to use the query string, which the
-  backend still supports for those routes.
-
-## [Unreleased]
+A contract-parity pass against the backend: every fix below is a place where
+this SDK's route, request shape, or response model disagreed with what the API
+actually serves. Pair it with backend `0.1.112`, which supplies the response
+fields several of these now read.
 
 ### Fixed
 
@@ -87,18 +58,49 @@ All notable changes to the Spooled Python SDK are documented here.
   `CreateOrganizationResponse`. `POST /admin/organizations` sends
   `{organization, api_key}`; validating that wrapper as `Organization` raised
   on every create and dropped the one-time key.
+- `queues.delete()` sends `delete_jobs`, and `jobs.dlq.purge()` sends `confirm`
+  and `older_than`. Both parameters exist on the API; the SDK previously
+  dropped them, so "delete the jobs too" silently deleted only the config.
+- `ingest.custom()` maps OpenAPI `WebhookResponse` (`job_id`, `queue_name`,
+  `status`). It previously required a `{job_id, created}` body that the endpoint
+  never sent. An empty 200 — a backend older than `0.1.112` — still maps to a
+  response with those fields unset rather than raising.
+- Job list and DLQ summaries read the `job_type` and `last_error` that backend
+  `0.1.112` adds to `JobSummary`.
+
+## [1.1.0] - 2026-08-16
 
 ### Added
 
-- `SpooledWorker`, `AsyncSpooledWorker`, `SpooledWorkerOptions`, and `RegisterWorkerParams` accept an optional `worker_id`. A stable id makes registration an upsert, so a restarting worker reuses its row instead of leaving a stale one against the plan worker cap for ~2 minutes; omitting it keeps the previous behaviour of a server-minted UUID.
-- `WebhookLastStatus` is exported alongside `WebhookEvent`.
+- Optional stable `worker_id` on worker registration. Supplying the same id
+  across restarts makes registration an upsert, so a restarting worker reuses
+  its row instead of leaving the old one against the plan worker cap until the
+  stale-worker reaper clears it (~2 minutes). Omitting it keeps the previous
+  behaviour of a server-minted UUID. An id owned by another organization
+  returns 409.
+- `auto_disabled` in the outgoing-webhook `last_status` domain. The backend now
+  disables a webhook after 20 consecutive failed deliveries; re-enable it by
+  setting `enabled: true`, which is charged against the plan webhook cap and can
+  therefore return `429 QUOTA_EXCEEDED`.
 
 ### Changed
 
-- **Breaking for callers that pass `secret=None`.** `client.webhooks.update()` now distinguishes an omitted `secret` from an explicit `None`: omitting keeps the current signing secret, and passing `None` clears it, after which deliveries go out unsigned with no `X-Spooled-Signature` header. Previously `None` was stripped from the request body and behaved as a no-op. Do not serialise unchanged fields as explicit `None`.
-- `OutgoingWebhook.last_status` accepts `"auto_disabled"`, which the backend sets after 20 consecutive failed deliveries when it disables a webhook. Without this, every webhook read on an affected organization raised a validation error.
-- `OutgoingWebhook.failure_count` counts failed deliveries rather than individual retry attempts, so it is roughly 5x smaller than before for the same failures; documented on the model.
-- `ApiKey.last_used` and `ApiKeySummary.last_used` are documented as coarse — the backend writes them at most once per key per 5 minutes.
+- Webhook updates can now express clearing the signing secret distinctly from
+  leaving it alone. Backend 0.1.111 treats an explicit `null` as a destructive
+  clear, so an untouched secret must be omitted rather than serialised.
+- `failure_count` on outgoing webhooks is now counted once per delivery rather
+  than once per retry attempt, so for the same failures it is roughly 5x smaller
+  than before.
+- Documented that `last_used` on API keys is coarse (written at most once per
+  key per five minutes) and that webhook delivery history is retained by plan
+  rather than kept indefinitely.
+
+### Note
+
+- Backend 0.1.111 no longer accepts API keys in the query string on REST
+  endpoints. This SDK sends credentials as an `Authorization` header on REST;
+  SSE and WebSocket connections continue to use the query string, which the
+  backend still supports for those routes.
 
 ## [1.0.24] - 2026-07-19
 

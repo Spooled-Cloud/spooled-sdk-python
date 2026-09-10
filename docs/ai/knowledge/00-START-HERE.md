@@ -1,5 +1,5 @@
 # Spooled Python SDK — Agent Knowledge Base
 
-Package `spooled` **1.1.0**; `__version__` + User-Agent `spooled-python/…`.
+Package `spooled` **1.2.0**; `__version__` + User-Agent `spooled-python/…`.
 
 Unique: sync + **async** clients/workers. Publish: `docs/PUBLISHING.md`.
