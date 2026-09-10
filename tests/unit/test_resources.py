@@ -1224,3 +1224,21 @@ class TestIngestResource:
 
         assert result.job_id is None
         assert result.status is None
+
+    @respx.mock
+    def test_custom_accepts_non_object_json_payload(self) -> None:
+        route = respx.post(f"{BASE_URL}/api/v1/webhooks/org_1/custom").mock(
+            return_value=httpx.Response(
+                200,
+                json={"job_id": "job_1", "queue_name": "events", "status": "pending"},
+            ),
+        )
+
+        with SpooledClient(api_key=API_KEY, base_url=BASE_URL) as client:
+            result = client.ingest.custom(
+                "org_1",
+                {"queue_name": "events", "payload": "plain-string"},
+            )
+
+        assert result.job_id == "job_1"
+        assert json.loads(route.calls.last.request.content.decode())["payload"] == "plain-string"

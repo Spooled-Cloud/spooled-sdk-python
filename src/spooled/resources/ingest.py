@@ -16,7 +16,7 @@ class CustomWebhookParams(BaseModel):
 
     queue_name: str = Field(..., min_length=1, max_length=100)
     event_type: str | None = None
-    payload: dict[str, Any]
+    payload: Any  # Backend CustomWebhookRequest.payload is serde_json::Value.
     idempotency_key: str | None = None
     priority: int | None = Field(default=None, ge=-100, le=100)
 
