@@ -1,7 +1,7 @@
 # Parity notes (Python)
 
 - Async client unique among SDKs.
-- `POST /webhooks/{org_id}/custom` returns 200 empty, not `{job_id, created}`. Python `ingest.custom()` returns `None` (Node/PHP are void). There is no `/webhooks/{org_id}/github` or `/stripe`; those handlers were removed.
+- `POST /webhooks/{org_id}/custom` returns `{ job_id, queue_name, status }` (OpenAPI `WebhookResponse`). Python `ingest.custom()` maps that; empty 200 leaves the fields unset. There is no `/webhooks/{org_id}/github` or `/stripe`; those handlers were removed.
 - REST/gRPC job create omits unset retry/timeout defaults; explicit values are still sent.
 - Worker progress emits local job logs only; Go remains the SDK with backend-persisted `POST /jobs/{id}/progress`.
 - Webhook update bodies come from `UpdateOutgoingWebhookParams.to_payload()`, not a bare `model_dump(exclude_none=True)`: unmentioned fields stay omitted, and a `secret` the caller explicitly set to `None` is sent as JSON `null` so the server clears it.

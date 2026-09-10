@@ -21,3 +21,4 @@
 | PS-17 | P1 | ~~`auth.logout` omitted refresh token so `/auth/refresh` survived~~ **FIXED** | `src/spooled/resources/auth.py`; POST `/auth/logout` body `refresh_token` |
 | PS-18 | P1 | ~~`retry_delivery` POSTed `/deliveries/{id}/retry` and typed `{delivery_id,status}`~~ **FIXED** | `src/spooled/resources/webhooks.py`; route is `/retry/{delivery_id}` → `{success,message}` |
 | PS-19 | P1 | ~~`ingest.custom` parsed empty 200 as `{job_id, created}` and raised on success~~ **FIXED** | `src/spooled/resources/ingest.py`; handler returns `StatusCode::OK` |
+| PS-20 | P1 | ~~`ingest.custom` returned `None` and dropped `job_id` after backend started sending `WebhookResponse`~~ **FIXED** | `src/spooled/resources/ingest.py`; maps `job_id`/`queue_name`/`status` |

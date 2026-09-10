@@ -23,6 +23,21 @@ class CustomWebhookParams(BaseModel):
     model_config = {"extra": "forbid"}
 
 
+class CustomWebhookResponse(BaseModel):
+    """POST /webhooks/{org_id}/custom — OpenAPI WebhookResponse."""
+
+    job_id: str | None = None
+    queue_name: str | None = None
+    status: str | None = None
+
+
+def _custom_response(data: Any) -> CustomWebhookResponse:
+    """Map JSON ``{job_id, queue_name, status}``; empty 200 stays all-None."""
+    if isinstance(data, dict):
+        return CustomWebhookResponse.model_validate(data)
+    return CustomWebhookResponse()
+
+
 class IngestResource(BaseResource):
     """Webhook ingestion resource (sync)."""
 
@@ -31,11 +46,11 @@ class IngestResource(BaseResource):
         org_id: str,
         params: CustomWebhookParams | dict[str, Any],
         webhook_token: str | None = None,
-    ) -> None:
+    ) -> CustomWebhookResponse:
         """Ingest a custom webhook.
 
-        POST /webhooks/{org_id}/custom returns 200 with an empty body, not
-        ``{job_id, created}``.
+        POST /webhooks/{org_id}/custom returns ``{job_id, queue_name, status}``.
+        Older empty-200 bodies map to a response with those fields unset.
         """
         if isinstance(params, dict):
             params = CustomWebhookParams.model_validate(params)
@@ -44,11 +59,12 @@ class IngestResource(BaseResource):
         if webhook_token:
             headers["X-Webhook-Token"] = webhook_token
 
-        self._http.post(
+        data = self._http.post(
             f"/webhooks/{org_id}/custom",
             params.model_dump(exclude_none=True),
             headers=headers if headers else None,
         )
+        return _custom_response(data)
 
 
 class AsyncIngestResource(AsyncBaseResource):
@@ -59,11 +75,11 @@ class AsyncIngestResource(AsyncBaseResource):
         org_id: str,
         params: CustomWebhookParams | dict[str, Any],
         webhook_token: str | None = None,
-    ) -> None:
+    ) -> CustomWebhookResponse:
         """Ingest a custom webhook.
 
-        POST /webhooks/{org_id}/custom returns 200 with an empty body, not
-        ``{job_id, created}``.
+        POST /webhooks/{org_id}/custom returns ``{job_id, queue_name, status}``.
+        Older empty-200 bodies map to a response with those fields unset.
         """
         if isinstance(params, dict):
             params = CustomWebhookParams.model_validate(params)
@@ -72,8 +88,9 @@ class AsyncIngestResource(AsyncBaseResource):
         if webhook_token:
             headers["X-Webhook-Token"] = webhook_token
 
-        await self._http.post(
+        data = await self._http.post(
             f"/webhooks/{org_id}/custom",
             params.model_dump(exclude_none=True),
             headers=headers if headers else None,
         )
+        return _custom_response(data)

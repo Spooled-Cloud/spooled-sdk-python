@@ -1142,12 +1142,19 @@ class TestAdminResource:
 
 
 class TestIngestResource:
-    """POST /webhooks/{org_id}/custom returns empty 200, not {job_id, created}."""
+    """POST /webhooks/{org_id}/custom returns {job_id, queue_name, status}."""
 
     @respx.mock
-    def test_custom_accepts_empty_200(self) -> None:
+    def test_custom_maps_job_id_from_webhook_response(self) -> None:
         route = respx.post(f"{BASE_URL}/api/v1/webhooks/org_1/custom").mock(
-            return_value=httpx.Response(200, content=b""),
+            return_value=httpx.Response(
+                200,
+                json={
+                    "job_id": "job_1",
+                    "queue_name": "events",
+                    "status": "pending",
+                },
+            ),
         )
 
         with SpooledClient(api_key=API_KEY, base_url=BASE_URL) as client:
@@ -1157,6 +1164,23 @@ class TestIngestResource:
                 webhook_token="whk_test",
             )
 
-        assert result is None
+        assert result.job_id == "job_1"
+        assert result.queue_name == "events"
+        assert result.status == "pending"
         assert route.called
         assert route.calls.last.request.headers["X-Webhook-Token"] == "whk_test"
+
+    @respx.mock
+    def test_custom_accepts_empty_200(self) -> None:
+        respx.post(f"{BASE_URL}/api/v1/webhooks/org_1/custom").mock(
+            return_value=httpx.Response(200, content=b""),
+        )
+
+        with SpooledClient(api_key=API_KEY, base_url=BASE_URL) as client:
+            result = client.ingest.custom(
+                "org_1",
+                {"queue_name": "events", "payload": {"ok": True}},
+            )
+
+        assert result.job_id is None
+        assert result.status is None

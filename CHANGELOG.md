@@ -40,12 +40,10 @@ All notable changes to the Spooled Python SDK are documented here.
 
 ### Fixed
 
-- `ingest.custom` (sync and async) now returns `None`. `POST /webhooks/{org_id}/custom`
-  is an empty 200, not `{job_id, created}`, so parsing that body raised on every
-  successful ingest.
-
-**Breaking:** `ingest.custom()` no longer returns `CustomWebhookResponse`. The
-endpoint never sent `job_id` or `created`.
+- `ingest.custom` (sync and async) now maps OpenAPI `WebhookResponse`
+  (`job_id`, `queue_name`, `status`). It previously required `{job_id, created}`
+  (raised on empty 200) then returned `None` and dropped the job id the API
+  actually sends. An empty 200 still maps to unset fields.
 - `auth.logout` (sync and async) now sends the refresh token in the body.
   Without it the access token is blacklisted but `/auth/refresh` still mints a
   new pair, so logout did not end the session. The stored refresh token is used
