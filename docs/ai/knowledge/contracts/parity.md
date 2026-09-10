@@ -16,6 +16,7 @@
 - Slug check is `GET /organizations/check-slug?slug=` → `{ available, valid, error, suggestion }`, not `{ slug }`.
 - Admin hard delete is `DELETE /admin/organizations/{id}?hard_delete=true`, not `?hard=true`.
 - `DELETE /queues/{name}` without `delete_jobs` 409s while pending/processing jobs exist. `queues.delete(name, delete_jobs=True)` sends `?delete_jobs=true` (same as PHP / dashboard). There is no `POST /queues/{name}/purge`.
+- Queue `settings` is `serde_json::Value`, not only objects. `QueueConfig.settings` as `dict` raised on string/array/bool.
 - `GET /admin/organizations` is `{ organizations, total, limit, offset }`, not a bare array. List rows omit `settings`.
 - `POST /admin/organizations` is `{ organization, api_key }`, same wrap as public create. `admin.create_organization` returns `CreateOrganizationResponse`; validating the wrapper as `Organization` raises and drops the one-time key.
 - `GET /admin/stats` is nested `{ organizations, jobs, workers, system }`, not flat `total_organizations` / `jobs_today`.

@@ -27,6 +27,7 @@ from spooled.types.jobs import (
 from spooled.types.organizations import (
     CreateOrganizationParams,
 )
+from spooled.types.queues import QueueConfig
 from spooled.types.schedules import (
     CreateScheduleParams,
     Schedule,
@@ -535,6 +536,26 @@ class TestBulkEnqueueParams:
         jobs = [BulkJobItem(payload={"n": i}) for i in range(101)]
         with pytest.raises(PydanticValidationError):
             BulkEnqueueParams(queue_name="test", jobs=jobs)
+
+
+class TestQueueConfig:
+    """GET /queues/{name} settings is serde_json::Value."""
+
+    def test_settings_accepts_any_json(self) -> None:
+        queue = QueueConfig.model_validate(
+            {
+                "id": "q1",
+                "organization_id": "org1",
+                "queue_name": "emails",
+                "max_retries": 3,
+                "default_timeout": 300,
+                "enabled": True,
+                "settings": ["fifo"],
+                "created_at": "2024-01-01T00:00:00Z",
+                "updated_at": "2024-01-01T00:00:00Z",
+            }
+        )
+        assert queue.settings == ["fifo"]
 
 
 class TestWorker:

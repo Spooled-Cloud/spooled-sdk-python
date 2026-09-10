@@ -9,6 +9,9 @@ from typing import Any
 
 from pydantic import BaseModel, Field
 
+# Backend queue settings is serde_json::Value (any JSON).
+JsonValue = Any
+
 
 class QueueConfig(BaseModel):
     """Full queue configuration."""
@@ -20,7 +23,7 @@ class QueueConfig(BaseModel):
     default_timeout: int
     rate_limit: int | None = None
     enabled: bool
-    settings: dict[str, Any]
+    settings: JsonValue = None
     created_at: datetime
     updated_at: datetime
 
@@ -55,7 +58,7 @@ class UpdateQueueConfigParams(BaseModel):
     default_timeout: int | None = Field(default=None, ge=1, le=86400)
     rate_limit: int | None = Field(default=None, ge=1)
     enabled: bool | None = None
-    settings: dict[str, Any] | None = None
+    settings: JsonValue = None
 
     model_config = {"extra": "forbid"}
 
