@@ -40,6 +40,7 @@ class CreateJobParams(BaseModel):
     tags: JsonTags = None
     parent_job_id: str | None = None
     completion_webhook: str | None = None
+    completion_webhook_secret: str | None = Field(default=None, max_length=255)
 
     model_config = {"extra": "forbid"}
 

@@ -175,9 +175,26 @@ class TestCreateJobParams:
             tags={"env": "prod"},
             parent_job_id="job_parent",
             completion_webhook="https://example.com/webhook",
+            completion_webhook_secret="whsec_test",
         )
         assert params.priority == 5
         assert params.idempotency_key == "unique-123"
+        assert params.completion_webhook_secret == "whsec_test"
+
+    def test_completion_webhook_secret_is_dumped_when_set(self) -> None:
+        params = CreateJobParams(
+            queue_name="q",
+            payload={},
+            completion_webhook="https://example.com/webhook",
+            completion_webhook_secret="whsec_test",
+        )
+        data = params.model_dump(exclude_none=True, exclude_unset=True, mode="json")
+        assert data["completion_webhook_secret"] == "whsec_test"
+
+    def test_completion_webhook_secret_omitted_when_unset(self) -> None:
+        params = CreateJobParams(queue_name="q", payload={})
+        data = params.model_dump(exclude_none=True, exclude_unset=True, mode="json")
+        assert "completion_webhook_secret" not in data
 
     def test_tags_accept_object_and_string_array(self) -> None:
         """POST /jobs tags is JSON: object with bool values, or a string array."""

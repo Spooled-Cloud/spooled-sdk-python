@@ -41,3 +41,4 @@
 | PS-37 | P1  | ~~Realtime parse ValidationError/AttributeError on non-object JSON dropped the WS/SSE loop~~ **FIXED** | `src/spooled/realtime/events.py`; `websocket.py`; `unified.py` |
 | PS-38 | P2  | ~~`auth.me()` dropped nested `organization` from GET /auth/me~~ **FIXED** | `src/spooled/types/auth.py`; backend `CurrentUserResponse.organization` |
 | PS-39 | P2  | ~~`schedules.create` always sent `max_retries=3`/`timeout_seconds=300`~~ **FIXED** | `src/spooled/resources/schedules.py`; backend omit uses `QUEUE_DEFAULT_*` |
+| PS-40 | P2  | ~~`CreateJobParams` `extra=forbid` rejected `completion_webhook_secret`~~ **FIXED** | `src/spooled/types/jobs.py`; backend `CreateJobRequest` since 0.1.109 |
