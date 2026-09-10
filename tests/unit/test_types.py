@@ -26,6 +26,7 @@ from spooled.types.jobs import (
 )
 from spooled.types.organizations import (
     CreateOrganizationParams,
+    Organization,
 )
 from spooled.types.queues import QueueConfig
 from spooled.types.schedules import (
@@ -536,6 +537,26 @@ class TestBulkEnqueueParams:
         jobs = [BulkJobItem(payload={"n": i}) for i in range(101)]
         with pytest.raises(PydanticValidationError):
             BulkEnqueueParams(queue_name="test", jobs=jobs)
+
+
+class TestOrganization:
+    """GET /organizations/{id} settings and custom_limits are serde_json::Value."""
+
+    def test_settings_and_custom_limits_accept_any_json(self) -> None:
+        org = Organization.model_validate(
+            {
+                "id": "o1",
+                "name": "Acme",
+                "slug": "acme",
+                "plan_tier": "free",
+                "settings": ["theme"],
+                "custom_limits": 3,
+                "created_at": "2024-01-01T00:00:00Z",
+                "updated_at": "2024-01-01T00:00:00Z",
+            }
+        )
+        assert org.settings == ["theme"]
+        assert org.custom_limits == 3
 
 
 class TestQueueConfig:

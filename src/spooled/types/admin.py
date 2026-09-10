@@ -9,7 +9,7 @@ from typing import Any
 
 from pydantic import BaseModel, Field
 
-from spooled.types.organizations import PlanTier
+from spooled.types.organizations import JsonValue, PlanTier
 
 
 class AdminOrgStats(BaseModel):
@@ -92,8 +92,8 @@ class AdminCreateOrganizationParams(BaseModel):
     slug: str = Field(..., min_length=1, max_length=100, pattern="^[a-z0-9-]+$")
     plan_tier: PlanTier = Field(default="free")
     billing_email: str | None = None
-    settings: dict[str, Any] | None = None
-    custom_limits: dict[str, Any] | None = None
+    settings: JsonValue = None
+    custom_limits: JsonValue = None
 
     model_config = {"extra": "forbid"}
 
@@ -104,8 +104,8 @@ class AdminUpdateOrganizationParams(BaseModel):
     name: str | None = Field(default=None, min_length=1, max_length=100)
     plan_tier: PlanTier | None = None
     billing_email: str | None = None
-    settings: dict[str, Any] | None = None
-    custom_limits: dict[str, Any] | None = None
+    settings: JsonValue = None
+    custom_limits: JsonValue = None
 
     model_config = {"extra": "forbid"}
 

@@ -30,3 +30,4 @@
 {"id":"PS-31","sev":"P1","summary":"WorkflowResponse.metadata typed dict so GET raised on string/array JSON","path":"src/spooled/types/workflows.py","status":"fixed","note":"Backend Workflow.metadata is serde_json::Value"}
 {"id":"PS-32","sev":"P1","summary":"Worker.metadata typed dict so GET /workers/{id} raised on string/array JSON","path":"src/spooled/types/workers.py","status":"fixed","note":"Backend WorkerResponse.metadata is serde_json::Value"}
 {"id":"PS-33","sev":"P1","summary":"QueueConfig.settings typed dict so GET /queues/{name} raised on string/array JSON","path":"src/spooled/types/queues.py","status":"fixed","note":"Backend QueueConfig.settings is serde_json::Value"}
+{"id":"PS-34","sev":"P1","summary":"Organization.settings/custom_limits typed dict so GET raised on string/array JSON","path":"src/spooled/types/organizations.py","status":"fixed","note":"Backend Organization.settings and custom_limits are serde_json::Value"}

@@ -11,6 +11,9 @@ from pydantic import BaseModel, Field
 
 PlanTier = Literal["free", "starter", "pro", "enterprise"]
 
+# Backend organization settings / custom_limits is serde_json::Value (any JSON).
+JsonValue = Any
+
 
 class Organization(BaseModel):
     """Full organization model."""
@@ -20,8 +23,8 @@ class Organization(BaseModel):
     slug: str
     plan_tier: PlanTier
     billing_email: str | None = None
-    settings: dict[str, Any]
-    custom_limits: dict[str, Any] | None = None
+    settings: JsonValue = None
+    custom_limits: JsonValue = None
     stripe_customer_id: str | None = None
     stripe_subscription_id: str | None = None
     stripe_subscription_status: str | None = None
@@ -84,7 +87,7 @@ class UpdateOrganizationParams(BaseModel):
 
     name: str | None = Field(default=None, min_length=1, max_length=100)
     billing_email: str | None = None
-    settings: dict[str, Any] | None = None
+    settings: JsonValue = None
 
     model_config = {"extra": "forbid"}
 

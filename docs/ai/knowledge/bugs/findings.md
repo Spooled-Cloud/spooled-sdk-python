@@ -35,3 +35,4 @@
 | PS-31 | P1  | ~~`WorkflowResponse.metadata` as `dict` raised on string/array JSON~~ **FIXED** | `src/spooled/types/workflows.py`; backend metadata is `serde_json::Value` |
 | PS-32 | P1  | ~~`Worker.metadata` as `dict` raised on string/array JSON~~ **FIXED** | `src/spooled/types/workers.py`; backend `WorkerResponse.metadata` is `serde_json::Value` |
 | PS-33 | P1  | ~~`QueueConfig.settings` as `dict` raised on string/array JSON~~ **FIXED** | `src/spooled/types/queues.py`; backend `QueueConfig.settings` is `serde_json::Value` |
+| PS-34 | P1  | ~~`Organization.settings`/`custom_limits` as `dict` raised on string/array JSON~~ **FIXED** | `src/spooled/types/organizations.py`; backend is `serde_json::Value` |
