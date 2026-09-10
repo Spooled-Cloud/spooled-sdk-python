@@ -27,3 +27,4 @@
 {"id":"PS-28","sev":"P1","summary":"queues.delete never sent delete_jobs so a queue with jobs always 409d","path":"src/spooled/resources/queues.py","status":"fixed","note":"DELETE /queues/{name}?delete_jobs=true deletes jobs; omit keeps idle-config-only path"}
 {"id":"PS-29","sev":"P1","summary":"WorkflowJob dropped result error metadata from GET /workflows/{id} jobs","path":"src/spooled/types/workflows.py","status":"fixed","note":"Backend WorkflowJobResponse sends result, JobErrorResponse error, and metadata (tags)"}
 {"id":"PS-30","sev":"P2","summary":"CreateWorkflowResponse dropped status from POST /workflows","path":"src/spooled/types/workflows.py","status":"fixed","note":"Backend CreateWorkflowResponse always includes status"}
+{"id":"PS-31","sev":"P1","summary":"WorkflowResponse.metadata typed dict so GET raised on string/array JSON","path":"src/spooled/types/workflows.py","status":"fixed","note":"Backend Workflow.metadata is serde_json::Value"}

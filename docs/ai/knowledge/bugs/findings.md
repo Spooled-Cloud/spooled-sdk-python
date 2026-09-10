@@ -32,3 +32,4 @@
 | PS-28 | P1 | ~~`queues.delete` never sent `delete_jobs`, so a busy queue always 409'd~~ **FIXED** | `src/spooled/resources/queues.py`; backend `DELETE /queues/{name}?delete_jobs=true` |
 | PS-29 | P1 | ~~`WorkflowJob` dropped `result`/`error`/`metadata` from GET /workflows/{id}~~ **FIXED** | `src/spooled/types/workflows.py`; backend `WorkflowJobResponse` |
 | PS-30 | P2  | ~~`CreateWorkflowResponse` dropped `status` from POST /workflows~~ **FIXED** | `src/spooled/types/workflows.py`; backend always sends `status` |
+| PS-31 | P1  | ~~`WorkflowResponse.metadata` as `dict` raised on string/array JSON~~ **FIXED** | `src/spooled/types/workflows.py`; backend metadata is `serde_json::Value` |

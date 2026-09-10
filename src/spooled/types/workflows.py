@@ -29,7 +29,8 @@ class WorkflowResponse(BaseModel):
     started_at: datetime | None = None
     completed_at: datetime | None = None
     description: str | None = None
-    metadata: dict[str, Any] | None = None
+    # Backend Workflow.metadata is serde_json::Value (any JSON).
+    metadata: JsonValue = None
 
     @model_validator(mode="before")
     @classmethod
@@ -82,7 +83,7 @@ class CreateWorkflowParams(BaseModel):
     name: str = Field(..., min_length=1, max_length=100)
     description: str | None = None
     jobs: list[WorkflowJobDefinition]
-    metadata: dict[str, Any] | None = None
+    metadata: JsonValue = None
 
     model_config = {"extra": "forbid"}
 

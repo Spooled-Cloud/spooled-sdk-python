@@ -739,6 +739,18 @@ class TestWorkflowJob:
 class TestWorkflowResponse:
     """GET /workflows/{id} is a detail document; list is the summary shape."""
 
+    def test_metadata_accepts_any_json(self) -> None:
+        got = WorkflowResponse.model_validate(
+            {
+                "id": "wf_1",
+                "name": "ETL",
+                "status": "running",
+                "created_at": "2024-01-01T00:00:00Z",
+                "metadata": ["env", "prod"],
+            }
+        )
+        assert got.metadata == ["env", "prod"]
+
     def test_maps_progress_counts_from_get_detail(self) -> None:
         got = WorkflowResponse.model_validate(
             {
