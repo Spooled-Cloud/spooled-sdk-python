@@ -13,6 +13,9 @@ from pydantic import BaseModel, Field
 
 from spooled._version import __version__
 
+# Backend worker metadata is serde_json::Value (any JSON).
+JsonValue = Any
+
 # Worker states
 WorkerState = Literal["idle", "starting", "running", "stopping", "stopped", "error"]
 
@@ -184,7 +187,7 @@ class SpooledWorkerOptions(BaseModel):
     )
     worker_type: str = Field(default="python")
     version: str = Field(default=__version__)
-    metadata: dict[str, Any] = Field(default_factory=dict)
+    metadata: JsonValue = Field(default_factory=dict)
     auto_start: bool = Field(default=False)
 
     model_config = {"extra": "forbid"}

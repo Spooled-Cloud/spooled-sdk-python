@@ -126,6 +126,11 @@ class TestSpooledWorkerOptions:
         assert options.heartbeat_fraction == 0.3
         assert options.auto_start is True
 
+    def test_metadata_accepts_any_json(self) -> None:
+        """Backend worker metadata is serde_json::Value, not only objects."""
+        options = SpooledWorkerOptions(queue_name="q", metadata=["region", "us"])
+        assert options.metadata == ["region", "us"]
+
     def test_queue_name_validation(self) -> None:
         """Test queue_name validation."""
         from pydantic import ValidationError as PydanticValidationError

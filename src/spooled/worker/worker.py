@@ -78,7 +78,7 @@ class SpooledWorker:
         worker_id: str | None = None,
         worker_type: str = "python",
         version: str = __version__,
-        metadata: dict[str, Any] | None = None,
+        metadata: Any = None,
         auto_start: bool = False,
     ) -> None:
         """
@@ -115,7 +115,7 @@ class SpooledWorker:
             worker_id=worker_id,
             worker_type=worker_type,
             version=version,
-            metadata=metadata or {},
+            metadata={} if metadata is None else metadata,
             auto_start=auto_start,
         )
 
