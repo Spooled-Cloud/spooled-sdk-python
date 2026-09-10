@@ -12,6 +12,7 @@
 - `GET /jobs/{id}/dependencies` is `{ job_id, dependencies, dependents, dependencies_met }` with `{ job_id, queue_name, status }` edges. `completed` is derived from `status == "completed"`.
 - Email availability is `GET /auth/check-email?email=`, not `/auth/email/check`. The body is `available`, `exists`, `signup_enabled`.
 - Email login start is `POST /auth/email/start` → `{ message, email_sent_to }`, not `{ email_to }` / `{ success, message }`.
+- `GET /auth/me` is `{ organization_id, api_key_id, queues, issued_at, expires_at, organization? }`. Nested `organization` is `{ id, name, slug, plan_tier, billing_email }` (`CurrentUserResponse`), not a full `Organization` row. `MeResponse` keeps it.
 - `POST /auth/validate` is `{ valid, error?, claims? }`. Claims are `org_id`, `api_key_id`, `queues`, `exp`. `ValidateResponse` maps those onto `organization_id` / `api_key_id` / `queues` / `expires_at`.
 - `POST /auth/logout` blacklists the access token from `Authorization`. The refresh JWT stays usable until expiry unless `refresh_token` is in the body. `auth.logout()` sends the stored refresh token (or an explicit argument).
 - Slug check is `GET /organizations/check-slug?slug=` → `{ available, valid, error, suggestion }`, not `{ slug }`.

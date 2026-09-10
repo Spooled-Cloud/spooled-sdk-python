@@ -9,6 +9,7 @@ from pydantic import ValidationError as PydanticValidationError
 
 from spooled.types.auth import (
     LoginParams,
+    MeResponse,
     ValidateResponse,
 )
 from spooled.types.jobs import (
@@ -49,6 +50,46 @@ from spooled.types.workflows import (
     WorkflowJobDefinition,
     WorkflowResponse,
 )
+
+
+class TestMeResponse:
+    """GET /auth/me sends nested organization (CurrentUserResponse)."""
+
+    def test_keeps_nested_organization(self) -> None:
+        got = MeResponse.model_validate(
+            {
+                "organization_id": "org_1",
+                "api_key_id": "key_1",
+                "queues": ["emails"],
+                "issued_at": "2024-01-01T00:00:00Z",
+                "expires_at": "2024-01-01T01:00:00Z",
+                "organization": {
+                    "id": "org_1",
+                    "name": "Acme",
+                    "slug": "acme",
+                    "plan_tier": "pro",
+                    "billing_email": "billing@acme.test",
+                },
+            }
+        )
+        assert got.organization is not None
+        assert got.organization.id == "org_1"
+        assert got.organization.name == "Acme"
+        assert got.organization.slug == "acme"
+        assert got.organization.plan_tier == "pro"
+        assert got.organization.billing_email == "billing@acme.test"
+
+    def test_organization_optional_when_omitted(self) -> None:
+        got = MeResponse.model_validate(
+            {
+                "organization_id": "org_1",
+                "api_key_id": "key_1",
+                "queues": [],
+                "issued_at": "2024-01-01T00:00:00Z",
+                "expires_at": "2024-01-01T01:00:00Z",
+            }
+        )
+        assert got.organization is None
 
 
 class TestValidateResponse:

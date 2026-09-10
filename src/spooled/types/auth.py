@@ -44,14 +44,29 @@ class RefreshResponse(BaseModel):
     expires_in: int  # seconds
 
 
+class MeOrganization(BaseModel):
+    """Organization nested on GET /auth/me (`CurrentUserResponse.organization`)."""
+
+    id: str
+    name: str
+    slug: str
+    plan_tier: str
+    billing_email: str | None = None
+
+
 class MeResponse(BaseModel):
-    """Response from /auth/me endpoint."""
+    """Response from /auth/me endpoint.
+
+    The API also sends nested ``organization`` (id/name/slug/plan_tier/
+    billing_email). That used to be dropped because it was not on this model.
+    """
 
     organization_id: str
     api_key_id: str
     queues: list[str]
     issued_at: datetime
     expires_at: datetime
+    organization: MeOrganization | None = None
 
 
 class ValidateParams(BaseModel):

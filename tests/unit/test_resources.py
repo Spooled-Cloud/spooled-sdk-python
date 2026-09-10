@@ -795,6 +795,13 @@ class TestAuthResourceComplete:
                     "queues": ["emails", "tasks"],
                     "issued_at": "2024-01-01T00:00:00Z",
                     "expires_at": "2024-01-01T01:00:00Z",
+                    "organization": {
+                        "id": "org_1",
+                        "name": "Acme",
+                        "slug": "acme",
+                        "plan_tier": "starter",
+                        "billing_email": None,
+                    },
                 },
             )
         )
@@ -803,6 +810,9 @@ class TestAuthResourceComplete:
             result = client.auth.me()
             assert result.organization_id == "org_1"
             assert "emails" in result.queues
+            assert result.organization is not None
+            assert result.organization.name == "Acme"
+            assert result.organization.plan_tier == "starter"
 
     @respx.mock
     def test_check_email_hits_check_email_not_email_check(self) -> None:

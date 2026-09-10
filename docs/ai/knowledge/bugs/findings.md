@@ -39,3 +39,4 @@
 | PS-35 | P1  | ~~`SpooledWorkerOptions.metadata` as `dict` raised on string/array JSON~~ **FIXED** | `src/spooled/worker/types.py`; backend register metadata is `serde_json::Value` |
 | PS-36 | P1  | ~~`create_error_from_response` AttributeError on non-object JSON error bodies~~ **FIXED** | `src/spooled/errors.py`; `response.json()` can be a string/array/number |
 | PS-37 | P1  | ~~Realtime parse ValidationError/AttributeError on non-object JSON dropped the WS/SSE loop~~ **FIXED** | `src/spooled/realtime/events.py`; `websocket.py`; `unified.py` |
+| PS-38 | P2  | ~~`auth.me()` dropped nested `organization` from GET /auth/me~~ **FIXED** | `src/spooled/types/auth.py`; backend `CurrentUserResponse.organization` |
