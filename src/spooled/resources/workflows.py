@@ -55,7 +55,6 @@ def jobs_from_workflow_detail(detail: Any) -> list[WorkflowJob]:
             item["queue_name"] = item["queue"]
         item["depends_on"] = depends_on or None
         item["timeout_seconds"] = timeout_seconds
-        item.setdefault("payload", {})
         jobs.append(WorkflowJob.model_validate(item))
     return jobs
 
@@ -82,9 +81,7 @@ class WorkflowJobsResource:
     def get_status(self, workflow_id: str) -> builtins.list[WorkflowJobStatus]:
         """Get the status of all jobs in a workflow."""
         jobs = self.list(workflow_id)
-        return [
-            WorkflowJobStatus(key=job.key, job_id=job.id, status=job.status) for job in jobs
-        ]
+        return [WorkflowJobStatus(key=job.key, job_id=job.id, status=job.status) for job in jobs]
 
     def get_dependencies(self, job_id: str) -> JobWithDependencies:
         """Get job dependencies."""
@@ -123,9 +120,7 @@ class AsyncWorkflowJobsResource:
     async def get_status(self, workflow_id: str) -> builtins.list[WorkflowJobStatus]:
         """Get the status of all jobs in a workflow."""
         jobs = await self.list(workflow_id)
-        return [
-            WorkflowJobStatus(key=job.key, job_id=job.id, status=job.status) for job in jobs
-        ]
+        return [WorkflowJobStatus(key=job.key, job_id=job.id, status=job.status) for job in jobs]
 
     async def get_dependencies(self, job_id: str) -> JobWithDependencies:
         """Get job dependencies."""

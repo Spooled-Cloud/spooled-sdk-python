@@ -953,6 +953,8 @@ class TestWorkflowJobsResource:
                             "timeout_ms": 30000,
                             "created_at": "2024-01-01T00:00:00Z",
                             "workflow_id": "wf_1",
+                            "result": [1, 2, 3],
+                            "metadata": {"tag": "urgent"},
                         },
                         {
                             "id": "job_2",
@@ -991,6 +993,8 @@ class TestWorkflowJobsResource:
             assert len(jobs) == 2
             assert jobs[0].queue_name == "etl"
             assert jobs[0].timeout_seconds == 30
+            assert jobs[0].result == [1, 2, 3]
+            assert jobs[0].metadata == {"tag": "urgent"}
             assert jobs[1].depends_on == ["job_1"]
             one = client.workflows.jobs.get("wf_1", "job_2")
             assert one.id == "job_2"

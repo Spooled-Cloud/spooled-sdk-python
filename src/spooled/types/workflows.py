@@ -160,8 +160,22 @@ class AddDependenciesResponse(BaseModel):
     job_id: str | None = None
 
 
+class WorkflowJobError(BaseModel):
+    """Error on a workflow job (`JobErrorResponse`)."""
+
+    model_config = ConfigDict(populate_by_name=True)
+
+    type: str = Field(default="JobError", validation_alias=AliasChoices("type", "error_type"))
+    message: str = ""
+    stack: str | None = None
+
+
 class WorkflowJob(BaseModel):
-    """A job within a workflow."""
+    """A job within a workflow.
+
+    GET /workflows/{id} sends ``result``, ``error``, and ``metadata`` (job tags)
+    on each job. Those used to be dropped because they were not on this model.
+    """
 
     model_config = ConfigDict(populate_by_name=True)
 
@@ -173,6 +187,9 @@ class WorkflowJob(BaseModel):
     )
     status: str
     payload: JsonValue = None
+    result: JsonValue = None
+    error: WorkflowJobError | None = None
+    metadata: JsonValue = None
     priority: int = 0
     max_retries: int | None = None
     attempt: int | None = None
@@ -182,6 +199,8 @@ class WorkflowJob(BaseModel):
     created_at: datetime | None = None
     started_at: datetime | None = None
     completed_at: datetime | None = None
+    workflow_id: str | None = None
+    parent_job_id: str | None = None
 
 
 class WorkflowJobStatus(BaseModel):

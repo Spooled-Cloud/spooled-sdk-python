@@ -42,6 +42,7 @@ from spooled.types.workers import (
 )
 from spooled.types.workflows import (
     CreateWorkflowParams,
+    WorkflowJob,
     WorkflowJobDefinition,
     WorkflowResponse,
 )
@@ -708,6 +709,31 @@ class TestCreateWorkflowParams:
         )
         assert len(params.jobs) == 3
         assert params.jobs[1].depends_on == ["extract"]
+
+
+class TestWorkflowJob:
+    """GET /workflows/{id} jobs send result, error, and metadata."""
+
+    def test_keeps_result_error_and_metadata(self) -> None:
+        job = WorkflowJob.model_validate(
+            {
+                "id": "job_1",
+                "queue": "etl",
+                "status": "failed",
+                "payload": "plain-string",
+                "result": [1, 2, 3],
+                "error": {"type": "JobError", "message": "boom"},
+                "metadata": {"tag": "urgent"},
+                "attempt": 1,
+                "priority": 0,
+            }
+        )
+        assert job.queue_name == "etl"
+        assert job.payload == "plain-string"
+        assert job.result == [1, 2, 3]
+        assert job.error is not None
+        assert job.error.message == "boom"
+        assert job.metadata == {"tag": "urgent"}
 
 
 class TestWorkflowResponse:
