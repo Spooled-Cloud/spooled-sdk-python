@@ -11,6 +11,9 @@ from pydantic import BaseModel, Field
 
 WorkerStatus = Literal["healthy", "degraded", "offline", "draining"]
 
+# Backend worker metadata is serde_json::Value (any JSON).
+JsonValue = Any
+
 
 class Worker(BaseModel):
     """Full worker model."""
@@ -26,7 +29,7 @@ class Worker(BaseModel):
     current_jobs: int | None = Field(default=None, alias="current_job_count")
     status: WorkerStatus
     last_heartbeat: datetime
-    metadata: dict[str, Any] | None = None
+    metadata: JsonValue = None
     version: str | None = None
     registered_at: datetime | None = Field(default=None, alias="created_at")
     updated_at: datetime | None = None
@@ -66,7 +69,7 @@ class RegisterWorkerParams(BaseModel):
     )
     worker_type: str | None = None
     max_concurrency: int = Field(default=5, ge=1, le=100)
-    metadata: dict[str, Any] | None = None
+    metadata: JsonValue = None
     version: str | None = None
 
     model_config = {"extra": "forbid"}
@@ -86,6 +89,6 @@ class WorkerHeartbeatParams(BaseModel):
 
     current_jobs: int = Field(ge=0)
     status: WorkerStatus | None = None
-    metadata: dict[str, Any] | None = None
+    metadata: JsonValue = None
 
     model_config = {"extra": "forbid"}

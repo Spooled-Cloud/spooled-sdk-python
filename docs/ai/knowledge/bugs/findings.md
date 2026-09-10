@@ -33,3 +33,4 @@
 | PS-29 | P1 | ~~`WorkflowJob` dropped `result`/`error`/`metadata` from GET /workflows/{id}~~ **FIXED** | `src/spooled/types/workflows.py`; backend `WorkflowJobResponse` |
 | PS-30 | P2  | ~~`CreateWorkflowResponse` dropped `status` from POST /workflows~~ **FIXED** | `src/spooled/types/workflows.py`; backend always sends `status` |
 | PS-31 | P1  | ~~`WorkflowResponse.metadata` as `dict` raised on string/array JSON~~ **FIXED** | `src/spooled/types/workflows.py`; backend metadata is `serde_json::Value` |
+| PS-32 | P1  | ~~`Worker.metadata` as `dict` raised on string/array JSON~~ **FIXED** | `src/spooled/types/workers.py`; backend `WorkerResponse.metadata` is `serde_json::Value` |

@@ -39,6 +39,7 @@ from spooled.types.webhooks import (
 )
 from spooled.types.workers import (
     RegisterWorkerParams,
+    Worker,
 )
 from spooled.types.workflows import (
     CreateWorkflowParams,
@@ -534,6 +535,23 @@ class TestBulkEnqueueParams:
         jobs = [BulkJobItem(payload={"n": i}) for i in range(101)]
         with pytest.raises(PydanticValidationError):
             BulkEnqueueParams(queue_name="test", jobs=jobs)
+
+
+class TestWorker:
+    """GET /workers/{id} metadata is serde_json::Value."""
+
+    def test_metadata_accepts_any_json(self) -> None:
+        worker = Worker.model_validate(
+            {
+                "id": "w1",
+                "queue_name": "emails",
+                "hostname": "host-1",
+                "status": "healthy",
+                "last_heartbeat": "2024-01-01T00:00:00Z",
+                "metadata": ["region", "us"],
+            }
+        )
+        assert worker.metadata == ["region", "us"]
 
 
 class TestRegisterWorkerParams:
