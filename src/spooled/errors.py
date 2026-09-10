@@ -329,14 +329,24 @@ def _parse_int_header(value: str | None) -> int | None:
 
 def create_error_from_response(
     status_code: int,
-    body: dict[str, Any] | None = None,
+    body: Any = None,
     request_id: str | None = None,
     headers: Mapping[str, str] | None = None,
 ) -> SpooledError:
     """Create appropriate error from HTTP response."""
-    code = body.get("code", "unknown_error") if body else "unknown_error"
-    message = body.get("message", "Unknown error") if body else "Unknown error"
-    details = body.get("details") if body else None
+    if isinstance(body, dict):
+        code = body.get("code", "unknown_error")
+        message = body.get("message", "Unknown error")
+        details = body.get("details")
+    elif isinstance(body, str) and body:
+        # Proxies sometimes JSON-encode a bare string as the error body.
+        code = "unknown_error"
+        message = body
+        details = None
+    else:
+        code = "unknown_error"
+        message = "Unknown error"
+        details = None
 
     error_classes: dict[int, type[SpooledError]] = {
         400: ValidationError,

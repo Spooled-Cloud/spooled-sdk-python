@@ -419,6 +419,20 @@ class TestCreateErrorFromResponse:
         assert error.message == "Unknown error"
         assert error.code == "unknown_error"
 
+    def test_non_object_json_body_does_not_raise(self) -> None:
+        """response.json() may be a string, array, or number — never AttributeError."""
+        string_error = create_error_from_response(502, "Bad gateway")
+        assert isinstance(string_error, ServerError)
+        assert string_error.message == "Bad gateway"
+
+        list_error = create_error_from_response(500, ["oops"])
+        assert isinstance(list_error, ServerError)
+        assert list_error.message == "Unknown error"
+
+        int_error = create_error_from_response(404, 3)
+        assert isinstance(int_error, NotFoundError)
+        assert int_error.message == "Unknown error"
+
     def test_body_with_details(self) -> None:
         """Test response with details field."""
         error = create_error_from_response(

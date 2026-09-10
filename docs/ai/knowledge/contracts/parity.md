@@ -1,6 +1,7 @@
 # Parity notes (Python)
 
 - Async client unique among SDKs.
+- Error bodies from `response.json()` may not be objects. `create_error_from_response` only reads `code`/`message`/`details` from a dict; a JSON string becomes the message, and arrays/numbers/bools map to `Unknown error` instead of `AttributeError`.
 - `POST /webhooks/{org_id}/custom` returns `{ job_id, queue_name, status }` (OpenAPI `WebhookResponse`). Python `ingest.custom()` maps that; empty 200 leaves the fields unset. There is no `/webhooks/{org_id}/github` or `/stripe`; those handlers were removed.
 - REST/gRPC job create omits unset retry/timeout defaults; explicit values are still sent.
 - Worker progress emits local job logs only; Go remains the SDK with backend-persisted `POST /jobs/{id}/progress`.
