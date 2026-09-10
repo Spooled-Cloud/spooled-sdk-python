@@ -969,6 +969,46 @@ class TestWorkflowJobsResource:
             assert one.id == "job_2"
 
     @respx.mock
+    def test_list_jobs_keeps_non_object_payload(self) -> None:
+        respx.get(f"{BASE_URL}/api/v1/workflows/wf_1").mock(
+            return_value=httpx.Response(
+                200,
+                json={
+                    "id": "wf_1",
+                    "name": "ETL",
+                    "status": "running",
+                    "created_at": "2024-01-01T00:00:00Z",
+                    "jobs": [
+                        {
+                            "id": "job_1",
+                            "queue": "etl",
+                            "payload": "plain-string",
+                            "status": "completed",
+                            "priority": 0,
+                            "attempt": 1,
+                            "max_retries": 3,
+                            "created_at": "2024-01-01T00:00:00Z",
+                            "workflow_id": "wf_1",
+                        }
+                    ],
+                    "dependencies": [],
+                    "progress": {
+                        "total": 1,
+                        "completed": 1,
+                        "failed": 0,
+                        "pending": 0,
+                        "processing": 0,
+                    },
+                },
+            )
+        )
+
+        with SpooledClient(api_key=API_KEY, base_url=BASE_URL) as client:
+            jobs = client.workflows.jobs.list("wf_1")
+            assert len(jobs) == 1
+            assert jobs[0].payload == "plain-string"
+
+    @respx.mock
     def test_add_dependencies_sends_depends_on(self) -> None:
         def _handler(request: httpx.Request) -> httpx.Response:
             body = json.loads(request.content.decode())

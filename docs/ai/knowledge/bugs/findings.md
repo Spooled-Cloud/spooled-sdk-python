@@ -25,3 +25,4 @@
 | PS-21 | P1 | ~~`Job.tags`/`Schedule.tags` as `dict[str, str]` rejected API JSON tags~~ **FIXED** | `src/spooled/types/jobs.py`, `src/spooled/types/schedules.py`; object-with-bool and string-array both valid |
 | PS-22 | P1 | ~~`Job.payload`/`result` as `dict` rejected non-object JSON~~ **FIXED** | `src/spooled/types/jobs.py`; backend payload/result is `serde_json::Value` |
 | PS-23 | P1 | ~~`Schedule.payload_template`/`metadata` as `dict` rejected non-object JSON~~ **FIXED** | `src/spooled/types/schedules.py`; backend is `serde_json::Value` |
+| PS-24 | P1 | ~~`WorkflowJob.payload` as `dict` raised on string/array/bool JSON~~ **FIXED** | `src/spooled/types/workflows.py`; GET detail jobs send `serde_json::Value` |

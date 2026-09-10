@@ -9,6 +9,9 @@ from typing import Any, Literal
 
 from pydantic import AliasChoices, BaseModel, ConfigDict, Field, model_validator
 
+# Backend workflow job payload is serde_json::Value (any JSON).
+JsonValue = Any
+
 WorkflowStatus = Literal["pending", "running", "completed", "failed", "cancelled"]
 
 
@@ -169,7 +172,7 @@ class WorkflowJob(BaseModel):
         validation_alias=AliasChoices("queue_name", "queue"),
     )
     status: str
-    payload: dict[str, Any] = Field(default_factory=dict)
+    payload: JsonValue = None
     priority: int = 0
     max_retries: int | None = None
     attempt: int | None = None
