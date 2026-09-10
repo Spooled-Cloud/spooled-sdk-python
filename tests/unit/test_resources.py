@@ -621,6 +621,36 @@ class TestSchedulesResourceComplete:
             assert result.id == "sch_123"
 
     @respx.mock
+    def test_create_schedule_omits_unset_queue_defaults(self) -> None:
+        """POST /schedules must not send SDK defaults for omit→server policy fields."""
+        route = respx.post(f"{BASE_URL}/api/v1/schedules").mock(
+            return_value=httpx.Response(
+                200,
+                json={
+                    "id": "sch_123",
+                    "name": "Daily Job",
+                    "cron_expression": "0 9 * * *",
+                    "next_run_at": "2024-01-02T09:00:00Z",
+                },
+            )
+        )
+
+        with SpooledClient(api_key=API_KEY, base_url=BASE_URL) as client:
+            client.schedules.create(
+                {
+                    "name": "Daily Job",
+                    "cron_expression": "0 9 * * *",
+                    "queue_name": "tasks",
+                    "payload_template": {"action": "run"},
+                }
+            )
+
+        body = json.loads(route.calls[0].request.content)
+        assert "max_retries" not in body
+        assert "timeout_seconds" not in body
+        assert "priority" not in body
+
+    @respx.mock
     def test_trigger_schedule(self) -> None:
         """Test manually triggering a schedule."""
         respx.post(f"{BASE_URL}/api/v1/schedules/sch_123/trigger").mock(

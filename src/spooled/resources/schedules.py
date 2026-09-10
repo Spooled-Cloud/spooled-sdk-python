@@ -36,7 +36,10 @@ class SchedulesResource(BaseResource):
         """Create a new schedule."""
         if isinstance(params, dict):
             params = CreateScheduleParams.model_validate(params)
-        data = self._http.post("/schedules", params.model_dump(exclude_none=True, mode="json"))
+        data = self._http.post(
+            "/schedules",
+            params.model_dump(exclude_none=True, exclude_unset=True, mode="json"),
+        )
         return CreateScheduleResponse.model_validate(data)
 
     def get(self, schedule_id: str) -> Schedule:
@@ -96,7 +99,8 @@ class AsyncSchedulesResource(AsyncBaseResource):
         if isinstance(params, dict):
             params = CreateScheduleParams.model_validate(params)
         data = await self._http.post(
-            "/schedules", params.model_dump(exclude_none=True, mode="json")
+            "/schedules",
+            params.model_dump(exclude_none=True, exclude_unset=True, mode="json"),
         )
         return CreateScheduleResponse.model_validate(data)
 

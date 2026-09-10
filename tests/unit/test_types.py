@@ -690,6 +690,32 @@ class TestCreateScheduleParams:
         assert params.name == "Daily Job"
         assert params.timezone == "UTC"
 
+    def test_minimal_create_dump_omits_queue_defaults(self) -> None:
+        """Unset retry/timeout are omitted so the server can apply its policy."""
+        params = CreateScheduleParams(
+            name="Daily Job",
+            cron_expression="0 9 * * *",
+            queue_name="tasks",
+            payload_template={"action": "run"},
+        )
+        data = params.model_dump(exclude_none=True, exclude_unset=True, mode="json")
+        assert "max_retries" not in data
+        assert "timeout_seconds" not in data
+        assert "priority" not in data
+
+    def test_explicit_create_defaults_remain_in_dump(self) -> None:
+        params = CreateScheduleParams(
+            name="Daily Job",
+            cron_expression="0 9 * * *",
+            queue_name="tasks",
+            payload_template={"action": "run"},
+            max_retries=3,
+            timeout_seconds=300,
+        )
+        data = params.model_dump(exclude_none=True, exclude_unset=True, mode="json")
+        assert data["max_retries"] == 3
+        assert data["timeout_seconds"] == 300
+
     def test_full_params(self) -> None:
         """Test all params."""
         params = CreateScheduleParams(
