@@ -23,13 +23,6 @@ class CustomWebhookParams(BaseModel):
     model_config = {"extra": "forbid"}
 
 
-class CustomWebhookResponse(BaseModel):
-    """Response from custom webhook ingestion."""
-
-    job_id: str
-    created: bool
-
-
 class IngestResource(BaseResource):
     """Webhook ingestion resource (sync)."""
 
@@ -38,8 +31,12 @@ class IngestResource(BaseResource):
         org_id: str,
         params: CustomWebhookParams | dict[str, Any],
         webhook_token: str | None = None,
-    ) -> CustomWebhookResponse:
-        """Ingest a custom webhook."""
+    ) -> None:
+        """Ingest a custom webhook.
+
+        POST /webhooks/{org_id}/custom returns 200 with an empty body, not
+        ``{job_id, created}``.
+        """
         if isinstance(params, dict):
             params = CustomWebhookParams.model_validate(params)
 
@@ -47,12 +44,11 @@ class IngestResource(BaseResource):
         if webhook_token:
             headers["X-Webhook-Token"] = webhook_token
 
-        data = self._http.post(
+        self._http.post(
             f"/webhooks/{org_id}/custom",
             params.model_dump(exclude_none=True),
             headers=headers if headers else None,
         )
-        return CustomWebhookResponse.model_validate(data)
 
 
 class AsyncIngestResource(AsyncBaseResource):
@@ -63,8 +59,12 @@ class AsyncIngestResource(AsyncBaseResource):
         org_id: str,
         params: CustomWebhookParams | dict[str, Any],
         webhook_token: str | None = None,
-    ) -> CustomWebhookResponse:
-        """Ingest a custom webhook."""
+    ) -> None:
+        """Ingest a custom webhook.
+
+        POST /webhooks/{org_id}/custom returns 200 with an empty body, not
+        ``{job_id, created}``.
+        """
         if isinstance(params, dict):
             params = CustomWebhookParams.model_validate(params)
 
@@ -72,9 +72,8 @@ class AsyncIngestResource(AsyncBaseResource):
         if webhook_token:
             headers["X-Webhook-Token"] = webhook_token
 
-        data = await self._http.post(
+        await self._http.post(
             f"/webhooks/{org_id}/custom",
             params.model_dump(exclude_none=True),
             headers=headers if headers else None,
         )
-        return CustomWebhookResponse.model_validate(data)

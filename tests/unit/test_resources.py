@@ -1139,3 +1139,24 @@ class TestAdminResource:
         assert got.jobs.pending == 2
         assert got.workers.healthy == 2
         assert got.system.api_version == "0.1.111"
+
+
+class TestIngestResource:
+    """POST /webhooks/{org_id}/custom returns empty 200, not {job_id, created}."""
+
+    @respx.mock
+    def test_custom_accepts_empty_200(self) -> None:
+        route = respx.post(f"{BASE_URL}/api/v1/webhooks/org_1/custom").mock(
+            return_value=httpx.Response(200, content=b""),
+        )
+
+        with SpooledClient(api_key=API_KEY, base_url=BASE_URL) as client:
+            result = client.ingest.custom(
+                "org_1",
+                {"queue_name": "events", "payload": {"ok": True}},
+                webhook_token="whk_test",
+            )
+
+        assert result is None
+        assert route.called
+        assert route.calls.last.request.headers["X-Webhook-Token"] == "whk_test"

@@ -40,6 +40,12 @@ All notable changes to the Spooled Python SDK are documented here.
 
 ### Fixed
 
+- `ingest.custom` (sync and async) now returns `None`. `POST /webhooks/{org_id}/custom`
+  is an empty 200, not `{job_id, created}`, so parsing that body raised on every
+  successful ingest.
+
+**Breaking:** `ingest.custom()` no longer returns `CustomWebhookResponse`. The
+endpoint never sent `job_id` or `created`.
 - `auth.logout` (sync and async) now sends the refresh token in the body.
   Without it the access token is blacklisted but `/auth/refresh` still mints a
   new pair, so logout did not end the session. The stored refresh token is used
