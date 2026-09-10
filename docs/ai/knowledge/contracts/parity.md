@@ -20,6 +20,7 @@
 - `GET /admin/stats` is nested `{ organizations, jobs, workers, system }`, not flat `total_organizations` / `jobs_today`.
 - Job list/DLQ summaries send `attempt` and `max_retries`, not `retry_count`. `JobSummary.retry_count` maps from `attempt`.
 - Job and schedule `tags` is JSON (`serde_json::Value`): object (`{"urgent": true}`) or string array (`["urgent"]`). `Job.tags` / `Schedule.tags` accept both; `dict[str, str]` rejected either documented shape.
+- Job `payload` / `result` (and claim payload / complete result) is `serde_json::Value`, not only objects. `dict[str, Any]` raised on string/array/bool.
 - `GET /jobs` summaries include `job_type` from `payload.job_type` (empty string when absent). `JobSummary.job_type` maps that field.
 - List/DLQ summaries include `last_error` (null when none). `JobSummary.last_error` maps that field.
 - `GET /jobs/status` returns `{ id, status, queue_name, retry_count, created_at, completed_at }` (no `attempt`/`max_retries`).

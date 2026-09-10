@@ -40,6 +40,11 @@ All notable changes to the Spooled Python SDK are documented here.
 
 ### Fixed
 
+- `Job.payload` / `Job.result`, `ClaimedJob.payload`, and
+  `CompleteJobParams.result` now accept any JSON. They were typed
+  `dict[str, Any]`, so `GET /jobs/{id}` and claim/complete raised
+  `ValidationError` on a string, array, or boolean (backend
+  `serde_json::Value`).
 - `Job.tags` and `Schedule.tags` now accept the API's JSON tags: an object
   (`{"urgent": true}`) or a string array (`["urgent"]`). They were typed
   `dict[str, str]`, so `GET /jobs/{id}` and `GET /schedules/{id}` raised

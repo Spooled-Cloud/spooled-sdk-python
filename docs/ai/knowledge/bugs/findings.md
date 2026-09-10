@@ -23,3 +23,4 @@
 | PS-19 | P1 | ~~`ingest.custom` parsed empty 200 as `{job_id, created}` and raised on success~~ **FIXED** | `src/spooled/resources/ingest.py`; handler returns `StatusCode::OK` |
 | PS-20 | P1 | ~~`ingest.custom` returned `None` and dropped `job_id` after backend started sending `WebhookResponse`~~ **FIXED** | `src/spooled/resources/ingest.py`; maps `job_id`/`queue_name`/`status` |
 | PS-21 | P1 | ~~`Job.tags`/`Schedule.tags` as `dict[str, str]` rejected API JSON tags~~ **FIXED** | `src/spooled/types/jobs.py`, `src/spooled/types/schedules.py`; object-with-bool and string-array both valid |
+| PS-22 | P1 | ~~`Job.payload`/`result` as `dict` rejected non-object JSON~~ **FIXED** | `src/spooled/types/jobs.py`; backend payload/result is `serde_json::Value` |

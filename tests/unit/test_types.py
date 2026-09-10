@@ -263,6 +263,56 @@ class TestJob:
         none_tags = Job.model_validate({**base, "tags": None})
         assert none_tags.tags is None
 
+    def test_payload_and_result_accept_any_json(self) -> None:
+        """GET /jobs/{id} payload/result is serde_json::Value, not only objects."""
+        now = datetime.now(timezone.utc)
+        base = {
+            "id": "job_123",
+            "organization_id": "org_1",
+            "queue_name": "emails",
+            "status": "completed",
+            "retry_count": 0,
+            "max_retries": 3,
+            "created_at": now,
+            "priority": 0,
+            "timeout_seconds": 300,
+        }
+        array_payload = Job.model_validate({**base, "payload": ["a", "b"]})
+        assert array_payload.payload == ["a", "b"]
+        string_result = Job.model_validate({**base, "payload": {}, "result": "ok"})
+        assert string_result.result == "ok"
+        list_result = Job.model_validate({**base, "payload": {}, "result": [1, 2]})
+        assert list_result.result == [1, 2]
+
+
+class TestClaimedJob:
+    """Tests for ClaimedJob."""
+
+    def test_payload_accepts_non_object_json(self) -> None:
+        """POST /jobs/claim payload is serde_json::Value."""
+        job = ClaimedJob.model_validate(
+            {
+                "id": "job_1",
+                "queue_name": "emails",
+                "payload": ["item"],
+                "retry_count": 0,
+                "max_retries": 3,
+                "timeout_seconds": 30,
+            }
+        )
+        assert job.payload == ["item"]
+
+
+class TestCompleteJobParams:
+    """Tests for CompleteJobParams."""
+
+    def test_result_accepts_non_object_json(self) -> None:
+        """POST /jobs/{id}/complete result is serde_json::Value."""
+        params = CompleteJobParams(worker_id="w1", result="ok")
+        assert params.result == "ok"
+        params = CompleteJobParams(worker_id="w1", result=["a"])
+        assert params.result == ["a"]
+
 
 class TestClaimJobsParams:
     """Tests for ClaimJobsParams."""

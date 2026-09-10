@@ -11,6 +11,8 @@ from pydantic import AliasChoices, BaseModel, Field
 
 # Backend `tags` is serde_json::Value: object (`{"urgent": true}`) or string array.
 JsonTags = dict[str, Any] | list[Any] | None
+# Backend `payload` / `result` is serde_json::Value (any JSON).
+JsonValue = Any
 
 # Job status enum
 JobStatus = Literal[
@@ -56,8 +58,8 @@ class Job(BaseModel):
     organization_id: str
     queue_name: str
     status: JobStatus
-    payload: dict[str, Any]
-    result: dict[str, Any] | None = None
+    payload: JsonValue
+    result: JsonValue = None
     retry_count: int
     max_retries: int
     last_error: str | None = None
@@ -217,7 +219,7 @@ class ClaimedJob(BaseModel):
 
     id: str
     queue_name: str
-    payload: dict[str, Any]
+    payload: JsonValue
     retry_count: int
     max_retries: int
     timeout_seconds: int
@@ -235,7 +237,7 @@ class CompleteJobParams(BaseModel):
     """Parameters for completing a job."""
 
     worker_id: str
-    result: dict[str, Any] | None = None
+    result: JsonValue = None
     lease_id: str | None = None
 
     model_config = {"extra": "forbid"}
