@@ -81,6 +81,12 @@ class TestRealtimeEvent:
         assert event is not None
         assert event.type == "error"
 
+    def test_from_server_event_keeps_non_object_data(self) -> None:
+        """A non-object data payload must not ValidationError (drops the socket)."""
+        event = RealtimeEvent.from_server_event("Ping", "pong")
+        assert event is not None
+        assert event.data == "pong"
+
 
 class TestServerEventMap:
     """Tests for server event mapping."""
@@ -250,6 +256,13 @@ class TestWebSocketDispatch:
         client._handle_message(json.dumps({"type": "JobCreated", "data": {"job_id": "j2"}}))
 
         assert [e.type for e in seen] == ["job.created"]
+
+    def test_non_object_json_frame_does_not_raise(self) -> None:
+        """A JSON array/string frame must not AttributeError and drop the socket."""
+        client, _ = _connected_ws_client()
+        client._handle_message("[]")
+        client._handle_message('"hello"')
+        client._handle_message("3")
 
 
 class TestWebSocketSubscribe:

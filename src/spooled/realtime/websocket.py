@@ -354,6 +354,8 @@ class WebSocketClient:
         """Handle incoming WebSocket message."""
         try:
             data = json.loads(message)
+            if not isinstance(data, dict):
+                return
 
             # The backend serializes events adjacently-tagged as
             # {"type": "<PascalCaseVariant>", "data": {...}} and does not send
@@ -711,14 +713,15 @@ class AsyncWebSocketClient:
         """Parse WebSocket message to event."""
         try:
             data = json.loads(message)
-            msg_type = data.get("type", "")
-
-            event_data = data.get("data", {})
-            return RealtimeEvent.from_server_event(
-                msg_type, event_data, timestamp=data.get("timestamp")
-            )
         except json.JSONDecodeError:
             return None
+        if not isinstance(data, dict):
+            return None
+        msg_type = data.get("type", "")
+        event_data = data.get("data", {})
+        return RealtimeEvent.from_server_event(
+            msg_type, event_data, timestamp=data.get("timestamp")
+        )
 
     async def _send_command(
         self, command: SubscribeCommand | UnsubscribeCommand | PingCommand

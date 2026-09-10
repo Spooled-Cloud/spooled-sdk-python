@@ -649,6 +649,8 @@ class SpooledRealtime:
             data = json.loads(message)
         except json.JSONDecodeError:
             return None
+        if not isinstance(data, dict):
+            return None
 
         # Events are adjacently tagged: {"type": "<PascalCase>", "data": {...}}.
         # The backend sends no command acks, so every frame is an event.

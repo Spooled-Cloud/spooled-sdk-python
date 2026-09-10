@@ -57,7 +57,9 @@ class RealtimeEvent(BaseModel):
     """Real-time event from WebSocket or SSE."""
 
     type: RealtimeEventType
-    data: dict[str, Any]
+    # Backend event `data` is a struct today; keep any JSON so a non-object
+    # frame cannot ValidationError and tear down the socket/SSE loop.
+    data: Any = None
     timestamp: datetime | None = None
 
     @staticmethod
@@ -88,7 +90,7 @@ class RealtimeEvent(BaseModel):
     def from_server_event(
         cls,
         server_type: str,
-        data: dict[str, Any],
+        data: Any,
         *,
         timestamp: Any = None,
     ) -> RealtimeEvent | None:
