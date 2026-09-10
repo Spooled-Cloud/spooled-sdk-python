@@ -23,6 +23,7 @@
 - Job `payload` / `result` (and claim payload / complete result) is `serde_json::Value`, not only objects. `dict[str, Any]` raised on string/array/bool.
 - Schedule `payload_template` / `metadata` is `serde_json::Value`. `dict[str, Any]` raised on string/array/bool.
 - Workflow detail jobs send `payload` as `serde_json::Value`. `WorkflowJob.payload` as `dict` raised on string/array/bool so `workflows.jobs.list` crashed.
+- Create/bulk/workflow-job-definition and outgoing webhook delivery `payload` is the same `serde_json::Value`. Typed `dict` raised on string/array/bool.
 - `GET /jobs` summaries include `job_type` from `payload.job_type` (empty string when absent). `JobSummary.job_type` maps that field.
 - List/DLQ summaries include `last_error` (null when none). `JobSummary.last_error` maps that field.
 - `GET /jobs/status` returns `{ id, status, queue_name, retry_count, created_at, completed_at }` (no `attempt`/`max_retries`).

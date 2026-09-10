@@ -30,7 +30,7 @@ class CreateJobParams(BaseModel):
     """Parameters for creating a job."""
 
     queue_name: str = Field(..., min_length=1, max_length=100)
-    payload: dict[str, Any]
+    payload: JsonValue
     priority: int = Field(default=0, ge=-100, le=100)
     max_retries: int = Field(default=3, ge=0, le=100)
     timeout_seconds: int = Field(default=300, ge=1, le=86400)
@@ -159,7 +159,7 @@ class BoostPriorityResponse(BaseModel):
 class BulkJobItem(BaseModel):
     """Single job in bulk enqueue request."""
 
-    payload: dict[str, Any]
+    payload: JsonValue
     priority: int | None = None
     idempotency_key: str | None = None
     scheduled_at: datetime | None = None

@@ -9,6 +9,9 @@ from typing import Any, Literal
 
 from pydantic import BaseModel, Field
 
+# Backend delivery payload is serde_json::Value (any JSON).
+JsonValue = Any
+
 WebhookEvent = Literal[
     "job.created",
     "job.started",
@@ -70,7 +73,7 @@ class OutgoingWebhookDelivery(BaseModel):
     id: str
     webhook_id: str
     event: str
-    payload: dict[str, Any]
+    payload: JsonValue
     status: Literal["pending", "success", "failed"]
     status_code: int | None = None
     response_body: str | None = None

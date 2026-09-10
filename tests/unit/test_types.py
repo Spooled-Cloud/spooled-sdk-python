@@ -33,6 +33,7 @@ from spooled.types.schedules import (
 from spooled.types.webhooks import (
     CreateOutgoingWebhookParams,
     OutgoingWebhook,
+    OutgoingWebhookDelivery,
     UpdateOutgoingWebhookParams,
 )
 from spooled.types.workers import (
@@ -140,6 +141,12 @@ class TestCreateJobParams:
         assert object_tags.tags == {"urgent": True}
         array_tags = CreateJobParams(queue_name="q", payload={}, tags=["urgent"])
         assert array_tags.tags == ["urgent"]
+
+    def test_payload_accepts_non_object_json(self) -> None:
+        """POST /jobs payload is serde_json::Value, not only objects."""
+        params = CreateJobParams(queue_name="q", payload="plain-string")
+        assert params.payload == "plain-string"
+        assert BulkJobItem(payload=False).payload is False
 
     def test_queue_name_validation(self) -> None:
         """Test queue_name validation."""
@@ -652,6 +659,14 @@ class TestCreateWorkflowParams:
         assert params.name == "Test Workflow"
         assert len(params.jobs) == 1
 
+    def test_job_definition_payload_accepts_non_object_json(self) -> None:
+        job = WorkflowJobDefinition(
+            key="step1",
+            queue_name="tasks",
+            payload="plain-string",
+        )
+        assert job.payload == "plain-string"
+
     def test_workflow_with_dependencies(self) -> None:
         """Test workflow with job dependencies."""
         params = CreateWorkflowParams(
@@ -863,3 +878,19 @@ class TestSerializationModes:
         # Present values included
         assert "queue_name" in data
         assert "payload" in data
+
+
+class TestOutgoingWebhookDelivery:
+    def test_payload_accepts_non_object_json(self) -> None:
+        got = OutgoingWebhookDelivery.model_validate(
+            {
+                "id": "del_1",
+                "webhook_id": "wh_1",
+                "event": "job.completed",
+                "payload": "hello",
+                "status": "success",
+                "attempts": 1,
+                "created_at": "2024-01-01T00:00:00Z",
+            }
+        )
+        assert got.payload == "hello"
