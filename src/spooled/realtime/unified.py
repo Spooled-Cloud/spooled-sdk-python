@@ -15,6 +15,7 @@ from collections.abc import Callable, Generator
 from dataclasses import dataclass
 from enum import Enum
 from typing import Any, Literal
+from urllib.parse import quote
 
 from spooled.realtime.events import (
     RealtimeEvent,
@@ -578,8 +579,12 @@ class SpooledRealtime:
         if filter:
             if filter.job_id:
                 return f"{self._options.base_url}/api/v1/events/jobs/{filter.job_id}"
+            # /events/queues/{name} carries only queue.stats; job events for a
+            # queue come from /events?queue= (API 0.1.114+).
             if filter.queue:
-                return f"{self._options.base_url}/api/v1/events/queues/{filter.queue}"
+                return (
+                    f"{self._options.base_url}/api/v1/events?queue={quote(filter.queue, safe='')}"
+                )
 
         return f"{self._options.base_url}/api/v1/events"
 

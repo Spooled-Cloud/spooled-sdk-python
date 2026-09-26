@@ -12,6 +12,7 @@ import time
 from collections.abc import AsyncGenerator, Callable, Generator
 from enum import Enum
 from typing import Any
+from urllib.parse import quote
 
 import httpx
 
@@ -285,8 +286,11 @@ class SSEClient:
         """Build SSE endpoint URL."""
         if self._job_id:
             return f"{self._base_url}/api/v1/events/jobs/{self._job_id}"
+        # A queue subscription uses /events?queue=: /events/queues/{name} carries
+        # only queue.stats, so job events never arrived for a queue filter.
+        # Requires API 0.1.114+.
         if self._queue:
-            return f"{self._base_url}/api/v1/events/queues/{self._queue}"
+            return f"{self._base_url}/api/v1/events?queue={quote(self._queue, safe='')}"
         return f"{self._base_url}/api/v1/events"
 
     def connect(self) -> None:
@@ -629,8 +633,11 @@ class AsyncSSEClient:
         """Build SSE endpoint URL."""
         if self._job_id:
             return f"{self._base_url}/api/v1/events/jobs/{self._job_id}"
+        # A queue subscription uses /events?queue=: /events/queues/{name} carries
+        # only queue.stats, so job events never arrived for a queue filter.
+        # Requires API 0.1.114+.
         if self._queue:
-            return f"{self._base_url}/api/v1/events/queues/{self._queue}"
+            return f"{self._base_url}/api/v1/events?queue={quote(self._queue, safe='')}"
         return f"{self._base_url}/api/v1/events"
 
     async def connect(self) -> None:

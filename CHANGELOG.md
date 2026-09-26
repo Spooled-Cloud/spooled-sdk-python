@@ -2,6 +2,17 @@
 
 All notable changes to the Spooled Python SDK are documented here.
 
+## [1.2.1] - 2026-09-26
+
+### Fixed
+
+- **SSE queue subscriptions stream job events.** `SSEClient(queue=...)`,
+  `AsyncSSEClient(queue=...)` and `realtime(type="sse").subscribe(SubscriptionFilter(queue=...))`
+  connected to `/events/queues/{name}`, which only carries `queue.stats`, so
+  `job.created` / `job.completed` handlers never fired. They now use
+  `/events?queue={name}` (URL-encoded). Needs API 0.1.114+, where
+  `/api/v1/events` started forwarding job events.
+
 ## [1.2.0] - 2026-09-10
 
 A contract-parity pass against the backend: every fix below is a place where

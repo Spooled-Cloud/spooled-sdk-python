@@ -436,9 +436,7 @@ class TestSpooledRealtimeUnified:
         # Subscription retained, and a fresh (filter-less) connect rebuilds the
         # filtered URL from the retained subscription rather than /events (all).
         assert len(realtime._subscriptions) == 1
-        assert realtime._build_sse_url() == (
-            "https://api.spooled.cloud/api/v1/events/queues/emails"
-        )
+        assert realtime._build_sse_url() == ("https://api.spooled.cloud/api/v1/events?queue=emails")
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -666,3 +664,18 @@ class TestAsyncSSEClientEventHandlers:
 
         assert sse.state == SSEConnectionState.DISCONNECTED
         assert sse.get_state() == SSEConnectionState.DISCONNECTED
+
+
+def test_sse_queue_filter_streams_job_events_not_stats() -> None:
+    """A queue subscription must hit /events?queue= (job events), not the
+    stats-only /events/queues/{name} route, on both SSE clients."""
+    try:
+        from spooled.realtime.sse import AsyncSSEClient, SSEClient
+    except ImportError:
+        pytest.skip("realtime module not available")
+
+    for cls in (SSEClient, AsyncSSEClient):
+        client = cls(base_url="https://api.spooled.cloud", token="t", queue="a b/c")
+        assert client._build_url() == "https://api.spooled.cloud/api/v1/events?queue=a%20b%2Fc"
+        job_client = cls(base_url="https://api.spooled.cloud", token="t", job_id="job_1")
+        assert job_client._build_url() == "https://api.spooled.cloud/api/v1/events/jobs/job_1"
