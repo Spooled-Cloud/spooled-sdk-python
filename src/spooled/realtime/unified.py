@@ -510,17 +510,24 @@ class SpooledRealtime:
 
         try:
             self._http_client = httpx.Client()
-            self._sse_response = self._http_client.stream(
-                "GET",
-                url,
-                headers={
-                    "Authorization": f"Bearer {self._options.token}",
-                    "Accept": "text/event-stream",
-                },
-            ).__enter__()
+            # send(stream=True) keeps the response open until disconnect(); a
+            # hand-entered client.stream(...) was closed by the GC (see sse.py).
+            self._sse_response = self._http_client.send(
+                self._http_client.build_request(
+                    "GET",
+                    url,
+                    headers={
+                        "Authorization": f"Bearer {self._options.token}",
+                        "Accept": "text/event-stream",
+                    },
+                ),
+                stream=True,
+            )
 
             if HAS_SSE:
-                self._sse_client = sseclient.SSEClient(self._sse_response.iter_lines())
+                # Raw byte chunks: sseclient splits events on the blank line,
+                # which iter_lines() strips (see realtime/sse.py).
+                self._sse_client = sseclient.SSEClient(self._sse_response.iter_bytes())
 
             self._set_state(ConnectionState.CONNECTED)
             self._reconnect_attempts = 0

@@ -2,6 +2,20 @@
 
 All notable changes to the Spooled Python SDK are documented here.
 
+## [1.2.2] - 2026-09-26
+
+### Fixed
+
+- **Synchronous SSE never delivered an event.** `SSEClient` and
+  `realtime(type="sse")` had two stacked bugs, found by running them against the
+  production API: they entered `httpx.Client.stream(...)` by hand and dropped its
+  context manager, so the garbage collector closed the response straight away
+  ("the stream has been closed"); and they passed `iter_lines()` to `sseclient`,
+  which needs raw bytes to find event boundaries and raised `TypeError` on the
+  first line. Both now use `send(..., stream=True)` and `iter_bytes()`, and
+  `AsyncSSEClient` keeps its response open the same way. Verified live:
+  `job.created` and `job.completed` arrive on all three clients.
+
 ## [1.2.1] - 2026-09-26
 
 ### Fixed

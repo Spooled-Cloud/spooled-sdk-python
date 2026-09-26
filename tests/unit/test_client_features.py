@@ -679,3 +679,51 @@ def test_sse_queue_filter_streams_job_events_not_stats() -> None:
         assert client._build_url() == "https://api.spooled.cloud/api/v1/events?queue=a%20b%2Fc"
         job_client = cls(base_url="https://api.spooled.cloud", token="t", job_id="job_1")
         assert job_client._build_url() == "https://api.spooled.cloud/api/v1/events/jobs/job_1"
+
+
+def test_sync_sse_client_parses_a_real_event_stream(monkeypatch: pytest.MonkeyPatch) -> None:
+    """The sync SSE client must keep the response open and hand sseclient raw
+    bytes. It used to enter client.stream() by hand (the GC closed the stream at
+    once) and pass iter_lines() (sseclient raised TypeError on the first line),
+    so no event was ever yielded."""
+    try:
+        import httpx
+
+        import spooled.realtime.sse as sse_module
+        from spooled.realtime.sse import SSEClient
+    except ImportError:
+        pytest.skip("realtime module not available")
+    if sse_module.sseclient is None:
+        pytest.skip("sseclient-py not installed")
+
+    body = (
+        b": connected\n\n"
+        b"event: job.created\n"
+        b'data: {"type":"JobCreated","data":{"job_id":"job_1","queue_name":"orders","priority":0}}\n\n'
+    )
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        assert request.url.params.get("queue") == "orders"
+        # An iterator body streams like a real connection: it can only be read
+        # while the response is open (a closed stream raises StreamClosed).
+        return httpx.Response(
+            200, headers={"content-type": "text/event-stream"}, content=iter([body])
+        )
+
+    real_client = httpx.Client
+    monkeypatch.setattr(
+        sse_module.httpx,
+        "Client",
+        lambda *a, **kw: real_client(transport=httpx.MockTransport(handler)),
+    )
+
+    client = SSEClient(
+        base_url="https://api.spooled.cloud", token="t", queue="orders", auto_reconnect=False
+    )
+    client.connect()
+    events = list(client.events())
+    client.close()
+
+    assert len(events) == 1
+    assert "job" in str(events[0].type) and "created" in str(events[0].type)
+    assert events[0].data["job_id"] == "job_1"

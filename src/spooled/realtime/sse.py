@@ -304,16 +304,27 @@ class SSEClient:
 
         try:
             self._client = httpx.Client()
-            self._response = self._client.stream(
-                "GET",
-                url,
-                headers={
-                    "Authorization": f"Bearer {self._token}",
-                    "Accept": "text/event-stream",
-                },
-            ).__enter__()
+            # send(stream=True) keeps the response open until close(). Entering
+            # client.stream(...) by hand dropped its context manager, which the
+            # garbage collector then exited — closing the stream before any
+            # event was read ("the stream has been closed").
+            self._response = self._client.send(
+                self._client.build_request(
+                    "GET",
+                    url,
+                    headers={
+                        "Authorization": f"Bearer {self._token}",
+                        "Accept": "text/event-stream",
+                    },
+                ),
+                stream=True,
+            )
 
-            self._sse_client = sseclient.SSEClient(self._response.iter_lines())  # type: ignore[arg-type]
+            # sseclient needs raw byte chunks: it finds event boundaries by the
+            # blank line between events. iter_lines() yields str lines with the
+            # newlines stripped, so the first line raised TypeError and the
+            # stream never produced an event.
+            self._sse_client = sseclient.SSEClient(self._response.iter_bytes())  # type: ignore[arg-type]
             self._set_state(SSEConnectionState.CONNECTED)
             self._reconnect_attempts = 0
             self._closed = False
@@ -650,14 +661,18 @@ class AsyncSSEClient:
 
         try:
             self._client = httpx.AsyncClient()
-            self._response = await self._client.stream(
-                "GET",
-                url,
-                headers={
-                    "Authorization": f"Bearer {self._token}",
-                    "Accept": "text/event-stream",
-                },
-            ).__aenter__()
+            # See SSEClient.connect: keep the response open until close().
+            self._response = await self._client.send(
+                self._client.build_request(
+                    "GET",
+                    url,
+                    headers={
+                        "Authorization": f"Bearer {self._token}",
+                        "Accept": "text/event-stream",
+                    },
+                ),
+                stream=True,
+            )
             self._set_state(SSEConnectionState.CONNECTED)
             self._reconnect_attempts = 0
             self._closed = False
