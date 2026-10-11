@@ -65,6 +65,7 @@ class TestGrpcModels:
             job_id="job-123",
             worker_id="worker-1",
             result={"success": True},
+            lease_id="lease-abc",
         )
         assert req.job_id == "job-123"
         assert req.result == {"success": True}
@@ -77,6 +78,7 @@ class TestGrpcModels:
             job_id="job-123",
             worker_id="worker-1",
             error="Something went wrong",
+            lease_id="lease-abc",
         )
         assert req.error == "Something went wrong"
         assert req.retry is True  # default
@@ -127,10 +129,23 @@ class TestGrpcModels:
         assert fail.lease_id == "lease-abc"
         assert renew.lease_id == "lease-abc"
 
-        # Defaults to None so omitting it preserves legacy behavior
-        assert GrpcCompleteRequest(job_id="j", worker_id="w").lease_id is None
-        assert GrpcFailRequest(job_id="j", worker_id="w", error="e").lease_id is None
-        assert GrpcRenewLeaseRequest(job_id="j", worker_id="w").lease_id is None
+    def test_request_models_require_lease_id(self):
+        """The server rejects settlement without a lease_id (INVALID_ARGUMENT), so
+        the request models must not let callers omit it."""
+        from pydantic import ValidationError
+
+        from spooled.grpc import (
+            GrpcCompleteRequest,
+            GrpcFailRequest,
+            GrpcRenewLeaseRequest,
+        )
+
+        with pytest.raises(ValidationError):
+            GrpcCompleteRequest(job_id="j", worker_id="w")
+        with pytest.raises(ValidationError):
+            GrpcFailRequest(job_id="j", worker_id="w", error="e")
+        with pytest.raises(ValidationError):
+            GrpcRenewLeaseRequest(job_id="j", worker_id="w")
 
 
 class TestGrpcConversions:
@@ -338,6 +353,7 @@ class TestProcessRequest:
             complete=GrpcCompleteRequest(
                 job_id="job-1",
                 worker_id="worker-1",
+                lease_id="lease-1",
             )
         )
         assert req.complete is not None
@@ -588,6 +604,7 @@ class TestGrpcQueueService:
             job_id="job-123",
             worker_id="worker-1",
             result={"done": True},
+            lease_id="lease-abc",
         )
 
         assert result.success is True
@@ -595,7 +612,7 @@ class TestGrpcQueueService:
         assert request.job_id == "job-123"
         assert request.worker_id == "worker-1"
         assert dict(request.result) == {"done": True}
-        assert request.lease_id == ""
+        assert request.lease_id == "lease-abc"
 
     def test_fail(self, mock_queue_service):
         """Test fail method."""
@@ -611,6 +628,7 @@ class TestGrpcQueueService:
             job_id="job-123",
             worker_id="worker-1",
             error="Something failed",
+            lease_id="lease-abc",
         )
 
         assert result.success is True
@@ -619,8 +637,10 @@ class TestGrpcQueueService:
         assert request.job_id == "job-123"
         assert request.worker_id == "worker-1"
         assert request.error == "Something failed"
+        # Omitting retry must send retry=True: the server reads proto3 false as
+        # "dead-letter now" regardless of max_retries.
         assert request.retry is True
-        assert request.lease_id == ""
+        assert request.lease_id == "lease-abc"
 
     def test_renew_lease(self, mock_queue_service):
         """Test renew_lease method."""
@@ -635,6 +655,7 @@ class TestGrpcQueueService:
             job_id="job-123",
             worker_id="worker-1",
             extension_secs=60,
+            lease_id="lease-abc",
         )
 
         assert result.success is True
@@ -642,6 +663,7 @@ class TestGrpcQueueService:
         assert request.job_id == "job-123"
         assert request.worker_id == "worker-1"
         assert request.extension_secs == 60
+        assert request.lease_id == "lease-abc"
 
     def test_complete_with_lease_id(self, mock_queue_service):
         """Test complete sets the lease_id fencing token on the request."""
@@ -664,18 +686,34 @@ class TestGrpcQueueService:
         assert dict(request.result) == {"done": True}
         assert request.lease_id == "lease-abc"
 
-    def test_complete_without_lease_id_leaves_field_unset(self, mock_queue_service):
-        """Test complete leaves lease_id at proto3 default when omitted."""
+    def test_settlement_requires_lease_id(self, mock_queue_service):
+        """complete/fail/renew_lease need a lease_id: the server answers
+        INVALID_ARGUMENT without one, so omitting it is a TypeError up front
+        instead of a failed round trip."""
         service, mock_stub = mock_queue_service
 
-        mock_response = MagicMock()
-        mock_response.success = True
-        mock_stub.Complete.return_value = mock_response
+        with pytest.raises(TypeError):
+            service.complete(job_id="job-123", worker_id="worker-1")  # type: ignore[call-arg]
+        with pytest.raises(TypeError):
+            service.fail(job_id="job-123", worker_id="worker-1", error="e")  # type: ignore[call-arg]
+        with pytest.raises(TypeError):
+            service.renew_lease(job_id="job-123", worker_id="worker-1")  # type: ignore[call-arg]
+        mock_stub.Complete.assert_not_called()
+        mock_stub.Fail.assert_not_called()
+        mock_stub.RenewLease.assert_not_called()
 
-        service.complete(job_id="job-123", worker_id="worker-1")
+    def test_fail_without_retry_flag_sends_retry_true(self, mock_queue_service):
+        """Default retry=True is what lets the server retry up to max_retries."""
+        service, mock_stub = mock_queue_service
+        mock_stub.Fail.return_value = MagicMock(
+            success=True, will_retry=True, next_retry_delay_secs=1
+        )
 
-        request = mock_stub.Complete.call_args[0][0]
-        assert request.lease_id == ""  # empty string = unset server-side
+        service.fail(job_id="j", worker_id="w", error="e", lease_id="l")
+        assert mock_stub.Fail.call_args[0][0].retry is True
+
+        service.fail(job_id="j", worker_id="w", error="e", retry=False, lease_id="l")
+        assert mock_stub.Fail.call_args[0][0].retry is False
 
     def test_fail_with_lease_id(self, mock_queue_service):
         """Test fail sets the lease_id fencing token on the request."""

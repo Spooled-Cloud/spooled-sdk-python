@@ -133,6 +133,8 @@ def test_sync_stale_execution_cannot_touch_replacement() -> None:
         new_callback = timer_factory.call_args_list[1].args[1]
         new_callback()
         worker._complete_job(replacement, {"lease": "b"})
+        # An execution settles once; clear that to also exercise the fail payload.
+        replacement.settled = False
         worker._fail_job(replacement, "current")
 
     client.jobs.heartbeat.assert_called_once_with(
@@ -289,6 +291,8 @@ async def test_async_stale_execution_cannot_touch_replacement() -> None:
         await worker._job_heartbeat_loop(replacement, 1.0)
     worker._worker_id = "worker-1"
     await worker._complete_job(replacement, {"lease": "b"})
+    # An execution settles once; clear that to also exercise the fail payload.
+    replacement.settled = False
     await worker._fail_job(replacement, "current")
 
     client.jobs.heartbeat.assert_awaited_once_with(

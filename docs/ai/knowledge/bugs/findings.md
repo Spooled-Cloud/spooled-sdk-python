@@ -42,3 +42,20 @@
 | PS-38 | P2  | ~~`auth.me()` dropped nested `organization` from GET /auth/me~~ **FIXED** | `src/spooled/types/auth.py`; backend `CurrentUserResponse.organization` |
 | PS-39 | P2  | ~~`schedules.create` always sent `max_retries=3`/`timeout_seconds=300`~~ **FIXED** | `src/spooled/resources/schedules.py`; backend omit uses `QUEUE_DEFAULT_*` |
 | PS-40 | P2  | ~~`CreateJobParams` `extra=forbid` rejected `completion_webhook_secret`~~ **FIXED** | `src/spooled/types/jobs.py`; backend `CreateJobRequest` since 0.1.109 |
+| PS-41 | P1 | ~~Graceful `stop()` aborted handlers first and dropped their results; deregister re-queued the job (duplicate run)~~ **FIXED 1.3.0** | `worker/worker.py, worker/async_worker.py`; Drain: no abort until shutdown_timeout, ack always, deregister last (SDKNP-01) |
+| PS-42 | P1 | ~~`get_jwt_token()`/`realtime()` replaced the REST bearer with a 24 h JWT~~ **FIXED 1.3.0** | `client.py, async_client.py`; JWT kept in realtime layer only (SDKNP-02) |
+| PS-43 | P2 | ~~SSE clients used httpx 5 s read timeout~~ **FIXED 1.3.0** | `realtime/sse.py, unified.py`; SSE_TIMEOUT read 60 s (SDKNP-03) |
+| PS-44 | P2 | ~~SSE ignored HTTP status, reset retry counter on connect; unified SSE went dead on clean end~~ **FIXED 1.3.0** | `realtime/sse.py, unified.py`; Typed errors, counter reset on event, reconnect on clean end (SDKNP-04) |
+| PS-45 | P2 | ~~complete/fail/heartbeat acks never retried~~ **FIXED 1.3.0** | `resources/jobs.py, workers.py, utils/http.py`; idempotent=True (SDKNP-05) |
+| PS-46 | P2 | ~~429 QUOTA_EXCEEDED retried with long sleeps and tripped the breaker~~ **FIXED 1.3.0** | `errors.py, utils/retry.py`; QuotaExceededError, not retryable (SDKNP-06) |
+| PS-47 | P2 | ~~Concurrent 401s: only one request refreshed~~ **FIXED 1.3.0** | `utils/http.py, utils/async_http.py`; Single-flight refresh (SDKNP-07) |
+| PS-48 | P2 | ~~`queues.pause(name)` without reason sent empty JSON body (400)~~ **FIXED 1.3.0** | `resources/queues.py`; Send `{}` (SDKNP-08) |
+| PS-49 | P2 | ~~`client.grpc` ignored `grpc_address`~~ **FIXED 1.3.0** | `client.py, async_client.py`; Use grpc_address (SDKNP-11) |
+| PS-50 | P2 | ~~`with_options()` dropped most configuration~~ **FIXED 1.3.0** | `config.py, client.py`; merge_client_config (SDKNP-12) |
+| PS-51 | P2 | ~~`dlq.purge({})` confirmed itself~~ **FIXED 1.3.0** | `types/jobs.py`; confirm required (SDKNP-13) |
+| PS-52 | P2 | ~~422 not mapped to ValidationError~~ **FIXED 1.3.0** | `errors.py`; Mapped (SDKNP-14) |
+| PS-53 | P2 | ~~`timeout_seconds` never enforced by SDK workers~~ **FIXED 1.3.0** | `worker/*.py`; Timer / wait with fail "Job timeout exceeded" (SDKNP-16) |
+| PS-54 | P2 | ~~gRPC `lease_id` optional in types, required by server~~ **FIXED 1.3.0** | `grpc/client.py`; Required (SDKNP-17) |
+| PS-55 | P2 | ~~Workflow jobs returned invented `key: ""`~~ **FIXED 1.3.0** | `types/workflows.py, resources/workflows.py`; key is None (SDKNP-18) |
+| PS-56 | P3 | ~~`clear_webhook_token` can never succeed~~ **FIXED 1.3.0** | `resources/organizations.py`; UnsupportedOperationError (SDKNP-26) |
+| PS-57 | P2 | ~~Empty/over-long fail text rejected with 400, job stuck until lease expiry~~ **FIXED 1.3.0** | `types/jobs.py, worker/*.py`; coerce_fail_error (brief item 4) |

@@ -6,6 +6,7 @@ from __future__ import annotations
 
 import asyncio
 from collections.abc import Awaitable, Callable
+from contextvars import ContextVar
 from typing import Any, TypeVar
 from urllib.parse import urlencode
 
@@ -19,6 +20,11 @@ from spooled.utils.http import _is_idempotent
 from spooled.utils.retry import with_retry_async
 
 T = TypeVar("T")
+
+# Ids of the clients whose token refresh is running in the current task. It only
+# stops the refresh call's own request from recursing into another refresh; other
+# tasks must still be able to join the single-flight wait (SDKNP-07).
+_REFRESHING: ContextVar[frozenset[int]] = ContextVar("spooled_refreshing", default=frozenset())
 
 
 class AsyncHttpClient:
@@ -43,9 +49,10 @@ class AsyncHttpClient:
         self.circuit_breaker = circuit_breaker
         self._auth_token: str | None = config.access_token or config.api_key
         self._refresh_token_fn: Callable[[], Awaitable[str]] | None = None
-        # Serializes token refreshes so concurrent 401s trigger a single refresh.
+        # Serializes token refreshes so concurrent 401s trigger a single refresh:
+        # the first task refreshes while the others wait on the lock, then see
+        # the new token and replay.
         self._refresh_lock = asyncio.Lock()
-        self._is_refreshing = False
         self._client: httpx.AsyncClient | None = None
 
     def _build_default_headers(self) -> dict[str, str]:
@@ -129,14 +136,18 @@ class AsyncHttpClient:
             # Another task may have refreshed while we waited for the lock.
             if self._auth_token != token_before:
                 return True
+            marker = _REFRESHING.set(_REFRESHING.get() | {id(self)})
             try:
-                self._is_refreshing = True
                 await self._refresh_token_fn()
                 return True
             except Exception:
                 return False
             finally:
-                self._is_refreshing = False
+                _REFRESHING.reset(marker)
+
+    async def refresh_now(self) -> bool:
+        """Refresh the access token proactively (single-flight with 401 refreshes)."""
+        return await self._try_refresh_token(self._auth_token)
 
     async def _execute_request(
         self,
@@ -197,7 +208,7 @@ class AsyncHttpClient:
                 response.status_code == 401
                 and _allow_refresh
                 and self._refresh_token_fn is not None
-                and not self._is_refreshing
+                and id(self) not in _REFRESHING.get()
                 and await self._try_refresh_token(auth_before)
             ):
                 return await self._execute_request(
@@ -250,14 +261,14 @@ class AsyncHttpClient:
         skip_request_conversion: bool = False,
         skip_response_conversion: bool = False,
         skip_retry: bool = False,
+        idempotent: bool | None = None,
     ) -> Any:
-        """Make an HTTP request with retry and circuit breaker."""
-        url = self._build_url(path, params, skip_api_prefix)
+        """Make an HTTP request with retry and circuit breaker.
 
-        async def execute() -> Any:
-            return self.circuit_breaker.execute(
-                lambda: None  # Placeholder - we need sync wrapper
-            )
+        ``idempotent`` overrides the method-based guess of whether a replay is
+        safe (see ``HttpClient.request``).
+        """
+        url = self._build_url(path, params, skip_api_prefix)
 
         # For async, we handle circuit breaker differently
         async def execute_with_cb() -> Any:
@@ -298,7 +309,9 @@ class AsyncHttpClient:
             execute_with_cb,
             self.config.retry,
             on_retry,
-            idempotent=_is_idempotent(method, body, headers),
+            idempotent=(
+                _is_idempotent(method, body, headers) if idempotent is None else idempotent
+            ),
         )
 
     async def get(
@@ -336,6 +349,7 @@ class AsyncHttpClient:
         skip_request_conversion: bool = False,
         skip_response_conversion: bool = False,
         skip_retry: bool = False,
+        idempotent: bool | None = None,
     ) -> Any:
         """Make a POST request."""
         return await self.request(
@@ -349,6 +363,7 @@ class AsyncHttpClient:
             skip_request_conversion=skip_request_conversion,
             skip_response_conversion=skip_response_conversion,
             skip_retry=skip_retry,
+            idempotent=idempotent,
         )
 
     async def put(

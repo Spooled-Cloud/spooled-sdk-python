@@ -506,7 +506,7 @@ class TestPurgeDlqParams:
     """POST /jobs/dlq/purge is {queue_name?, older_than?, limit?, confirm}."""
 
     def test_to_payload_sends_confirm_and_older_than(self) -> None:
-        payload = PurgeDlqParams(queue_name="emails", older_than_days=7).to_payload()
+        payload = PurgeDlqParams(queue_name="emails", older_than_days=7, confirm=True).to_payload()
         assert payload["confirm"] is True
         assert payload["queue_name"] == "emails"
         assert "older_than_days" not in payload

@@ -91,8 +91,13 @@ def handle_job(ctx):
 def on_completed(event):
     print(f"Job {event.job_id} completed!")
 
-worker.start()  # Blocking
+worker.start()  # Blocking; returns after worker.stop() has drained running jobs
 ```
+
+`worker.stop()` (call it from a SIGTERM/SIGINT handler) stops claiming jobs, lets running
+handlers finish for up to `shutdown_timeout` seconds and still acks their results, then
+deregisters. A handler is only signalled (`ctx.signal`) and failed once it outlives that
+timeout or the job's own `timeout_seconds`. See [docs/WORKER.md](docs/WORKER.md).
 
 ## Real-world examples (beginner friendly)
 
@@ -180,7 +185,8 @@ The SDK includes a high-performance gRPC client for high-throughput worker scena
 ```python
 from spooled.grpc import SpooledGrpcClient
 
-# Connect to Spooled Cloud gRPC (TLS required for Cloudflare Tunnel)
+# Connect to Spooled Cloud gRPC (TLS required for Cloudflare Tunnel).
+# `SpooledClient(api_key=...).grpc` does this for you and honours `grpc_address=`.
 client = SpooledGrpcClient(
     address="grpc.spooled.cloud:443", 
     api_key="sp_live_...",
@@ -256,6 +262,7 @@ from spooled.errors import (
     NotFoundError,
     ValidationError,
     RateLimitError,
+    QuotaExceededError,
 )
 
 client = SpooledClient(api_key="sp_live_...")
@@ -266,9 +273,10 @@ except NotFoundError:
     print("Job not found")
 except RateLimitError as e:
     # 429 covers both per-second rate limiting and plan-quota errors.
-    # A plan quota carries code == "QUOTA_EXCEEDED" (with resource/current/limit/plan details).
-    if e.code == "QUOTA_EXCEEDED":
-        print(f"Plan quota exceeded: {e.message}")
+    # A plan quota is a QuotaExceededError (code "QUOTA_EXCEEDED", with
+    # resource/current/limit/plan): it is never retried, because it will not clear in seconds.
+    if isinstance(e, QuotaExceededError):
+        print(f"Plan quota exceeded: {e.message} ({e.current}/{e.limit} on {e.plan})")
     else:
         print(f"Rate limited. Retry after {e.retry_after}s")
 except SpooledError as e:
@@ -320,7 +328,7 @@ except SpooledError as e:
 - gRPC extra: `grpcio>=1.80.0`, `grpcio-tools>=1.80.0`, `protobuf>=6.33.5`
 - Realtime extra: `websockets>=12.0`, `sseclient-py>=1.8.0`
 
-The package version is defined in `pyproject.toml`. At runtime, `spooled.__version__`, the default REST `User-Agent`, worker options, and REST/gRPC worker registration read installed package metadata; source-only imports fall back to `1.2.0`.
+The package version is defined in `pyproject.toml`. At runtime, `spooled.__version__`, the default REST `User-Agent`, worker options, and REST/gRPC worker registration read installed package metadata; source-only imports fall back to `1.3.0`.
 
 Release maintainers should follow the [publishing checklist](docs/PUBLISHING.md) before creating a tag or publishing to PyPI.
 

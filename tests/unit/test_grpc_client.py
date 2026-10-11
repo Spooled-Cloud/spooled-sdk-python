@@ -124,6 +124,7 @@ class TestCompleteRequest:
         req = CompleteRequest(
             job_id="job_123",
             worker_id="worker_1",
+            lease_id="lease_1",
         )
         assert req.result is None
 
@@ -133,6 +134,7 @@ class TestCompleteRequest:
             job_id="job_123",
             worker_id="worker_1",
             result={"processed": True},
+            lease_id="lease_1",
         )
         assert req.result == {"processed": True}
 
@@ -146,18 +148,19 @@ class TestFailRequest:
             job_id="job_123",
             worker_id="worker_1",
             error="Processing failed",
+            lease_id="lease_1",
         )
         assert req.error == "Processing failed"
 
     def test_error_min_length(self) -> None:
         """Test error minimum length."""
         with pytest.raises(PydanticValidationError):
-            FailRequest(job_id="j", worker_id="w", error="")
+            FailRequest(job_id="j", worker_id="w", error="", lease_id="l")
 
     def test_error_max_length(self) -> None:
         """Test error maximum length."""
         with pytest.raises(PydanticValidationError):
-            FailRequest(job_id="j", worker_id="w", error="x" * 2049)
+            FailRequest(job_id="j", worker_id="w", error="x" * 2049, lease_id="l")
 
 
 class TestRegisterWorkerRequest:

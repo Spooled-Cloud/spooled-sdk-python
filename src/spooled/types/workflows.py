@@ -59,7 +59,7 @@ class WorkflowJobDefinition(BaseModel):
     """Job definition within a workflow."""
 
     key: str = Field(..., min_length=1, max_length=100)
-    queue_name: str = Field(..., min_length=1, max_length=100)
+    queue_name: str = Field(..., min_length=1, max_length=255)
     payload: JsonValue
     depends_on: list[str] | None = None
     dependency_mode: Literal["all", "any"] | None = None
@@ -80,7 +80,7 @@ class WorkflowJobMapping(BaseModel):
 class CreateWorkflowParams(BaseModel):
     """Parameters for creating a workflow."""
 
-    name: str = Field(..., min_length=1, max_length=100)
+    name: str = Field(..., min_length=1, max_length=255)
     description: str | None = None
     jobs: list[WorkflowJobDefinition]
     metadata: JsonValue = None
@@ -186,7 +186,10 @@ class WorkflowJob(BaseModel):
     model_config = ConfigDict(populate_by_name=True)
 
     id: str
-    key: str = ""
+    # The API does not return the creation-time job key (the jobs table does not
+    # store it); it is only known from the ``POST /workflows`` response. ``None``
+    # means "unknown", not an empty key.
+    key: str | None = None
     queue_name: str = Field(
         default="",
         validation_alias=AliasChoices("queue_name", "queue"),
@@ -210,9 +213,13 @@ class WorkflowJob(BaseModel):
 
 
 class WorkflowJobStatus(BaseModel):
-    """Status summary of a job within a workflow."""
+    """Status summary of a job within a workflow.
 
-    key: str = ""
+    ``key`` is ``None``: ``GET /workflows/{id}`` does not return job keys. Map
+    ``job_id`` back to a key with the ``job_ids`` from ``workflows.create()``.
+    """
+
+    key: str | None = None
     job_id: str
     status: str
     progress: float | None = None

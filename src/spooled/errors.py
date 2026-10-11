@@ -9,6 +9,10 @@ from datetime import datetime, timezone
 from email.utils import parsedate_to_datetime
 from typing import Any
 
+# The API sends ``details`` as an object for most errors but as a list of
+# ``{field, message, code}`` entries for validation failures.
+ErrorDetails = dict[str, Any] | list[Any] | None
+
 
 class SpooledError(Exception):
     """Base error class for all Spooled SDK errors."""
@@ -19,7 +23,7 @@ class SpooledError(Exception):
         *,
         status_code: int = 0,
         code: str = "unknown_error",
-        details: dict[str, Any] | None = None,
+        details: ErrorDetails = None,
         request_id: str | None = None,
     ) -> None:
         super().__init__(message)
@@ -30,8 +34,12 @@ class SpooledError(Exception):
         self.request_id = request_id
 
     def is_retryable(self) -> bool:
-        """Check if this error is retryable."""
-        return False
+        """Check if this error is retryable.
+
+        Only 408 is retryable among the plain 4xx codes (the server never saw a
+        complete request); subclasses widen this for 429, 5xx, network errors.
+        """
+        return self.status_code == 408
 
     def __repr__(self) -> str:
         return f"{self.__class__.__name__}({self.code}: {self.message})"
@@ -45,7 +53,7 @@ class AuthenticationError(SpooledError):
         message: str = "Authentication failed",
         *,
         code: str = "authentication_error",
-        details: dict[str, Any] | None = None,
+        details: ErrorDetails = None,
         request_id: str | None = None,
     ) -> None:
         super().__init__(
@@ -65,7 +73,7 @@ class AuthorizationError(SpooledError):
         message: str = "Access denied",
         *,
         code: str = "authorization_error",
-        details: dict[str, Any] | None = None,
+        details: ErrorDetails = None,
         request_id: str | None = None,
     ) -> None:
         super().__init__(
@@ -85,7 +93,7 @@ class NotFoundError(SpooledError):
         message: str = "Resource not found",
         *,
         code: str = "not_found",
-        details: dict[str, Any] | None = None,
+        details: ErrorDetails = None,
         request_id: str | None = None,
     ) -> None:
         super().__init__(
@@ -105,7 +113,7 @@ class ConflictError(SpooledError):
         message: str = "Resource conflict",
         *,
         code: str = "conflict",
-        details: dict[str, Any] | None = None,
+        details: ErrorDetails = None,
         request_id: str | None = None,
     ) -> None:
         super().__init__(
@@ -118,19 +126,26 @@ class ConflictError(SpooledError):
 
 
 class ValidationError(SpooledError):
-    """400 - Validation failed."""
+    """400/422 - Validation failed.
+
+    The API answers 400 for field-rule failures (length, range) and 422 for a
+    body it could not deserialize (missing or mistyped field); both are the
+    caller's invalid input, so both raise this class. ``status_code`` tells
+    them apart.
+    """
 
     def __init__(
         self,
         message: str = "Validation failed",
         *,
         code: str = "validation_error",
-        details: dict[str, Any] | None = None,
+        details: ErrorDetails = None,
         request_id: str | None = None,
+        status_code: int = 400,
     ) -> None:
         super().__init__(
             message,
-            status_code=400,
+            status_code=status_code,
             code=code,
             details=details,
             request_id=request_id,
@@ -145,7 +160,7 @@ class PayloadTooLargeError(SpooledError):
         message: str = "Request payload too large",
         *,
         code: str = "payload_too_large",
-        details: dict[str, Any] | None = None,
+        details: ErrorDetails = None,
         request_id: str | None = None,
     ) -> None:
         super().__init__(
@@ -165,7 +180,7 @@ class RateLimitError(SpooledError):
         message: str = "Rate limit exceeded",
         *,
         code: str = "rate_limit_exceeded",
-        details: dict[str, Any] | None = None,
+        details: ErrorDetails = None,
         request_id: str | None = None,
         retry_after: int = 60,
         limit: int | None = None,
@@ -192,6 +207,45 @@ class RateLimitError(SpooledError):
         return self.retry_after
 
 
+class QuotaExceededError(RateLimitError):
+    """429 ``QUOTA_EXCEEDED`` - a plan limit was hit (daily job cap, active jobs, queues...).
+
+    Unlike a rate limit this does not clear in seconds, so it is never retried,
+    does not count toward the circuit breaker (it must not block worker acks or
+    reads), and carries no ``retry_after``. It subclasses :class:`RateLimitError`
+    so existing ``except RateLimitError`` handlers keep catching it.
+    """
+
+    def __init__(
+        self,
+        message: str = "Plan limit exceeded",
+        *,
+        code: str = "QUOTA_EXCEEDED",
+        details: ErrorDetails = None,
+        request_id: str | None = None,
+        resource: str | None = None,
+        current: int | None = None,
+        limit: int | None = None,
+        plan: str | None = None,
+        upgrade_to: str | None = None,
+    ) -> None:
+        super().__init__(
+            message,
+            code=code,
+            details=details,
+            request_id=request_id,
+            retry_after=0,
+            limit=limit,
+        )
+        self.resource = resource
+        self.current = current
+        self.plan = plan
+        self.upgrade_to = upgrade_to
+
+    def is_retryable(self) -> bool:
+        return False
+
+
 class ServerError(SpooledError):
     """5xx - Server error."""
 
@@ -201,7 +255,7 @@ class ServerError(SpooledError):
         *,
         status_code: int = 500,
         code: str = "server_error",
-        details: dict[str, Any] | None = None,
+        details: ErrorDetails = None,
         request_id: str | None = None,
     ) -> None:
         super().__init__(
@@ -258,6 +312,21 @@ class CircuitBreakerOpenError(SpooledError):
 
     def is_retryable(self) -> bool:
         return False
+
+
+class UnsupportedOperationError(SpooledError):
+    """The SDK method exists but the Spooled API has no such operation.
+
+    Raised before any network call, so code that still calls a removed or
+    never-implemented route fails loudly with an explanation instead of a
+    confusing 404/400 from the server.
+    """
+
+    def __init__(
+        self,
+        message: str = "This operation is not supported by the Spooled API",
+    ) -> None:
+        super().__init__(message, status_code=0, code="unsupported_operation")
 
 
 class JobAbortedError(Exception):
@@ -327,6 +396,23 @@ def _parse_int_header(value: str | None) -> int | None:
         return None
 
 
+def _is_quota_response(code: str, body: Any, retry_after_header: str | None) -> bool:
+    """Whether a 429 is a plan limit (``QUOTA_EXCEEDED``) rather than a rate limit.
+
+    The backend tags plan-limit rejections with ``code: QUOTA_EXCEEDED`` and an
+    ``error: limit_exceeded`` body, and sends no ``Retry-After``. A 429 that
+    carries such a body without a ``Retry-After`` hint is treated the same, so
+    an older or proxied response is not retried with long sleeps.
+    """
+    if str(code).upper() == "QUOTA_EXCEEDED":
+        return True
+    if retry_after_header is not None or not isinstance(body, dict):
+        return False
+    return body.get("error") == "limit_exceeded" or all(
+        key in body for key in ("resource", "limit", "plan")
+    )
+
+
 def create_error_from_response(
     status_code: int,
     body: Any = None,
@@ -347,6 +433,29 @@ def create_error_from_response(
         code = "unknown_error"
         message = "Unknown error"
         details = None
+
+    if status_code == 422:
+        return ValidationError(
+            message,
+            code=code,
+            details=details,
+            request_id=request_id,
+            status_code=422,
+        )
+
+    if status_code == 429 and _is_quota_response(code, body, _header_get(headers, "Retry-After")):
+        quota = body if isinstance(body, dict) else {}
+        return QuotaExceededError(
+            message,
+            code="QUOTA_EXCEEDED",
+            details=details,
+            request_id=request_id,
+            resource=quota.get("resource"),
+            current=quota.get("current"),
+            limit=quota.get("limit"),
+            plan=quota.get("plan"),
+            upgrade_to=quota.get("upgrade_to"),
+        )
 
     error_classes: dict[int, type[SpooledError]] = {
         400: ValidationError,

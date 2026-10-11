@@ -276,13 +276,12 @@ class TestValidateConfig:
         with pytest.raises(ValueError, match="Either api_key or access_token must be provided"):
             validate_config(resolved)
 
-    def test_admin_key_alone_not_sufficient(self) -> None:
-        """Test admin key alone is not sufficient for auth."""
+    def test_admin_key_alone_is_sufficient(self) -> None:
+        """An admin-only client (X-Admin-Key) can be constructed."""
         config = SpooledClientConfig(admin_key="admin_xxxx")
         resolved = resolve_config(config)
 
-        with pytest.raises(ValueError, match="Either api_key or access_token"):
-            validate_config(resolved)
+        validate_config(resolved)  # must not raise
 
 
 class TestCredentialTrimming:

@@ -14,6 +14,24 @@ JsonTags = dict[str, Any] | list[Any] | None
 # Backend `payload` / `result` is serde_json::Value (any JSON).
 JsonValue = Any
 
+# POST /jobs/{id}/fail rejects an empty or longer-than-2048-character `error`
+# with 400, which would leave the job `processing` until its lease expired.
+FAIL_ERROR_MAX_LENGTH = 2048
+FAIL_ERROR_FALLBACK = "Job failed"
+
+
+def coerce_fail_error(message: object) -> str:
+    """Return ``message`` as a failure text the API will accept.
+
+    Empty text becomes ``"Job failed"``; text longer than 2048 characters is cut
+    to 2048. Python slices by code point, so a multi-byte character is never split.
+    """
+    text = message if isinstance(message, str) else str(message)
+    if not text:
+        return FAIL_ERROR_FALLBACK
+    return text[:FAIL_ERROR_MAX_LENGTH]
+
+
 # Job status enum
 JobStatus = Literal[
     "pending",
@@ -254,7 +272,7 @@ class FailJobParams(BaseModel):
     """Parameters for failing a job."""
 
     worker_id: str
-    error: str = Field(..., min_length=1, max_length=2048)
+    error: str = Field(..., min_length=1, max_length=FAIL_ERROR_MAX_LENGTH)
     lease_id: str | None = None
 
     model_config = {"extra": "forbid"}
@@ -311,13 +329,17 @@ class PurgeDlqParams(BaseModel):
     ``POST /jobs/dlq/purge`` is ``{ queue_name?, older_than?, limit?, confirm }``.
     ``confirm`` must be true or the API returns 400. There is no ``job_ids``
     filter (retry has that). ``older_than_days`` is converted to ``older_than``.
+
+    ``confirm`` has no default on purpose: with no filter the purge deletes up
+    to 10 000 dead-lettered jobs of the whole organization, so ``purge({})`` must
+    fail validation instead of being confirmed on the caller's behalf.
     """
 
     queue_name: str | None = None
     older_than: datetime | None = None
     older_than_days: int | None = Field(default=None, ge=1)
     limit: int | None = Field(default=None, ge=1, le=10000)
-    confirm: bool = True
+    confirm: bool
 
     model_config = {"extra": "forbid"}
 

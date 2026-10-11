@@ -50,7 +50,6 @@ def jobs_from_workflow_detail(detail: Any) -> list[WorkflowJob]:
             if isinstance(edge, dict) and str(edge.get("child_job_id") or "") == job_id
         ]
         item = dict(raw)
-        item.setdefault("key", "")
         if "queue_name" not in item and "queue" in item:
             item["queue_name"] = item["queue"]
         item["depends_on"] = depends_on or None

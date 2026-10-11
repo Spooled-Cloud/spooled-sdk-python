@@ -332,7 +332,7 @@ class TestDlqResourceComplete:
         )
 
         with SpooledClient(api_key=API_KEY, base_url=BASE_URL) as client:
-            result = client.jobs.dlq.purge({"queue_name": "test"})
+            result = client.jobs.dlq.purge({"queue_name": "test", "confirm": True})
             assert result.purged_count == 5
         body = json.loads(route.calls.last.request.content)
         assert body["confirm"] is True
@@ -348,7 +348,7 @@ class TestDlqResourceComplete:
         )
 
         with SpooledClient(api_key=API_KEY, base_url=BASE_URL) as client:
-            client.jobs.dlq.purge({"queue_name": "test", "older_than_days": 7})
+            client.jobs.dlq.purge({"queue_name": "test", "older_than_days": 7, "confirm": True})
         body = json.loads(route.calls.last.request.content)
         assert "older_than_days" not in body
         assert "older_than" in body

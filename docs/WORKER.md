@@ -46,7 +46,7 @@ worker = SpooledWorker(
     hostname="worker-1",      # Custom hostname
     worker_id="worker-1",     # Stable id: registration becomes an upsert
     worker_type="python",     # Worker type identifier
-    # version defaults to spooled.__version__ (1.2.0 for this release)
+    # version defaults to spooled.__version__
     metadata={"env": "prod"}, # Custom metadata
 )
 ```
@@ -85,7 +85,9 @@ def handle_job(ctx):
     ctx.retry_count     # Current retry count
     ctx.max_retries     # Maximum retries allowed
     
-    # Abort signal (threading.Event)
+    # Abort signal (threading.Event). It is set when the job exceeds its
+    # timeout_seconds or the worker's shutdown_timeout runs out - not as soon as
+    # stop() is called. Long handlers should check it between steps.
     if ctx.signal.is_set():
         print("Job was aborted!")
         return None
@@ -143,7 +145,7 @@ import sys
 
 def shutdown(signum, frame):
     print("Shutting down...")
-    worker.stop()  # Signals active jobs, waits up to shutdown_timeout, then force-fails leftovers
+    worker.stop()  # Drains running jobs (up to shutdown_timeout), then deregisters
     client.close()
     sys.exit(0)
 
@@ -152,6 +154,36 @@ signal.signal(signal.SIGINT, shutdown)
 
 worker.start()
 ```
+
+`stop()` (sync) / `await worker.stop()` (async) drains the worker:
+
+1. It stops claiming new jobs. A claim that was already in flight is left unstarted;
+   deregistering re-queues it for another worker.
+2. Running handlers keep going for up to `shutdown_timeout` seconds. Their job
+   heartbeats and the worker heartbeat keep running, so the leases stay valid.
+   `ctx.signal` is **not** set yet.
+3. A handler that returns in that window is acked with `complete`, one that raises
+   with `fail` - exactly as if no shutdown had been requested. A result is never
+   dropped.
+4. Handlers still running after `shutdown_timeout` get `ctx.signal` set (the async
+   worker also cancels the task) and their jobs are failed with
+   "Worker shutdown timeout", so they retry elsewhere. A sync handler thread cannot
+   be killed: it keeps running but its late result is discarded.
+5. The worker deregisters last, because deregistering re-queues every job the worker
+   still holds.
+
+`start()` returns only after `stop()` has finished, so it is safe to close the client
+right after `start()` returns, even when `stop()` ran on another thread. Set
+`shutdown_timeout` at least as long as your longest handler.
+
+## Job Timeouts
+
+A job's `timeout_seconds` (set when it is created, 300 by default) is enforced by the
+worker. When a handler runs longer, the worker sets `ctx.signal`, fails the job with
+"Job timeout exceeded" and stops extending its lease; the server then retries the job
+or dead-letters it like any other failure. The async handler is also cancelled. A sync
+handler thread cannot be killed, so it keeps occupying one of the `concurrency` slots
+until it returns - give blocking calls their own timeouts, or check `ctx.signal`.
 
 ## Error Handling
 
@@ -166,7 +198,9 @@ def handle_job(ctx):
     return {"success": True}
 ```
 
-The job will be marked as failed and retried if retries remain.
+The job will be marked as failed and retried if retries remain. The failure text is
+`str(exception)`: an empty message is sent as "Job failed" and anything longer than
+2048 characters is truncated to 2048, because the API rejects both.
 
 ## Async Worker
 
@@ -199,13 +233,13 @@ asyncio.run(main())
 
 Each claimed job is tracked as a distinct active execution. The sync worker renews its lease with a per-execution timer; the async worker uses a per-execution task. Heartbeat, completion, failure, and cleanup all remain bound to that exact execution and include the claimed job's `lease_id` when the server provides one. This prevents stale work from renewing or settling a replacement lease for the same job ID.
 
-Heartbeat failures are logged through the client's debug hook; handlers should still be idempotent because jobs can be reclaimed after a lease expires.
+`complete`, `fail`, job heartbeats and worker heartbeats are retried on network errors, timeouts and 5xx (up to the client's `retry.max_retries`; they are lease-fenced, so a replay is safe - a replayed `complete` that already landed is answered with 409 "Job is already completed" and treated as success). An ack that still fails is reported through the worker's `error` event and the client's debug hook. Handlers should still be idempotent because jobs can be reclaimed after a lease expires.
 
 ## Best Practices
 
 1. **Set appropriate timeouts** — Match `lease_duration` to your job's expected runtime
-2. **Check abort signal** — For long-running jobs, periodically check `ctx.signal.is_set()`
-3. **Handle graceful shutdown** — Always call `worker.stop()` on SIGTERM/SIGINT
+2. **Check abort signal** — For long-running jobs, periodically check `ctx.signal.is_set()`; it is set on job timeout and when `shutdown_timeout` runs out
+3. **Handle graceful shutdown** — Always call `worker.stop()` on SIGTERM/SIGINT, with `shutdown_timeout` longer than your longest job
 4. **Use idempotent handlers** — Jobs may be retried, so handle duplicates gracefully
 5. **Return meaningful results** — Include relevant data in the return value for debugging
 6. **Give long-lived workers a stable `worker_id`** — Restarts then reuse one row instead of leaving stale ones against the plan worker cap

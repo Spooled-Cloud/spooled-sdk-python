@@ -74,9 +74,13 @@ class HttpClient:
         self.circuit_breaker = circuit_breaker
         self._auth_token: str | None = config.access_token or config.api_key
         self._refresh_token_fn: Callable[[], str] | None = None
-        # Serializes token refreshes so concurrent 401s trigger a single refresh.
+        # Serializes token refreshes so concurrent 401s trigger a single refresh:
+        # the first thread refreshes while the others wait on the lock, then see
+        # the new token and replay. ``_refresh_state.active`` is per thread and
+        # only stops the refresh call's own request from recursing into another
+        # refresh; it must not stop *other* threads from joining the wait.
         self._refresh_lock = threading.Lock()
-        self._is_refreshing = False
+        self._refresh_state = threading.local()
 
         # Create httpx client
         self._client = httpx.Client(
@@ -156,14 +160,18 @@ class HttpClient:
             # Another thread may have refreshed while we waited for the lock.
             if self._auth_token != token_before:
                 return True
+            self._refresh_state.active = True
             try:
-                self._is_refreshing = True
                 self._refresh_token_fn()
                 return True
             except Exception:
                 return False
             finally:
-                self._is_refreshing = False
+                self._refresh_state.active = False
+
+    def refresh_now(self) -> bool:
+        """Refresh the access token proactively (single-flight with 401 refreshes)."""
+        return self._try_refresh_token(self._auth_token)
 
     def _execute_request(
         self,
@@ -223,7 +231,7 @@ class HttpClient:
                 response.status_code == 401
                 and _allow_refresh
                 and self._refresh_token_fn is not None
-                and not self._is_refreshing
+                and not getattr(self._refresh_state, "active", False)
                 and self._try_refresh_token(auth_before)
             ):
                 return self._execute_request(
@@ -276,8 +284,15 @@ class HttpClient:
         skip_request_conversion: bool = False,
         skip_response_conversion: bool = False,
         skip_retry: bool = False,
+        idempotent: bool | None = None,
     ) -> Any:
-        """Make an HTTP request with retry and circuit breaker."""
+        """Make an HTTP request with retry and circuit breaker.
+
+        ``idempotent`` overrides the method-based guess of whether a replay is
+        safe. Worker acks (complete/fail/heartbeat) pass ``True``: they are
+        POSTs, but lease-fenced on the server, so a replay answers 409 instead
+        of acting twice and a lost ack can be retried instead of re-running the job.
+        """
         url = self._build_url(path, params, skip_api_prefix)
 
         def execute() -> Any:
@@ -308,7 +323,9 @@ class HttpClient:
             execute,
             self.config.retry,
             on_retry,
-            idempotent=_is_idempotent(method, body, headers),
+            idempotent=(
+                _is_idempotent(method, body, headers) if idempotent is None else idempotent
+            ),
         )
 
     def get(
@@ -346,6 +363,7 @@ class HttpClient:
         skip_request_conversion: bool = False,
         skip_response_conversion: bool = False,
         skip_retry: bool = False,
+        idempotent: bool | None = None,
     ) -> Any:
         """Make a POST request."""
         return self.request(
@@ -359,6 +377,7 @@ class HttpClient:
             skip_request_conversion=skip_request_conversion,
             skip_response_conversion=skip_response_conversion,
             skip_retry=skip_retry,
+            idempotent=idempotent,
         )
 
     def put(

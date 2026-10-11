@@ -46,7 +46,10 @@ class QueuesResource(BaseResource):
 
     def pause(self, name: str, reason: str | None = None) -> PauseQueueResponse:
         """Pause a queue."""
-        body = {"reason": reason} if reason else None
+        # Always send a JSON object: the client sends `Content-Type: application/json`
+        # on every request, and the API's optional-body extractor then treats an
+        # empty body as invalid JSON and answers 400.
+        body = {"reason": reason} if reason else {}
         data = self._http.post(f"/queues/{name}/pause", body)
         return PauseQueueResponse.model_validate(data)
 
@@ -95,7 +98,8 @@ class AsyncQueuesResource(AsyncBaseResource):
 
     async def pause(self, name: str, reason: str | None = None) -> PauseQueueResponse:
         """Pause a queue."""
-        body = {"reason": reason} if reason else None
+        # Always send a JSON object (see the sync variant).
+        body = {"reason": reason} if reason else {}
         data = await self._http.post(f"/queues/{name}/pause", body)
         return PauseQueueResponse.model_validate(data)
 

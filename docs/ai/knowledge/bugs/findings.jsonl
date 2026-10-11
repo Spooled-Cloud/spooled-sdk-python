@@ -37,3 +37,20 @@
 {"id":"PS-38","sev":"P2","summary":"auth.me dropped nested organization from GET /auth/me","path":"src/spooled/types/auth.py","status":"fixed","note":"Backend CurrentUserResponse includes organization {id,name,slug,plan_tier,billing_email}"}
 {"id":"PS-39","sev":"P2","summary":"schedules.create always sent max_retries=3 and timeout_seconds=300","path":"src/spooled/resources/schedules.py","status":"fixed","note":"Backend CreateScheduleRequest treats omitted retries/timeout as QUEUE_DEFAULT_*; jobs.create already used exclude_unset"}
 {"id":"PS-40","sev":"P2","summary":"CreateJobParams extra=forbid rejected completion_webhook_secret","path":"src/spooled/types/jobs.py","status":"fixed","note":"Backend CreateJobRequest has optional HMAC secret; GET Job never serializes it"}
+{"id":"PS-41","sev":"P1","summary":"Graceful `stop()` aborted handlers first and dropped their results; deregister re-queued the job (duplicate run)","path":"worker/worker.py, worker/async_worker.py","status":"fixed","note":"Drain: no abort until shutdown_timeout, ack always, deregister last (SDKNP-01)"}
+{"id":"PS-42","sev":"P1","summary":"`get_jwt_token()`/`realtime()` replaced the REST bearer with a 24 h JWT","path":"client.py, async_client.py","status":"fixed","note":"JWT kept in realtime layer only (SDKNP-02)"}
+{"id":"PS-43","sev":"P2","summary":"SSE clients used httpx 5 s read timeout","path":"realtime/sse.py, unified.py","status":"fixed","note":"SSE_TIMEOUT read 60 s (SDKNP-03)"}
+{"id":"PS-44","sev":"P2","summary":"SSE ignored HTTP status, reset retry counter on connect; unified SSE went dead on clean end","path":"realtime/sse.py, unified.py","status":"fixed","note":"Typed errors, counter reset on event, reconnect on clean end (SDKNP-04)"}
+{"id":"PS-45","sev":"P2","summary":"complete/fail/heartbeat acks never retried","path":"resources/jobs.py, workers.py, utils/http.py","status":"fixed","note":"idempotent=True (SDKNP-05)"}
+{"id":"PS-46","sev":"P2","summary":"429 QUOTA_EXCEEDED retried with long sleeps and tripped the breaker","path":"errors.py, utils/retry.py","status":"fixed","note":"QuotaExceededError, not retryable (SDKNP-06)"}
+{"id":"PS-47","sev":"P2","summary":"Concurrent 401s: only one request refreshed","path":"utils/http.py, utils/async_http.py","status":"fixed","note":"Single-flight refresh (SDKNP-07)"}
+{"id":"PS-48","sev":"P2","summary":"`queues.pause(name)` without reason sent empty JSON body (400)","path":"resources/queues.py","status":"fixed","note":"Send `{}` (SDKNP-08)"}
+{"id":"PS-49","sev":"P2","summary":"`client.grpc` ignored `grpc_address`","path":"client.py, async_client.py","status":"fixed","note":"Use grpc_address (SDKNP-11)"}
+{"id":"PS-50","sev":"P2","summary":"`with_options()` dropped most configuration","path":"config.py, client.py","status":"fixed","note":"merge_client_config (SDKNP-12)"}
+{"id":"PS-51","sev":"P2","summary":"`dlq.purge({})` confirmed itself","path":"types/jobs.py","status":"fixed","note":"confirm required (SDKNP-13)"}
+{"id":"PS-52","sev":"P2","summary":"422 not mapped to ValidationError","path":"errors.py","status":"fixed","note":"Mapped (SDKNP-14)"}
+{"id":"PS-53","sev":"P2","summary":"`timeout_seconds` never enforced by SDK workers","path":"worker/*.py","status":"fixed","note":"Timer / wait with fail \"Job timeout exceeded\" (SDKNP-16)"}
+{"id":"PS-54","sev":"P2","summary":"gRPC `lease_id` optional in types, required by server","path":"grpc/client.py","status":"fixed","note":"Required (SDKNP-17)"}
+{"id":"PS-55","sev":"P2","summary":"Workflow jobs returned invented `key: \"\"`","path":"types/workflows.py, resources/workflows.py","status":"fixed","note":"key is None (SDKNP-18)"}
+{"id":"PS-56","sev":"P3","summary":"`clear_webhook_token` can never succeed","path":"resources/organizations.py","status":"fixed","note":"UnsupportedOperationError (SDKNP-26)"}
+{"id":"PS-57","sev":"P2","summary":"Empty/over-long fail text rejected with 400, job stuck until lease expiry","path":"types/jobs.py, worker/*.py","status":"fixed","note":"coerce_fail_error (brief item 4)"}

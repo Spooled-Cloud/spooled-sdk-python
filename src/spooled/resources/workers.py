@@ -40,7 +40,13 @@ class WorkersResource(BaseResource):
         """Send worker heartbeat."""
         if isinstance(params, dict):
             params = WorkerHeartbeatParams.model_validate(params)
-        self._http.post(f"/workers/{worker_id}/heartbeat", params.model_dump(exclude_none=True))
+        # Replaying a heartbeat only refreshes last_heartbeat again, so it is safe
+        # to retry on network errors, timeouts and 5xx.
+        self._http.post(
+            f"/workers/{worker_id}/heartbeat",
+            params.model_dump(exclude_none=True),
+            idempotent=True,
+        )
 
     def deregister(self, worker_id: str) -> None:
         """Deregister a worker."""
@@ -75,8 +81,12 @@ class AsyncWorkersResource(AsyncBaseResource):
         """Send worker heartbeat."""
         if isinstance(params, dict):
             params = WorkerHeartbeatParams.model_validate(params)
+        # Replaying a heartbeat only refreshes last_heartbeat again, so it is safe
+        # to retry on network errors, timeouts and 5xx.
         await self._http.post(
-            f"/workers/{worker_id}/heartbeat", params.model_dump(exclude_none=True)
+            f"/workers/{worker_id}/heartbeat",
+            params.model_dump(exclude_none=True),
+            idempotent=True,
         )
 
     async def deregister(self, worker_id: str) -> None:

@@ -36,3 +36,13 @@
 - `GET /jobs/status` returns `{ id, status, queue_name, retry_count, created_at, completed_at }` (no `attempt`/`max_retries`).
 - `POST /jobs/dlq/purge` is `{ queue_name?, older_than?, limit?, confirm }` with `confirm: true` required. There is no `job_ids` (retry has that) and no `older_than_days`; `PurgeDlqParams.to_payload()` converts days to `older_than` and always sends `confirm`.
 - Webhook delivery retry is `POST /outgoing-webhooks/{id}/retry/{delivery_id}` → `{ success, message }`, not `/deliveries/{id}/retry` or `{ delivery_id, status }`.
+- Worker acks (`jobs.complete/fail/heartbeat`, `workers.heartbeat`) pass `idempotent=True` to the HTTP client, so network errors, timeouts, 5xx and 408 are retried (lease-fenced on the server: a replay answers 409 "Job is already completed", which the worker treats as success). Other POSTs keep the idempotency-key rule.
+- 429 `QUOTA_EXCEEDED` (`{error:"limit_exceeded", code, resource, current, limit, plan, upgrade_to}`, no `Retry-After`) maps to `QuotaExceededError(RateLimitError)`: never retried, never counted by the circuit breaker. 422 (missing/mistyped field) maps to `ValidationError` like 400; `details` is a list of `{field,message,code}`.
+- `POST /jobs/{id}/fail` rejects an empty or >2048-character `error` (400); the worker passes it through `coerce_fail_error` (empty -> "Job failed", cut to 2048 characters).
+- `POST /queues/{name}/pause` takes `Option<Json<..>>`: the client always sends a JSON content type, so a missing reason is sent as `{}` (an empty body would 400).
+- Worker `stop()` drains: no abort signal until `shutdown_timeout` is over; deregister (which re-queues every processing job of the worker) is last. `timeout_seconds` is enforced by the worker (fail "Job timeout exceeded").
+- `GET /workflows/{id}` jobs carry no creation-time `key`; `WorkflowJob.key` / `WorkflowJobStatus.key` are `None`, never `""`.
+- `clear_webhook_token`: the route exists but always answers a validation error; the method raises `UnsupportedOperationError` without a request.
+- gRPC `Complete`, `Fail`, `RenewLease` need `lease_id` (INVALID_ARGUMENT otherwise); `Fail.retry` defaults to true (false = dead-letter now). `client.grpc` dials `grpc_address` (default `grpc.spooled.cloud:443`).
+- Name limits: schedule name/queue_name, workflow name and workflow job queue_name allow 255 characters; queue_name on jobs stays 100.
+

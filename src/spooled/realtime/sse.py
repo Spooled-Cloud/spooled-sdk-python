@@ -16,6 +16,7 @@ from urllib.parse import quote
 
 import httpx
 
+from spooled.errors import SpooledError, create_error_from_response
 from spooled.realtime.events import RealtimeEvent, RealtimeEventType
 
 # Optional sseclient import
@@ -26,6 +27,62 @@ try:
 except ImportError:
     HAS_SSE = False
     sseclient = None  # type: ignore[assignment]
+
+
+# SSE streams are quiet between events, so httpx's default 5 s read timeout tore
+# down healthy connections (and dropped events published in the reconnect gap).
+# The server sends a keep-alive comment every 15 s (org streams also a health event
+# every 10 s), so 60 s of silence means the connection is dead; connect/write/pool
+# keep short timeouts.
+SSE_TIMEOUT = httpx.Timeout(connect=10.0, read=60.0, write=10.0, pool=10.0)
+
+# Job statuses after which the server closes /events/jobs/{id}.
+TERMINAL_JOB_STATUSES = frozenset({"completed", "failed", "deadletter", "cancelled"})
+
+
+def closes_job_stream(event: RealtimeEvent) -> bool:
+    """Whether the server ends a job stream right after sending ``event``.
+
+    ``/events/jobs/{id}`` is closed by the server after the job reaches a terminal
+    status (and after an ``error`` such as "Job not found"). Reconnecting would
+    only replay that last event again, once per reconnect, forever.
+    """
+    if event.type == "error":
+        return True
+    data = event.data
+    return (
+        event.type == "job.status_changed"
+        and isinstance(data, dict)
+        and data.get("new_status") in TERMINAL_JOB_STATUSES
+    )
+
+
+def stream_error(response: httpx.Response) -> SpooledError:
+    """Typed error for a non-2xx stream response (the body is not read yet).
+
+    A 401/403/404 means the token or filter is wrong: the client must stop and
+    say so instead of treating the JSON error body as an empty event stream.
+    """
+    response.read()
+    try:
+        body = response.json()
+    except Exception:
+        body = None
+    return create_error_from_response(
+        response.status_code, body, response.headers.get("X-Request-Id"), response.headers
+    )
+
+
+async def stream_error_async(response: httpx.Response) -> SpooledError:
+    """Async variant of :func:`stream_error`."""
+    await response.aread()
+    try:
+        body = response.json()
+    except Exception:
+        body = None
+    return create_error_from_response(
+        response.status_code, body, response.headers.get("X-Request-Id"), response.headers
+    )
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -131,6 +188,8 @@ class SSEClient:
         self._response: httpx.Response | None = None
         self._sse_client: Any = None
         self._closed = False
+        # Set when the server ended a job stream on purpose (terminal status).
+        self._finished = False
 
         # State management
         self._state = SSEConnectionState.DISCONNECTED
@@ -294,16 +353,29 @@ class SSEClient:
         return f"{self._base_url}/api/v1/events"
 
     def connect(self) -> None:
-        """Connect to SSE stream."""
+        """Connect to SSE stream.
+
+        Raises:
+            AuthenticationError / AuthorizationError / NotFoundError: the server
+                rejected the token or the subscription (non-2xx response).
+        """
         if self._state == SSEConnectionState.CONNECTED:
             return
 
+        # An explicit connect() starts with a fresh retry budget; automatic
+        # reconnects go through _open() and keep counting.
+        self._reconnect_attempts = 0
+        self._finished = False
+        self._open()
+
+    def _open(self) -> None:
+        """Open the stream once; a non-2xx response raises a typed error."""
         self._set_state(SSEConnectionState.CONNECTING)
 
         url = self._build_url()
 
         try:
-            self._client = httpx.Client()
+            self._client = httpx.Client(timeout=SSE_TIMEOUT)
             # send(stream=True) keeps the response open until close(). Entering
             # client.stream(...) by hand dropped its context manager, which the
             # garbage collector then exited — closing the stream before any
@@ -320,17 +392,35 @@ class SSEClient:
                 stream=True,
             )
 
+            # A 401/403/429 answers with a JSON error body. Parsed as a stream it
+            # yields zero events and ends "cleanly", so a revoked token looked like
+            # a healthy connection that kept reconnecting forever.
+            if not self._response.is_success:
+                raise stream_error(self._response)
+
             # sseclient needs raw byte chunks: it finds event boundaries by the
             # blank line between events. iter_lines() yields str lines with the
             # newlines stripped, so the first line raised TypeError and the
             # stream never produced an event.
             self._sse_client = sseclient.SSEClient(self._response.iter_bytes())  # type: ignore[arg-type]
             self._set_state(SSEConnectionState.CONNECTED)
-            self._reconnect_attempts = 0
             self._closed = False
         except Exception:
+            self._teardown()
             self._set_state(SSEConnectionState.DISCONNECTED)
             raise
+
+    def _teardown(self) -> None:
+        """Close the response and client of the current connection, if any."""
+        if self._response is not None:
+            with contextlib.suppress(Exception):
+                self._response.close()
+            self._response = None
+        if self._client is not None:
+            with contextlib.suppress(Exception):
+                self._client.close()
+            self._client = None
+        self._sse_client = None
 
     def reconnect(
         self,
@@ -361,7 +451,14 @@ class SSEClient:
 
         When ``auto_reconnect`` is enabled (the default), a dropped or
         server-closed stream is transparently re-established with exponential
-        backoff, up to ``max_reconnect_attempts`` consecutive failures.
+        backoff, up to ``max_reconnect_attempts`` consecutive failures. The
+        counter restarts once an event arrives. A job stream (``job_id``) ends
+        after the job's terminal status, as the server closes it there.
+
+        Raises:
+            AuthenticationError / AuthorizationError / NotFoundError: the server
+                rejected the token or subscription; retrying cannot help, so the
+                generator stops instead of reconnecting.
 
         Example:
             >>> for event in sse.events():
@@ -379,14 +476,25 @@ class SSEClient:
                     if event.data:
                         parsed = self._parse_event(event.event, event.data)
                         if parsed:
+                            # A delivered event proves the stream is healthy; only
+                            # now is the retry budget restored (a "connected"
+                            # response alone proves nothing).
+                            self._reconnect_attempts = 0
+                            if self._job_id and closes_job_stream(parsed):
+                                self._finished = True
                             self._emit_event(parsed)
                             yield parsed
                 # Stream ended without error (server closed the connection).
+                if self._finished:
+                    self.close()
+                    return
                 if self._closed or not self._reconnect():
                     return
-            except Exception:
+            except Exception as exc:
                 if self._closed:
                     return
+                if isinstance(exc, SpooledError) and not exc.is_retryable():
+                    raise
                 if not self._reconnect():
                     raise
 
@@ -394,8 +502,10 @@ class SSEClient:
         """Attempt to re-establish a dropped stream with backoff.
 
         Returns True once reconnected, False when reconnection is disabled or
-        the attempt budget is exhausted.
+        the attempt budget is exhausted. A non-retryable rejection (401, 403,
+        404...) is raised at once: retrying would only repeat it.
         """
+        last_error: Exception | None = None
         while (
             self._auto_reconnect
             and not self._closed
@@ -410,24 +520,22 @@ class SSEClient:
             try:
                 self._reopen()
                 return True
-            except Exception:
-                continue
+            except SpooledError as exc:
+                if not exc.is_retryable():
+                    raise
+                last_error = exc
+            except Exception as exc:
+                last_error = exc
+        if last_error is not None:
+            raise last_error
         return False
 
     def _reopen(self) -> None:
         """Tear down the dead connection and open a fresh one (keeps filters)."""
-        if self._response is not None:
-            with contextlib.suppress(Exception):
-                self._response.close()
-            self._response = None
-        if self._client is not None:
-            with contextlib.suppress(Exception):
-                self._client.close()
-            self._client = None
-        self._sse_client = None
-        # Reset state so connect() does not early-return as already connected.
+        self._teardown()
+        # Reset state so _open() starts from a clean slate.
         self._state = SSEConnectionState.DISCONNECTED
-        self.connect()
+        self._open()
 
     def _parse_event(self, event_type: str, data: str) -> RealtimeEvent | None:
         """Parse SSE event to RealtimeEvent.
@@ -446,18 +554,7 @@ class SSEClient:
     def close(self) -> None:
         """Close the SSE connection."""
         self._closed = True
-
-        if self._response:
-            with contextlib.suppress(Exception):
-                self._response.close()
-            self._response = None
-
-        if self._client:
-            with contextlib.suppress(Exception):
-                self._client.close()
-            self._client = None
-
-        self._sse_client = None
+        self._teardown()
         self._set_state(SSEConnectionState.DISCONNECTED)
 
     def __enter__(self) -> SSEClient:
@@ -514,6 +611,8 @@ class AsyncSSEClient:
         self._client: httpx.AsyncClient | None = None
         self._response: httpx.Response | None = None
         self._closed = False
+        # Set when the server ended a job stream on purpose (terminal status).
+        self._finished = False
 
         # State management
         self._state = SSEConnectionState.DISCONNECTED
@@ -652,16 +751,29 @@ class AsyncSSEClient:
         return f"{self._base_url}/api/v1/events"
 
     async def connect(self) -> None:
-        """Connect to SSE stream."""
+        """Connect to SSE stream.
+
+        Raises:
+            AuthenticationError / AuthorizationError / NotFoundError: the server
+                rejected the token or the subscription (non-2xx response).
+        """
         if self._state == SSEConnectionState.CONNECTED:
             return
 
+        # An explicit connect() starts with a fresh retry budget; automatic
+        # reconnects go through _open() and keep counting.
+        self._reconnect_attempts = 0
+        self._finished = False
+        await self._open()
+
+    async def _open(self) -> None:
+        """Open the stream once; a non-2xx response raises a typed error."""
         self._set_state(SSEConnectionState.CONNECTING)
         url = self._build_url()
 
         try:
-            self._client = httpx.AsyncClient()
-            # See SSEClient.connect: keep the response open until close().
+            self._client = httpx.AsyncClient(timeout=SSE_TIMEOUT)
+            # See SSEClient._open: keep the response open until close().
             self._response = await self._client.send(
                 self._client.build_request(
                     "GET",
@@ -673,12 +785,26 @@ class AsyncSSEClient:
                 ),
                 stream=True,
             )
+            # See SSEClient._open: a JSON error body is not an empty event stream.
+            if not self._response.is_success:
+                raise await stream_error_async(self._response)
             self._set_state(SSEConnectionState.CONNECTED)
-            self._reconnect_attempts = 0
             self._closed = False
         except Exception:
+            await self._teardown()
             self._set_state(SSEConnectionState.DISCONNECTED)
             raise
+
+    async def _teardown(self) -> None:
+        """Close the response and client of the current connection, if any."""
+        if self._response is not None:
+            with contextlib.suppress(Exception):
+                await self._response.aclose()
+            self._response = None
+        if self._client is not None:
+            with contextlib.suppress(Exception):
+                await self._client.aclose()
+            self._client = None
 
     async def reconnect(
         self,
@@ -708,7 +834,14 @@ class AsyncSSEClient:
 
         When ``auto_reconnect`` is enabled (the default), a dropped or
         server-closed stream is transparently re-established with exponential
-        backoff, up to ``max_reconnect_attempts`` consecutive failures.
+        backoff, up to ``max_reconnect_attempts`` consecutive failures. The
+        counter restarts once an event arrives. A job stream (``job_id``) ends
+        after the job's terminal status, as the server closes it there.
+
+        Raises:
+            AuthenticationError / AuthorizationError / NotFoundError: the server
+                rejected the token or subscription; retrying cannot help, so the
+                generator stops instead of reconnecting.
 
         Example:
             >>> async for event in sse.events():
@@ -734,16 +867,26 @@ class AsyncSSEClient:
                     elif line == "" and current_data:
                         parsed = self._parse_event(current_event, current_data)
                         if parsed:
+                            # A delivered event proves the stream is healthy; only
+                            # now is the retry budget restored.
+                            self._reconnect_attempts = 0
+                            if self._job_id and closes_job_stream(parsed):
+                                self._finished = True
                             self._emit_event(parsed)
                             yield parsed
                         current_event = ""
                         current_data = ""
                 # Stream ended without error (server closed the connection).
+                if self._finished:
+                    await self.close()
+                    return
                 if self._closed or not await self._reconnect():
                     return
-            except Exception:
+            except Exception as exc:
                 if self._closed:
                     return
+                if isinstance(exc, SpooledError) and not exc.is_retryable():
+                    raise
                 if not await self._reconnect():
                     raise
 
@@ -751,8 +894,10 @@ class AsyncSSEClient:
         """Attempt to re-establish a dropped stream with backoff.
 
         Returns True once reconnected, False when reconnection is disabled or
-        the attempt budget is exhausted.
+        the attempt budget is exhausted. A non-retryable rejection (401, 403,
+        404...) is raised at once: retrying would only repeat it.
         """
+        last_error: Exception | None = None
         while (
             self._auto_reconnect
             and not self._closed
@@ -767,23 +912,22 @@ class AsyncSSEClient:
             try:
                 await self._reopen()
                 return True
-            except Exception:
-                continue
+            except SpooledError as exc:
+                if not exc.is_retryable():
+                    raise
+                last_error = exc
+            except Exception as exc:
+                last_error = exc
+        if last_error is not None:
+            raise last_error
         return False
 
     async def _reopen(self) -> None:
         """Tear down the dead connection and open a fresh one (keeps filters)."""
-        if self._response is not None:
-            with contextlib.suppress(Exception):
-                await self._response.aclose()
-            self._response = None
-        if self._client is not None:
-            with contextlib.suppress(Exception):
-                await self._client.aclose()
-            self._client = None
-        # Reset state so connect() does not early-return as already connected.
+        await self._teardown()
+        # Reset state so _open() starts from a clean slate.
         self._state = SSEConnectionState.DISCONNECTED
-        await self.connect()
+        await self._open()
 
     def _parse_event(self, event_type: str, data: str) -> RealtimeEvent | None:
         """Parse SSE event to RealtimeEvent (unwraps the adjacently-tagged envelope)."""
@@ -796,17 +940,7 @@ class AsyncSSEClient:
     async def close(self) -> None:
         """Close the SSE connection."""
         self._closed = True
-
-        if self._response:
-            with contextlib.suppress(Exception):
-                await self._response.aclose()
-            self._response = None
-
-        if self._client:
-            with contextlib.suppress(Exception):
-                await self._client.aclose()
-            self._client = None
-
+        await self._teardown()
         self._set_state(SSEConnectionState.DISCONNECTED)
 
     async def __aenter__(self) -> AsyncSSEClient:

@@ -13,6 +13,7 @@ from typing import TYPE_CHECKING, Any, Literal
 from spooled.config import (
     ResolvedConfig,
     SpooledClientConfig,
+    merge_client_config,
     resolve_config,
     validate_config,
 )
@@ -244,7 +245,7 @@ class AsyncSpooledClient:
         The gRPC client is created on first access.
 
         Example:
-            >>> job = client.grpc.enqueue(
+            >>> job = client.grpc.queue.enqueue(
             ...     queue_name="test",
             ...     payload={"task": "process"}
             ... )
@@ -257,22 +258,12 @@ class AsyncSpooledClient:
                     "gRPC package required. Install with: pip install spooled[grpc]"
                 ) from e
 
-            # Build gRPC URL from base URL
-            base_url = self._config.base_url
-            if base_url.startswith("https://"):
-                grpc_url = base_url.replace("https://", "")
-                use_tls = True
-            elif base_url.startswith("http://"):
-                grpc_url = base_url.replace("http://", "")
-                use_tls = False
-            else:
-                grpc_url = base_url
-                use_tls = True
-
-            # Extract host and use default gRPC port
-            host = grpc_url.split(":")[0] if ":" in grpc_url else grpc_url
-            grpc_port = 50051
-            grpc_url = f"{host}:{grpc_port}"
+            # Use the configured gRPC address (default: grpc.spooled.cloud:443, as in
+            # the docs and the other SDKs). It is a different host/port from the REST
+            # API, so it must not be derived from base_url; self-hosted servers set
+            # ``grpc_address`` explicitly. TLS is auto-detected: on unless the host
+            # is localhost.
+            grpc_address = self._config.grpc_address
 
             # Get API key or token for auth
             api_key = self._config.api_key
@@ -280,9 +271,8 @@ class AsyncSpooledClient:
                 api_key = self._config.access_token
 
             self._grpc = SpooledGrpcClient(
-                address=grpc_url,
+                address=grpc_address,
                 api_key=api_key or "",
-                use_tls=use_tls,
             )
 
         return self._grpc
@@ -335,13 +325,25 @@ class AsyncSpooledClient:
         # API key for one first rather than forwarding the raw key (which the
         # server rejects on the WS handshake). The cached JWT is reused here, so
         # repeated realtime() calls do not each hit the login endpoint. The
-        # unified realtime client is synchronous (runs its reconnect loop on a
-        # background thread) and so cannot await this coroutine per reconnect;
-        # it reuses this token across reconnects.
+        # unified realtime client is synchronous: it reconnects on background
+        # threads, which call back into this client for a fresh token below.
         token = await self.get_jwt_token()
+        loop = asyncio.get_running_loop()
+
+        def token_provider() -> str:
+            try:
+                on_loop = asyncio.get_running_loop() is loop
+            except RuntimeError:
+                on_loop = False
+            if on_loop:
+                # connect() called from async code: blocking on a coroutine of this
+                # very loop would deadlock, so reuse the newest token minted so far.
+                return self._cached_jwt or self._config.access_token or token
+            return asyncio.run_coroutine_threadsafe(self.get_jwt_token(), loop).result(30)
 
         options = SpooledRealtimeOptions(
             base_url=self._config.base_url,
+            ws_url=self._config.ws_url,
             token=token,
             type=type,
             auto_reconnect=auto_reconnect,
@@ -349,6 +351,9 @@ class AsyncSpooledClient:
             reconnect_delay=reconnect_delay,
             max_reconnect_delay=max_reconnect_delay,
             debug=self._config.debug_fn,
+            # Each (re)connect on a background thread mints a token via the cached
+            # exchange, so long-lived streams survive JWT expiry.
+            token_provider=token_provider,
         )
 
         return SpooledRealtime(options)
@@ -379,7 +384,9 @@ class AsyncSpooledClient:
             base_url: Override base URL
             timeout: Override timeout
             debug: Override debug flag
-            **kwargs: Additional configuration options
+            **kwargs: Any other ``SpooledClientConfig`` field to override
+                (``headers``, ``retry``, ``circuit_breaker``, ``ws_url``,
+                ``grpc_address``, ``connect_timeout``, ``user_agent``, ...)
 
         Returns:
             New AsyncSpooledClient instance
@@ -391,44 +398,44 @@ class AsyncSpooledClient:
             >>> # Create client with different API key
             >>> other_client = client.with_options(api_key="sk_live_other")
         """
-        # Start with current config values
-        new_config: dict[str, Any] = {
-            "api_key": api_key if api_key is not None else self._config.api_key,
-            "access_token": access_token if access_token is not None else self._config.access_token,
-            "refresh_token": refresh_token
-            if refresh_token is not None
-            else self._config.refresh_token,
-            "admin_key": admin_key if admin_key is not None else self._config.admin_key,
-            "base_url": base_url if base_url is not None else self._config.base_url,
-            "timeout": timeout if timeout is not None else self._config.timeout,
-            "debug": debug if debug is not None else (self._config.debug_fn is not None),
+        overrides: dict[str, Any] = {
+            "api_key": api_key,
+            "access_token": access_token,
+            "refresh_token": refresh_token,
+            "admin_key": admin_key,
+            "base_url": base_url,
+            "timeout": timeout,
+            "debug": debug,
+            **kwargs,
         }
 
-        # Add any extra kwargs
-        new_config.update(kwargs)
-
-        # Remove None values
-        new_config = {k: v for k, v in new_config.items() if v is not None}
-
-        return AsyncSpooledClient(**new_config)
+        # Carry over the whole current configuration (headers, retry, circuit
+        # breaker, user agent, timeouts, gRPC address, WebSocket URL), not just
+        # the credentials: an allow-list here silently reset everything else.
+        return AsyncSpooledClient(config=merge_client_config(self._config, overrides))
 
     # Token management
 
     async def get_jwt_token(self, *, force_refresh: bool = False) -> str:
         """Get or acquire a JWT token for realtime connections.
 
-        A statically configured ``access_token`` is returned verbatim -- we never
-        expire or replace it, since there may be no API key to re-login with.
+        The token is for the realtime transport only: it is never installed as
+        the REST client's bearer, so an API-key client keeps authenticating its
+        REST calls with the key (a JWT swapped in here expired after 24 h with
+        nothing to renew it).
 
-        When only an API key is available, the JWT obtained from ``/auth/login``
-        is cached and reused across (re)connects until it is near expiry (decoded
-        from the token's ``exp`` claim, refreshed ~60s early). This keeps
-        reconnect storms from repeatedly hitting the login rate limiter. Pass
-        ``force_refresh=True`` to bypass the cache, e.g. after the server rejects
-        the current token on a WebSocket handshake.
+        A statically configured ``access_token`` is returned as-is; when a
+        ``refresh_token`` is also configured it is renewed shortly before it
+        expires. When only an API key is available, the JWT obtained from
+        ``/auth/login`` is cached and reused across (re)connects until it is
+        near expiry (decoded from the token's ``exp`` claim, refreshed ~60s
+        early). This keeps reconnect storms from repeatedly hitting the login
+        rate limiter. Pass ``force_refresh=True`` to bypass the cache, e.g.
+        after the server rejects the current token on a WebSocket handshake.
         """
-        # A user-supplied static access token is used as-is.
+        # A user-supplied access token is used as-is, renewed only when we can.
         if self._config.access_token:
+            await self._refresh_static_token_if_due()
             return self._config.access_token
 
         if not self._config.api_key:
@@ -443,12 +450,18 @@ class AsyncSpooledClient:
                 return self._cached_jwt
 
             response = await self.auth.login({"api_key": self._config.api_key})
-            self._http.set_auth_token(response.access_token)
-            # Keep the refresh token for the HTTP layer's auto-refresh path.
-            self._config.refresh_token = response.refresh_token
             self._cached_jwt = response.access_token
             self._cached_jwt_exp = decode_jwt_exp(response.access_token)
             return self._cached_jwt
+
+    async def _refresh_static_token_if_due(self) -> None:
+        """Renew a configured access token that is about to expire (needs a refresh token)."""
+        config = self._config
+        if not (config.access_token and config.refresh_token and config.auto_refresh_token):
+            return
+        exp = decode_jwt_exp(config.access_token)
+        if exp is not None and jwt_needs_refresh(exp, time.time()):
+            await self._http.refresh_now()
 
     async def _refresh_access_token(self) -> str:
         """Refresh the access token."""

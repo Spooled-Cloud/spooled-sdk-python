@@ -2,6 +2,92 @@
 
 All notable changes to the Spooled Python SDK are documented here.
 
+## [1.3.0] - 2026-10-10
+
+Worker shutdown and failure semantics, realtime auth and several client defaults
+change, so this is a minor release. Everything below was found by the 2026-10-10
+SDK audit and is covered by new unit tests; sync and async clients/workers get
+every fix.
+
+### Changed (read before upgrading)
+
+- **`stop()` now drains instead of aborting.** It stops claiming jobs, lets
+  running handlers finish for up to `shutdown_timeout` seconds, and still sends
+  `complete` (or `fail`) for a handler that returned (or raised) in that window.
+  `ctx.signal` is no longer set when `stop()` starts; it is set only when a
+  handler outlives the timeout (it is then failed with "Worker shutdown timeout",
+  and the async handler is cancelled) or exceeds the job's `timeout_seconds`.
+  Job heartbeats keep running during the drain and the worker deregisters last.
+  `start()` now returns only after `stop()` has finished. Handlers that polled
+  `ctx.signal` to react to shutdown should rely on `shutdown_timeout` instead.
+- **`PurgeDlqParams.confirm` has no default.** `client.jobs.dlq.purge({})` used to
+  confirm on your behalf and delete every dead-lettered job of the organization;
+  it now raises a validation error. Pass `"confirm": True` explicitly.
+- **gRPC `complete`, `fail` and `renew_lease` require `lease_id`** (keyword-only,
+  also on `GrpcCompleteRequest` / `GrpcFailRequest` / `GrpcRenewLeaseRequest`).
+  The server already rejected settlement without one with `INVALID_ARGUMENT`.
+- **`client.grpc` dials `grpc_address`** (default `grpc.spooled.cloud:443`, TLS
+  unless the host is local). It used to dial `<api host>:50051` and ignore the
+  setting, which cannot reach Spooled Cloud. Self-hosted users set `grpc_address`.
+- **`WorkflowJob.key` and `WorkflowJobStatus.key` are `None`** instead of `""`:
+  `GET /workflows/{id}` does not return job keys. Map `job_id` to a key with the
+  `job_ids` from `workflows.create()`.
+- **`organizations.clear_webhook_token()` is deprecated** and raises the new
+  `UnsupportedOperationError` without a network call: the API always rejects it.
+  Rotate the token with `regenerate_webhook_token()`.
+- `SpooledClient(admin_key=...)` alone is now accepted (admin endpoints only).
+
+### Fixed
+
+- **A handler that finished during shutdown was dropped, then re-run.** See above;
+  the job used to be re-queued by deregistering and executed twice.
+- **`timeout_seconds` is enforced.** A handler running past its job's timeout is
+  signalled (`ctx.signal`), the job is failed with "Job timeout exceeded" and its
+  lease is no longer extended. A sync handler thread cannot be killed, so it keeps
+  occupying a concurrency slot until it returns; the async handler is cancelled.
+- **Failure text is always accepted.** An empty error becomes "Job failed" and
+  anything over 2048 characters is cut to 2048 before `POST /jobs/{id}/fail`
+  (the API answered 400, leaving the job `processing` until its lease expired).
+- **Acks are retried.** `jobs.complete`, `jobs.fail`, `jobs.heartbeat` and
+  `workers.heartbeat` retry network errors, timeouts, 5xx and 408 (they are
+  lease-fenced, so a replay is safe). A failed ack is reported through the
+  worker's `error` event instead of only the debug log.
+- **A plan limit is not retried.** A 429 with code `QUOTA_EXCEEDED` (no
+  `Retry-After`) raises the new `QuotaExceededError` (a `RateLimitError`) at once
+  instead of sleeping 3 x 30 s, and no longer counts toward the circuit breaker,
+  so a full quota cannot block worker acks and reads.
+- **`get_jwt_token()` / `realtime()` no longer replace the REST bearer.** For an
+  API-key client the 24 h JWT became the bearer of every later REST call and was
+  never renewed, so everything returned 401 a day later. The realtime transport
+  keeps its own cached token (renewed before it expires; the async `realtime()`
+  now supplies a token provider too), and a configured `access_token` with a
+  `refresh_token` is renewed before it expires.
+- **Concurrent 401s share one token refresh.** Only one of N simultaneous
+  requests used to recover; the rest raised `AuthenticationError`.
+- **SSE clients no longer use httpx's 5 s read timeout** (60 s now, the server
+  sends keep-alives every 15 s), which reconnected quiet streams every 5 s and
+  lost the events in the gap.
+- **SSE checks the HTTP status.** A 401/403/404 raises the typed error and stops
+  instead of reconnecting once a second forever; 429/5xx back off and are
+  retried. The retry counter is restored by a delivered event, not by a mere
+  connect, so a failing stream runs out of attempts. A job stream (`job_id`) ends
+  after the job's terminal status instead of replaying it on every reconnect, and
+  the unified `realtime(type="sse")` client reconnects when the server ends the
+  stream (its 30 minute cap) and stops, with `last_error` and an `error` event,
+  on a rejected token.
+- **`queues.pause(name)` without a reason works** (it sent an empty body with a
+  JSON content type, which the API answers with 400).
+- **`with_options()` keeps the whole configuration** (headers, retry, circuit
+  breaker, user agent, timeouts, `grpc_address`, `ws_url`) instead of resetting
+  everything but credentials, base URL, timeout and debug.
+- **422 responses raise `ValidationError`** (like 400); `details` may be a list.
+- Schedule name/queue name and workflow name/job queue name accept up to 255
+  characters (the API limit), not 100.
+- Async worker keeps references to its per-job tasks and tracks claimed jobs
+  immediately, so a poll cannot over-claim.
+- gRPC TLS auto-detection recognises `[::1]:port` as local.
+- Removed a dead placeholder in `AsyncHttpClient.request()`.
+
 ## [1.2.2] - 2026-09-26
 
 ### Fixed

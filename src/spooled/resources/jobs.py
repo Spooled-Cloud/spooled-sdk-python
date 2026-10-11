@@ -188,11 +188,17 @@ class JobsResource(BaseResource):
     def complete(
         self, job_id: str, params: CompleteJobParams | dict[str, Any]
     ) -> CompleteJobResponse:
-        """Complete a job (worker ack)."""
+        """Complete a job (worker ack).
+
+        Lease-fenced on the server, so a network error, timeout or 5xx is retried
+        (a replay of an already-landed ack answers 409 instead of acting twice).
+        """
         if isinstance(params, dict):
             params = CompleteJobParams.model_validate(params)
         data = self._http.post(
-            f"/jobs/{job_id}/complete", params.model_dump(exclude_none=True, mode="json")
+            f"/jobs/{job_id}/complete",
+            params.model_dump(exclude_none=True, mode="json"),
+            idempotent=True,
         )
         return CompleteJobResponse.model_validate(data)
 
@@ -200,14 +206,18 @@ class JobsResource(BaseResource):
         """Fail a job (worker nack)."""
         if isinstance(params, dict):
             params = FailJobParams.model_validate(params)
-        data = self._http.post(f"/jobs/{job_id}/fail", params.model_dump(exclude_none=True))
+        data = self._http.post(
+            f"/jobs/{job_id}/fail", params.model_dump(exclude_none=True), idempotent=True
+        )
         return FailJobResponse.model_validate(data)
 
     def heartbeat(self, job_id: str, params: JobHeartbeatParams | dict[str, Any]) -> None:
         """Extend job lease (heartbeat)."""
         if isinstance(params, dict):
             params = JobHeartbeatParams.model_validate(params)
-        self._http.post(f"/jobs/{job_id}/heartbeat", params.model_dump(exclude_none=True))
+        self._http.post(
+            f"/jobs/{job_id}/heartbeat", params.model_dump(exclude_none=True), idempotent=True
+        )
 
 
 class AsyncJobsResource(AsyncBaseResource):
@@ -300,11 +310,17 @@ class AsyncJobsResource(AsyncBaseResource):
     async def complete(
         self, job_id: str, params: CompleteJobParams | dict[str, Any]
     ) -> CompleteJobResponse:
-        """Complete a job (worker ack)."""
+        """Complete a job (worker ack).
+
+        Lease-fenced on the server, so a network error, timeout or 5xx is retried
+        (a replay of an already-landed ack answers 409 instead of acting twice).
+        """
         if isinstance(params, dict):
             params = CompleteJobParams.model_validate(params)
         data = await self._http.post(
-            f"/jobs/{job_id}/complete", params.model_dump(exclude_none=True, mode="json")
+            f"/jobs/{job_id}/complete",
+            params.model_dump(exclude_none=True, mode="json"),
+            idempotent=True,
         )
         return CompleteJobResponse.model_validate(data)
 
@@ -312,11 +328,15 @@ class AsyncJobsResource(AsyncBaseResource):
         """Fail a job (worker nack)."""
         if isinstance(params, dict):
             params = FailJobParams.model_validate(params)
-        data = await self._http.post(f"/jobs/{job_id}/fail", params.model_dump(exclude_none=True))
+        data = await self._http.post(
+            f"/jobs/{job_id}/fail", params.model_dump(exclude_none=True), idempotent=True
+        )
         return FailJobResponse.model_validate(data)
 
     async def heartbeat(self, job_id: str, params: JobHeartbeatParams | dict[str, Any]) -> None:
         """Extend job lease (heartbeat)."""
         if isinstance(params, dict):
             params = JobHeartbeatParams.model_validate(params)
-        await self._http.post(f"/jobs/{job_id}/heartbeat", params.model_dump(exclude_none=True))
+        await self._http.post(
+            f"/jobs/{job_id}/heartbeat", params.model_dump(exclude_none=True), idempotent=True
+        )

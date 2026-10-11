@@ -24,7 +24,23 @@ client = SpooledClient(
 with SpooledClient(api_key="sp_live_...") as client:
     # use client
     pass
+
+# gRPC and WebSocket endpoints are separate from base_url. Defaults:
+# grpc_address="grpc.spooled.cloud:443"; ws_url is derived from base_url.
+client = SpooledClient(
+    api_key="sp_live_...",
+    grpc_address="grpc.my-company.internal:50051",  # self-hosted gRPC
+)
+
+# with_options() derives a client that keeps ALL of this configuration
+# (headers, retry, circuit breaker, user agent, timeouts, URLs) and overrides
+# only what you pass.
+quiet = client.with_options(timeout=5, retry={"max_retries": 0})
 ```
+
+`client.grpc` dials `grpc_address` (TLS unless the host is local). `client.realtime()`
+exchanges the API key for a JWT used **only** by the realtime transport; REST calls
+keep authenticating with the API key.
 
 ### AsyncSpooledClient (Async)
 
@@ -129,8 +145,9 @@ dlq_jobs = client.jobs.dlq.list({"queue_name": "my-queue"})
 # Retry DLQ jobs
 result = client.jobs.dlq.retry({"queue_name": "my-queue", "limit": 10})
 
-# Purge DLQ
-result = client.jobs.dlq.purge({"queue_name": "my-queue", "older_than_days": 7})
+# Purge DLQ. `confirm` has no default: without a filter a purge deletes up to
+# 10 000 dead-lettered jobs of the whole organization, so it must be explicit.
+result = client.jobs.dlq.purge({"queue_name": "my-queue", "older_than_days": 7, "confirm": True})
 ```
 
 ## Queues
@@ -236,6 +253,10 @@ status = client.workflows.get("wf_xxx")
 print(status.progress_percent, status.completed_jobs)
 ```
 
+`client.workflows.jobs.list()` / `.get_status()` return each job's `job_id` and
+`status`. Their `key` is `None`: the API does not store job keys, so keep the
+`key -> job_id` mapping from `create()` (`workflow.job_ids`) if you need it.
+
 ### Cancel Workflow
 
 ```python
@@ -320,6 +341,7 @@ from spooled.errors import (
     AuthorizationError,
     NotFoundError,
     ValidationError,
+    QuotaExceededError,
     RateLimitError,
     ServerError,
     NetworkError,
@@ -330,10 +352,28 @@ try:
     job = client.jobs.get("nonexistent")
 except NotFoundError:
     print("Not found")
+except QuotaExceededError as e:
+    # 429 QUOTA_EXCEEDED: a plan limit. Not retried, will not clear in seconds.
+    print(f"Plan limit {e.resource}: {e.current}/{e.limit} on {e.plan}; upgrade to {e.upgrade_to}")
 except RateLimitError as e:
     print(f"Rate limited. Retry after {e.retry_after}s")
+except ValidationError as e:
+    # 400 (field rule) and 422 (missing/mistyped field); e.details is often a list
+    print(e.status_code, e.details)
 except NetworkError:
     print("Network error")
 except SpooledError as e:
     print(f"Error: {e.code} - {e.message}")
 ```
+
+`QuotaExceededError` subclasses `RateLimitError`, so existing `except RateLimitError`
+handlers still catch it. Complete/fail/heartbeat acks are retried on network errors,
+timeouts, 5xx and 408; other POSTs (such as `jobs.create`) are only retried on a rate
+limit, or when they carry an idempotency key.
+
+## Unsupported operations
+
+`client.organizations.clear_webhook_token()` (sync and async) is deprecated: the API
+always rejects clearing the webhook token, so the method raises
+`UnsupportedOperationError` (a `SpooledError`) without a network call. Use
+`regenerate_webhook_token()` to rotate it.

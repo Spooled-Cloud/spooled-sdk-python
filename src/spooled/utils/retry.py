@@ -26,16 +26,18 @@ def should_retry(
 
     ``idempotent`` indicates whether replaying the request is safe. A rate
     limit (429) is always safe to retry because the server rejected the request
-    before processing it. For every other retryable condition (5xx, network,
-    timeout) a non-idempotent request is NOT retried, so a write that may have
-    already reached the server is never silently duplicated.
+    before processing it -- except a plan-limit ``QUOTA_EXCEEDED`` 429, which
+    will not clear for hours and so is never retried. For every other retryable
+    condition (5xx, network, timeout, 408) a non-idempotent request is NOT
+    retried, so a write that may have already reached the server is never
+    silently duplicated.
     """
     if attempt > config.max_retries:
         return False
 
     # Always retry rate limit errors — the request was rejected, not processed.
     if isinstance(error, RateLimitError):
-        return True
+        return error.is_retryable()
 
     # Do not replay non-idempotent requests on ambiguous failures.
     if not idempotent:

@@ -54,11 +54,11 @@ class ScheduleRun(BaseModel):
 class CreateScheduleParams(BaseModel):
     """Parameters for creating a schedule."""
 
-    name: str = Field(..., min_length=1, max_length=100)
+    name: str = Field(..., min_length=1, max_length=255)
     description: str | None = None
     cron_expression: str
     timezone: str = Field(default="UTC")
-    queue_name: str = Field(..., min_length=1, max_length=100)
+    queue_name: str = Field(..., min_length=1, max_length=255)
     payload_template: JsonValue
     priority: int = Field(default=0, ge=-100, le=100)
     max_retries: int = Field(default=3, ge=0, le=100)
@@ -81,11 +81,11 @@ class CreateScheduleResponse(BaseModel):
 class UpdateScheduleParams(BaseModel):
     """Parameters for updating a schedule."""
 
-    name: str | None = Field(default=None, min_length=1, max_length=100)
+    name: str | None = Field(default=None, min_length=1, max_length=255)
     description: str | None = None
     cron_expression: str | None = None
     timezone: str | None = None
-    queue_name: str | None = Field(default=None, min_length=1, max_length=100)
+    queue_name: str | None = Field(default=None, min_length=1, max_length=255)
     payload_template: JsonValue = None
     priority: int | None = Field(default=None, ge=-100, le=100)
     max_retries: int | None = Field(default=None, ge=0, le=100)

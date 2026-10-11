@@ -13,16 +13,19 @@ import random
 import threading
 from collections.abc import Callable, Generator
 from dataclasses import dataclass
+from datetime import datetime, timezone
 from enum import Enum
 from typing import Any, Literal
 from urllib.parse import quote
 
+from spooled.errors import SpooledError, create_error_from_response
 from spooled.realtime.events import (
     RealtimeEvent,
     RealtimeEventType,
     SubscribeCommand,
     UnsubscribeCommand,
 )
+from spooled.realtime.sse import SSE_TIMEOUT, closes_job_stream
 
 # Optional imports
 try:
@@ -166,6 +169,11 @@ class SpooledRealtime:
         self._receive_thread: threading.Thread | None = None
         self._stop_event = threading.Event()
         self._lock = threading.Lock()
+        # True while connected to /events/jobs/{id}, which the server closes
+        # after the job's terminal status (so a clean end is not a drop).
+        self._sse_job_stream = False
+        # The error that stopped reconnecting for good (e.g. a revoked token).
+        self.last_error: Exception | None = None
         # Lazily created when events() is first used: the single receive thread
         # feeds this queue and events() drains it, so the socket is never read
         # by two consumers at once. It stays None for handler-only usage so
@@ -509,7 +517,9 @@ class SpooledRealtime:
         self._debug(f"Connecting to SSE: {url}", None)
 
         try:
-            self._http_client = httpx.Client()
+            # SSE streams are quiet between events; httpx's default 5 s read
+            # timeout would tear down healthy connections (see realtime/sse.py).
+            self._http_client = httpx.Client(timeout=SSE_TIMEOUT)
             # send(stream=True) keeps the response open until disconnect(); a
             # hand-entered client.stream(...) was closed by the GC (see sse.py).
             self._sse_response = self._http_client.send(
@@ -524,13 +534,31 @@ class SpooledRealtime:
                 stream=True,
             )
 
+            # A 401/403/429 answers with a JSON error body, which would parse as
+            # an empty stream that "ended cleanly": raise the typed error instead.
+            if not self._sse_response.is_success:
+                self._sse_response.read()
+                try:
+                    body = self._sse_response.json()
+                except Exception:
+                    body = None
+                raise create_error_from_response(
+                    self._sse_response.status_code,
+                    body,
+                    self._sse_response.headers.get("X-Request-Id"),
+                    self._sse_response.headers,
+                )
+
             if HAS_SSE:
                 # Raw byte chunks: sseclient splits events on the blank line,
                 # which iter_lines() strips (see realtime/sse.py).
                 self._sse_client = sseclient.SSEClient(self._sse_response.iter_bytes())
 
+            self._sse_job_stream = "/events/jobs/" in url
             self._set_state(ConnectionState.CONNECTED)
-            self._reconnect_attempts = 0
+            # _reconnect_attempts is NOT reset here: a "connected" response proves
+            # nothing (the server may close right away). The receive loop resets it
+            # when the first event arrives.
             self._stop_event.clear()
 
             # Start receive thread
@@ -541,6 +569,7 @@ class SpooledRealtime:
 
         except Exception as e:
             self._debug(f"SSE connection failed: {e}", None)
+            self._disconnect_sse()
             self._set_state(ConnectionState.DISCONNECTED)
             raise
 
@@ -563,19 +592,39 @@ class SpooledRealtime:
         if not self._sse_client:
             return
 
+        finished = False
         try:
             for event in self._sse_client.events():
                 if self._stop_event.is_set():
-                    break
+                    return
 
                 if event.data:
                     parsed = self._parse_sse_event(event.event, event.data)
                     if parsed:
+                        # A delivered event proves the stream is healthy; only now
+                        # is the retry budget restored.
+                        self._reconnect_attempts = 0
+                        if self._sse_job_stream and closes_job_stream(parsed):
+                            finished = True
                         self._dispatch_event(parsed)
         except Exception as e:
             if not self._stop_event.is_set():
                 self._debug(f"SSE receive error: {e}", None)
                 self._handle_disconnect()
+            return
+
+        # The stream ended without an error: the server closed it (its 30 minute
+        # cap, or the end of a job's life). Treat it like a drop, otherwise the
+        # client stays "connected" with a dead thread and delivers nothing more.
+        if self._stop_event.is_set():
+            return
+        if finished:
+            self._debug("SSE job stream finished", None)
+            self._disconnect_sse()
+            self._set_state(ConnectionState.DISCONNECTED)
+            return
+        self._debug("SSE stream closed by server", None)
+        self._handle_disconnect()
 
     def _build_sse_url(self, filter: SubscriptionFilter | None = None) -> str:
         """Build SSE endpoint URL."""
@@ -717,11 +766,36 @@ class SpooledRealtime:
                 self.connect()
             except Exception as e:
                 self._debug(f"Reconnect failed: {e}", None)
+                if isinstance(e, SpooledError) and not e.is_retryable():
+                    # 401/403/404...: the server rejected the token or the
+                    # subscription, so every further attempt would fail the same way.
+                    self._give_up(e)
+                    return
                 self._handle_disconnect()
 
         self._reconnect_timer = threading.Timer(delay, do_reconnect)
         self._reconnect_timer.daemon = True
         self._reconnect_timer.start()
+
+    def _give_up(self, error: Exception) -> None:
+        """Stop reconnecting for good and tell the application why.
+
+        There is no caller to raise to (reconnects run on a timer thread), so the
+        error is kept in ``last_error`` and delivered as an ``error`` event.
+        """
+        self.last_error = error
+        self._set_state(ConnectionState.DISCONNECTED)
+        self._dispatch_event(
+            RealtimeEvent(
+                type="error",
+                data={
+                    "message": str(error),
+                    "code": getattr(error, "code", None),
+                    "status_code": getattr(error, "status_code", None),
+                },
+                timestamp=datetime.now(timezone.utc),
+            )
+        )
 
     @staticmethod
     def _filter_to_id(filter: SubscriptionFilter) -> str:

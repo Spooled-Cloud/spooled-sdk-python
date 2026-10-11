@@ -157,5 +157,40 @@ def resolve_config(config: SpooledClientConfig) -> ResolvedConfig:
 
 def validate_config(config: ResolvedConfig) -> None:
     """Validate that configuration has required authentication."""
-    if not config.api_key and not config.access_token:
-        raise ValueError("Either api_key or access_token must be provided")
+    # An admin key alone is enough for the /admin endpoints (X-Admin-Key header).
+    if not config.api_key and not config.access_token and not config.admin_key:
+        raise ValueError(
+            "Either api_key or access_token must be provided "
+            "(or admin_key for a client that only calls the admin endpoints)"
+        )
+
+
+def merge_client_config(current: ResolvedConfig, overrides: dict[str, Any]) -> SpooledClientConfig:
+    """Build the config for ``with_options()``: everything in ``current`` plus ``overrides``.
+
+    Every field is carried over -- headers, retry and circuit-breaker settings,
+    user agent, timeouts, gRPC address and WebSocket URL -- not just the
+    credentials and base URL. ``overrides`` entries that are ``None`` mean "keep".
+    """
+    merged: dict[str, Any] = {
+        "api_key": current.api_key,
+        "access_token": current.access_token,
+        "refresh_token": current.refresh_token,
+        "admin_key": current.admin_key,
+        "base_url": current.base_url,
+        "grpc_address": current.grpc_address,
+        "timeout": current.timeout,
+        "connect_timeout": current.connect_timeout,
+        "retry": current.retry,
+        "circuit_breaker": current.circuit_breaker,
+        "headers": dict(current.headers),
+        "user_agent": current.user_agent,
+        "auto_refresh_token": current.auto_refresh_token,
+        "debug": current.debug_fn is not None,
+    }
+    # ``ws_url`` is always resolved, but when it was only derived from the base
+    # URL it must be derived again if ``base_url`` is overridden.
+    if current.ws_url != SpooledClientConfig(base_url=current.base_url).get_ws_url().rstrip("/"):
+        merged["ws_url"] = current.ws_url
+    merged.update({key: value for key, value in overrides.items() if value is not None})
+    return SpooledClientConfig(**merged)

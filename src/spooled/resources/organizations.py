@@ -7,6 +7,7 @@ from __future__ import annotations
 import builtins
 from typing import Any
 
+from spooled.errors import UnsupportedOperationError
 from spooled.resources.base import AsyncBaseResource, BaseResource
 from spooled.types.organizations import (
     CheckSlugResponse,
@@ -19,6 +20,12 @@ from spooled.types.organizations import (
     UpdateOrganizationParams,
     UsageInfo,
     WebhookTokenResponse,
+)
+
+_CLEAR_WEBHOOK_TOKEN_UNSUPPORTED = (
+    "Clearing the webhook token is not supported by the Spooled API: the server always "
+    "rejects it so that webhook authentication cannot be switched off. "
+    "Use regenerate_webhook_token() to rotate the token instead."
 )
 
 
@@ -88,8 +95,15 @@ class OrganizationsResource(BaseResource):
         return WebhookTokenResponse.model_validate(data)
 
     def clear_webhook_token(self) -> None:
-        """Clear the webhook token."""
-        self._http.post("/organizations/webhook-token/clear", body={"confirm": True})
+        """Clear the webhook token.
+
+        .. deprecated:: 1.3.0
+            The API never allows clearing the webhook token (it answers every
+            request with a validation error), so this raises
+            :class:`~spooled.errors.UnsupportedOperationError` without a network
+            call. Use :meth:`regenerate_webhook_token` to rotate the token.
+        """
+        raise UnsupportedOperationError(_CLEAR_WEBHOOK_TOKEN_UNSUPPORTED)
 
 
 class AsyncOrganizationsResource(AsyncBaseResource):
@@ -160,5 +174,11 @@ class AsyncOrganizationsResource(AsyncBaseResource):
         return WebhookTokenResponse.model_validate(data)
 
     async def clear_webhook_token(self) -> None:
-        """Clear the webhook token."""
-        await self._http.post("/organizations/webhook-token/clear", body={"confirm": True})
+        """Clear the webhook token.
+
+        .. deprecated:: 1.3.0
+            See :meth:`OrganizationsResource.clear_webhook_token`: raises
+            :class:`~spooled.errors.UnsupportedOperationError` without a
+            network call.
+        """
+        raise UnsupportedOperationError(_CLEAR_WEBHOOK_TOKEN_UNSUPPORTED)
