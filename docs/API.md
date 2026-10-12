@@ -175,6 +175,10 @@ queue = client.queues.update_config("my-queue", {
 })
 ```
 
+`max_retries` and `default_timeout` are the defaults for new jobs of the queue. A `rate_limit` field is
+accepted and stored, but it is **not enforced**: workers are not throttled by it, so do not rely on it.
+Job retries use a fixed delay of `2^n` seconds capped at 60 s; there is no per-queue backoff setting.
+
 ### Get Queue Stats
 
 ```python

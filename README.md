@@ -207,6 +207,16 @@ print(f"Pending jobs: {stats.pending}")
 client.close()
 ```
 
+Leases and streams (server behaviour):
+
+- `queue.dequeue(...)` hands out up to `batch_size` jobs, each with a lease of
+  `lease_duration_secs` (5-3600 s; when it is omitted or `0` the server default applies, 300 s on
+  Spooled Cloud). A job that can run longer than its lease needs a longer lease, or
+  `queue.renew_lease(job_id, worker_id, extension_secs, lease_id=...)` before it expires.
+- `queue.stream_jobs(...)` delivers **one job at a time per stream**: the next job arrives only after
+  the previous one on that stream is completed, failed or released. Settle every job, and open one
+  stream per job slot to run jobs in parallel (at most 100 open streams per organization).
+
 ### When to use gRPC?
 
 - **High Throughput**: Persistent HTTP/2 and Protobuf can reduce overhead; benchmark your workload and network path.
@@ -272,7 +282,9 @@ try:
 except NotFoundError:
     print("Job not found")
 except RateLimitError as e:
-    # 429 covers both per-second rate limiting and plan-quota errors.
+    # 429 covers both request-rate limiting and plan-quota errors. The only rate-limit
+    # header the API sends is Retry-After (no X-RateLimit-* headers); the plan limit is
+    # per organization in requests/second, an API key's own rate_limit is requests/minute.
     # A plan quota is a QuotaExceededError (code "QUOTA_EXCEEDED", with
     # resource/current/limit/plan): it is never retried, because it will not clear in seconds.
     if isinstance(e, QuotaExceededError):
