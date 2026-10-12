@@ -2,6 +2,70 @@
 
 All notable changes to the Spooled Python SDK are documented here.
 
+## [1.4.0] - 2026-10-12
+
+Catches up with backend 0.1.122. Everything is additive: existing calls,
+parameters and return values keep working, and the two fixes only change
+behaviour that was wrong.
+
+### Fixed
+
+- **`webhooks.list()`, `get()` and `update()` no longer fail on newer webhooks.**
+  A webhook subscribed to `job.deadlettered`, `job.retried`, `workflow.completed`
+  or `workflow.failed` (which the dashboard already offers) made every read raise
+  `pydantic.ValidationError`, for the whole organization's list. `update()` raised
+  after the server had applied the change. Webhook `events`, `format` and
+  `last_status` now accept values this SDK does not know yet.
+- **gRPC `queue.fail(..., retry=False)` dead-letters the job again.** The bundled
+  proto had a plain `bool retry`, so `False` was never put on the wire and the
+  server retried the job up to `max_retries`. The proto is synced with the backend
+  (`optional bool retry = 4`) and the stubs regenerated; the ProcessJobs `fail`
+  message is fixed the same way. `retry=None` leaves the field unset (server
+  default: retry).
+- No response model fails on a new enum value any more: job, worker and workflow
+  `status`, plan tiers (`plan_tier`, `UsageInfo.plan`), webhook delivery `status`
+  and `dependency_mode` keep an unknown value as a string.
+- gRPC `ALREADY_EXISTS` maps to `ConflictError` (was `ServerError`).
+- `scripts/generate_grpc.sh` writes LF line endings on Windows too.
+
+### Added
+
+- Webhook `format` (`json`, `slack`, `discord`, `teams`) on create, update and
+  read, and the four new events on `WebhookEvent`.
+- `client.jobs.list()` filters: `status` as a list or `"failed,deadletter"`,
+  `q`, `job_type`, `created_after`, `created_before` (RFC 3339; a naive datetime
+  is UTC). `jobs.dlq.list()` takes the same filters except `status`. `tag`
+  accepts up to 1024 characters (was 64; the API allows 1024 bytes).
+- `jobs.list()`, `jobs.dlq.list()` and the new `jobs.history()` return a `Page`:
+  still a `list`, plus `has_more` from the `X-Has-More` header.
+- `client.jobs.history(job_id, {"order_dir": "desc", "limit": 50})` for
+  `GET /jobs/{id}/history` (`JobHistoryEvent`: `id`, `job_id`, `event_type`,
+  `worker_id`, `details`, `created_at`).
+- `Worker.jobs_processed` / `jobs_failed` and the same on `WorkerSummary`.
+- `client.webhooks.list_inbound_deliveries()` for the inbound webhook log
+  (`GET /webhooks/deliveries`, filters `status`, `since`, `queue_name`).
+- `client.rate_limit`: the `X-RateLimit-Limit`, `-Remaining`, `-Reset` (Unix
+  seconds, as an aware UTC datetime) and `-Scope` values of the latest response,
+  which the API sends on every response. `RateLimitError.scope` is new.
+- gRPC `workers.register(..., worker_id=...)` (stable id upsert) and
+  `GrpcRegisterWorkerRequest.worker_id`.
+- `client.metrics.get(token=...)`: `GET /metrics` takes the server's metrics
+  token, not an API key.
+
+### Docs
+
+- The README no longer says the API sends no `X-RateLimit-*` headers, and no
+  longer claims `SpooledClient` reads `SPOOLED_API_KEY` / `SPOOLED_BASE_URL` (it
+  does not; the examples use those names). `lease_id` is documented as required
+  on REST `complete`/`fail`/`heartbeat` (422 without it) and gRPC settlement, and
+  the gRPC `Struct` limits are spelled out: only object payloads, and integers of
+  2^53 and above lose precision over gRPC (REST keeps them).
+- `scripts/test_local.py` / `test_production.py` follow the current API: they
+  send `lease_id`, `confirm=True` on DLQ purge, accept `sp_` keys, expect `/metrics`
+  to answer 401 without the metrics token, cover the additions above, and skip
+  steps with side effects outside the test organization (new organization, login
+  email, billing portal) against a non-local server unless `ALLOW_UNSAFE=1`.
+
 ## [1.3.0] - 2026-10-10
 
 Worker shutdown and failure semantics, realtime auth and several client defaults
