@@ -99,6 +99,35 @@ handlers finish for up to `shutdown_timeout` seconds and still acks their result
 deregisters. A handler is only signalled (`ctx.signal`) and failed once it outlives that
 timeout or the job's own `timeout_seconds`. See [docs/WORKER.md](docs/WORKER.md).
 
+If you drive the worker endpoints yourself (`client.jobs.claim/complete/fail/heartbeat`),
+send the `lease_id` from the claimed job on every `complete`, `fail` and `heartbeat`: the API
+requires it (422 without it) and applies the call only to the lease you hold. `SpooledWorker`
+does this for you.
+
+### List Jobs, History and Paging
+
+```python
+from datetime import datetime, timezone
+
+page = client.jobs.list({
+    "status": ["failed", "deadletter"],   # one status, a list, or "failed,deadletter"
+    "q": "invoice",                       # id prefix, queue name or payload.job_type
+    "job_type": "send_invoice",           # exact payload.job_type
+    "created_after": datetime(2026, 10, 1, tzinfo=timezone.utc),
+    "limit": 50,
+})
+for job in page:
+    print(job.id, job.status)
+if page.has_more:                         # from the X-Has-More response header
+    next_page = client.jobs.list({"status": ["failed", "deadletter"], "offset": 50})
+
+for event in client.jobs.history(job.id):  # oldest first; {"order_dir": "desc"} for newest
+    print(event.created_at, event.event_type, event.worker_id)
+```
+
+`jobs.list()`, `jobs.dlq.list()` and `jobs.history()` return a normal `list` with a
+`has_more` attribute (`None` when the server sends no `X-Has-More`).
+
 ## Real-world examples (beginner friendly)
 
 If you want 5 copy/paste “real life” setups (Stripe → jobs, GitHub Actions → jobs, cron schedules, CSV import, website signup), see:
@@ -216,6 +245,19 @@ Leases and streams (server behaviour):
 - `queue.stream_jobs(...)` delivers **one job at a time per stream**: the next job arrives only after
   the previous one on that stream is completed, failed or released. Settle every job, and open one
   stream per job slot to run jobs in parallel (at most 100 open streams per organization).
+- `queue.complete`, `queue.fail` and `queue.renew_lease` need the dequeued job's `lease_id`
+  (`INVALID_ARGUMENT` without it). `queue.fail(..., retry=False, lease_id=...)` dead-letters the
+  job now; the default (`retry=True`) retries it until `max_retries` is used up.
+- `workers.register(queue_name, hostname, worker_id="pod-7")` takes an optional stable
+  `worker_id`: registering the same id again after a restart updates that worker instead of
+  adding one.
+
+Payloads over gRPC are `google.protobuf.Struct`, which has two limits that REST does not:
+
+- `payload` and `result` must be JSON **objects**. A job created over REST with a string,
+  number or array payload arrives over gRPC as an empty dict.
+- Struct numbers are doubles, so integers of 2^53 (9 007 199 254 740 992) and above lose
+  precision over gRPC. REST keeps them exact; send large ids as strings, or use REST.
 
 ### When to use gRPC?
 
@@ -282,9 +324,10 @@ try:
 except NotFoundError:
     print("Job not found")
 except RateLimitError as e:
-    # 429 covers both request-rate limiting and plan-quota errors. The only rate-limit
-    # header the API sends is Retry-After (no X-RateLimit-* headers); the plan limit is
-    # per organization in requests/second, an API key's own rate_limit is requests/minute.
+    # 429 covers both request-rate limiting and plan-quota errors. A rate-limited 429
+    # carries Retry-After; e.limit, e.remaining, e.reset (aware UTC datetime) and e.scope
+    # come from the X-RateLimit-* headers. The plan limit is per organization in
+    # requests/second, an API key's own rate_limit is requests/minute.
     # A plan quota is a QuotaExceededError (code "QUOTA_EXCEEDED", with
     # resource/current/limit/plan): it is never retried, because it will not clear in seconds.
     if isinstance(e, QuotaExceededError):
@@ -293,6 +336,16 @@ except RateLimitError as e:
         print(f"Rate limited. Retry after {e.retry_after}s")
 except SpooledError as e:
     print(f"API error: {e.code} - {e.message}")
+```
+
+The API sends `X-RateLimit-Limit`, `X-RateLimit-Remaining`, `X-RateLimit-Reset` (Unix
+seconds) and `X-RateLimit-Scope` on **every** response. The latest values are on
+`client.rate_limit` (a `RateLimitInfo`, `None` before the first response):
+
+```python
+client.jobs.get_stats()
+info = client.rate_limit
+print(info.remaining, "of", info.limit, "left until", info.reset, f"({info.scope})")
 ```
 
 ## API Reference
@@ -306,7 +359,8 @@ except SpooledError as e:
 | `client.workers` | Worker registration, heartbeat |
 | `client.schedules` | Cron job scheduling |
 | `client.workflows` | Multi-job workflows with dependencies |
-| `client.webhooks` | Outgoing webhook management |
+| `client.webhooks` | Outgoing webhooks (events, `json`/`slack`/`discord`/`teams` format), deliveries, inbound webhook log |
+| `client.ingest` | Inbound custom webhooks (`POST /webhooks/{org_id}/custom`) |
 | `client.api_keys` | API key management |
 | `client.organizations` | Organization settings, usage |
 | `client.billing` | Billing status, portal |
@@ -328,10 +382,14 @@ except SpooledError as e:
 
 ## Environment Variables
 
-| Variable | Description |
-|----------|-------------|
-| `SPOOLED_API_KEY` | API key for authentication |
-| `SPOOLED_BASE_URL` | API base URL (default: https://api.spooled.cloud) |
+The SDK does **not** read environment variables: pass the API key (and a non-default base
+URL) to `SpooledClient` yourself. The examples and the integration tests in this repository
+use these names by convention:
+
+| Variable | Used for |
+|----------|----------|
+| `SPOOLED_API_KEY` | `SpooledClient(api_key=os.environ["SPOOLED_API_KEY"])` |
+| `SPOOLED_BASE_URL` | `base_url=` (the SDK default is `https://api.spooled.cloud`) |
 
 ## Requirements
 

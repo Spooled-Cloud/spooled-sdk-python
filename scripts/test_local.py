@@ -19,7 +19,7 @@ Tests ALL API endpoints, SDK features, and integration scenarios:
 - Edge cases and error handling
 
 Usage:
-  API_KEY=sk_test_... BASE_URL=http://localhost:8080 python scripts/test_local.py
+  API_KEY=sp_test_... BASE_URL=http://localhost:8080 python scripts/test_local.py
 
 Options:
   GRPC_ADDRESS=localhost:50051  - gRPC server address (local/self-hosted)
@@ -28,6 +28,13 @@ Options:
   VERBOSE=1                     - Enable debug logging
   WEBHOOK_PORT=3001             - Custom webhook server port
   ADMIN_API_KEY=...             - Admin API key for admin tests
+  METRICS_TOKEN=...             - Server metrics token (GET /metrics needs it)
+  ALLOW_UNSAFE=1                - Also run steps that are skipped against a non-local
+                                  BASE_URL: creating an organization, sending a login
+                                  email and opening a billing portal session
+
+The script imports the SDK from ../src, so it tests this working tree, not an
+installed wheel.
 """
 
 from __future__ import annotations
@@ -44,12 +51,13 @@ from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 from http.server import BaseHTTPRequestHandler, HTTPServer
 from typing import Any
+from urllib.parse import urlsplit
 
 # Add src to path if running from scripts directory
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "src"))
 
 from spooled import SpooledClient
-from spooled.errors import SpooledError
+from spooled.errors import AuthenticationError, SpooledError, UnsupportedOperationError
 from spooled.worker import SpooledWorker
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -65,11 +73,35 @@ VERBOSE = os.environ.get("VERBOSE", "0") in ("1", "true", "True")
 SKIP_GRPC = os.environ.get("SKIP_GRPC", "0") in ("1", "true", "True")
 SKIP_STRESS = os.environ.get("SKIP_STRESS", "0") in ("1", "true", "True")
 ADMIN_API_KEY = os.environ.get("ADMIN_API_KEY", "")
+METRICS_TOKEN = os.environ.get("METRICS_TOKEN", "")
+
+
+def _is_local_url(url: str) -> bool:
+    host = urlsplit(url).hostname or ""
+    return host in ("localhost", "127.0.0.1", "::1") or host.endswith((".localhost", ".test"))
+
+
+IS_LOCAL = _is_local_url(BASE_URL)
+# Steps with side effects outside the test organization (a new organization, a
+# login email, a Stripe portal session) only run against a local server unless
+# explicitly allowed.
+RUN_UNSAFE = IS_LOCAL or os.environ.get("ALLOW_UNSAFE", "0") in ("1", "true", "True")
+UNSAFE_REASON = "side effects outside the test org on a non-local server; ALLOW_UNSAFE=1 runs it"
+# Production refuses webhook URLs on private hosts (SSRF protection), so the
+# outgoing webhook tests point at a public URL there; nothing is received.
+PUBLIC_WEBHOOK_URL = "https://example.com/spooled-sdk-python-test"
+
+# The output has emoji; a Windows console or pipe defaults to a legacy code page.
+for _stream in (sys.stdout, sys.stderr):
+    try:
+        _stream.reconfigure(encoding="utf-8", errors="replace")  # type: ignore[attr-defined]
+    except (AttributeError, ValueError):
+        pass
 
 if not API_KEY:
     print("❌ API_KEY environment variable is required")
     print(
-        "   Usage: API_KEY=sk_test_... BASE_URL=http://localhost:8080 python scripts/test_local.py"
+        "   Usage: API_KEY=sp_test_... BASE_URL=http://localhost:8080 python scripts/test_local.py"
     )
     sys.exit(1)
 
@@ -443,6 +475,7 @@ def test_job_lifecycle(client: SpooledClient) -> None:
     queue_name = f"{test_prefix}-jobs-lifecycle"
     job_id = ""
     worker_id = ""
+    lease_id = ""
 
     def test_create_lifecycle_job() -> None:
         nonlocal job_id
@@ -470,6 +503,7 @@ def test_job_lifecycle(client: SpooledClient) -> None:
     run_test("POST /api/v1/workers/register", test_register_worker)
 
     def test_claim_job() -> None:
+        nonlocal lease_id
         result = client.jobs.claim(
             {
                 "queue_name": queue_name,
@@ -479,6 +513,8 @@ def test_job_lifecycle(client: SpooledClient) -> None:
         )
         assert_equal(len(result.jobs), 1, "should claim 1 job")
         assert_equal(result.jobs[0].id, job_id, "job id")
+        assert_defined(result.jobs[0].lease_id, "lease id")
+        lease_id = result.jobs[0].lease_id or ""
 
     run_test("POST /api/v1/jobs/claim - Claim job", test_claim_job)
 
@@ -489,18 +525,35 @@ def test_job_lifecycle(client: SpooledClient) -> None:
     run_test("Job status is processing after claim", test_job_processing)
 
     def test_heartbeat() -> None:
-        client.jobs.heartbeat(job_id, {"worker_id": worker_id})
+        client.jobs.heartbeat(job_id, {"worker_id": worker_id, "lease_id": lease_id})
         job = client.jobs.get(job_id)
         assert_defined(job.lease_expires_at, "lease expires at")
 
     run_test("POST /api/v1/jobs/{id}/heartbeat - Extend lease", test_heartbeat)
 
     def test_complete_job() -> None:
-        client.jobs.complete(job_id, {"worker_id": worker_id, "result": {"done": True}})
+        client.jobs.complete(
+            job_id, {"worker_id": worker_id, "result": {"done": True}, "lease_id": lease_id}
+        )
         job = client.jobs.get(job_id)
         assert_equal(job.status, "completed", "status")
 
     run_test("POST /api/v1/jobs/{id}/complete - Complete job", test_complete_job)
+
+    def test_complete_requires_lease() -> None:
+        other = client.jobs.create({"queue_name": queue_name, "payload": {"lease": "missing"}})
+        client.jobs.claim({"queue_name": queue_name, "worker_id": worker_id, "limit": 1})
+        try:
+            client.jobs.complete(other.id, {"worker_id": worker_id})
+            raise AssertionError("complete without lease_id should be rejected")
+        except SpooledError as e:
+            assert_equal(e.status_code, 422, "status code")
+        finally:
+            job = client.jobs.get(other.id)
+            if job.lease_id:
+                client.jobs.complete(other.id, {"worker_id": worker_id, "lease_id": job.lease_id})
+
+    run_test("Complete without lease_id is rejected (422)", test_complete_requires_lease)
 
     def test_deregister_worker() -> None:
         client.workers.deregister(worker_id)
@@ -515,6 +568,7 @@ def test_job_failure_and_retry(client: SpooledClient) -> None:
     queue_name = f"{test_prefix}-jobs-failure"
     job_id = ""
     worker_id = ""
+    lease_id = ""
 
     def test_create_failure_job() -> None:
         nonlocal job_id
@@ -530,7 +584,7 @@ def test_job_failure_and_retry(client: SpooledClient) -> None:
     run_test("Create job for failure test", test_create_failure_job)
 
     def test_register_and_claim() -> None:
-        nonlocal worker_id
+        nonlocal worker_id, lease_id
         reg = client.workers.register(
             {
                 "queue_name": queue_name,
@@ -539,12 +593,17 @@ def test_job_failure_and_retry(client: SpooledClient) -> None:
             }
         )
         worker_id = reg.id
-        client.jobs.claim({"queue_name": queue_name, "worker_id": worker_id, "limit": 1})
+        claimed = client.jobs.claim({"queue_name": queue_name, "worker_id": worker_id, "limit": 1})
+        assert_equal(len(claimed.jobs), 1, "should claim 1 job")
+        lease_id = claimed.jobs[0].lease_id or ""
 
     run_test("Register worker and claim job", test_register_and_claim)
 
     def test_fail_job() -> None:
-        client.jobs.fail(job_id, {"worker_id": worker_id, "error": "Intentional test failure"})
+        client.jobs.fail(
+            job_id,
+            {"worker_id": worker_id, "error": "Intentional test failure", "lease_id": lease_id},
+        )
         job = client.jobs.get(job_id)
         # Job should be pending again (retrying) or failed
         assert_true(
@@ -599,7 +658,9 @@ def test_dlq_advanced(client: SpooledClient) -> None:
 
     def test_purge_dlq() -> None:
         try:
-            result = client.jobs.dlq.purge({"queue_name": f"{test_prefix}-dlq-test"})
+            result = client.jobs.dlq.purge(
+                {"queue_name": f"{test_prefix}-dlq-test", "confirm": True}
+            )
             log(f"Purged {result.purged_count} jobs from DLQ")
         except SpooledError as e:
             log(f"DLQ purge: {e.message}")
@@ -762,7 +823,7 @@ def test_webhooks(client: SpooledClient) -> None:
     print("─" * 60)
 
     webhook_id = ""
-    webhook_url = f"http://localhost:{WEBHOOK_PORT}/webhook"
+    webhook_url = f"http://localhost:{WEBHOOK_PORT}/webhook" if IS_LOCAL else PUBLIC_WEBHOOK_URL
     ssrf_blocked = False  # Track if SSRF protection is blocking localhost
 
     def test_create_webhook() -> None:
@@ -830,7 +891,11 @@ def test_webhooks(client: SpooledClient) -> None:
                 log("No webhook to test")
                 return
             result = client.webhooks.test(webhook_id)
-            assert_true(result.success, "test should succeed")
+            if IS_LOCAL:
+                assert_true(result.success, "test should succeed")
+            else:
+                # The public placeholder URL does not accept the POST.
+                log(f"Webhook test: success={result.success} status={result.status_code}")
         except SpooledError as e:
             # Webhook test may fail if localhost is not reachable
             log(f"Webhook test: {e.message}")
@@ -1095,7 +1160,8 @@ def test_workflow_jobs(client: SpooledClient) -> None:
             jobs = client.workflows.jobs.list(workflow_id)
             if len(jobs) != 3:
                 raise AssertionError(f"Expected 3 jobs, got {len(jobs)}")
-            log(f"Listed {len(jobs)} jobs: {', '.join(j.key for j in jobs)}")
+            # The API returns no creation keys (key is None); map ids via create().
+            log(f"Listed {len(jobs)} jobs: {', '.join(j.id for j in jobs)}")
         except SpooledError as e:
             if e.status_code == 404:
                 log("Workflow jobs list endpoint not available")
@@ -1162,7 +1228,7 @@ def test_api_keys(client: SpooledClient) -> None:
         new_key = result.key
         assert_defined(result.id, "key id")
         assert_defined(result.key, "key value")
-        assert_true(result.key.startswith("sk_"), "key should start with sk_")
+        assert_true(result.key.startswith(("sp_", "sk_")), "key should start with sp_")
 
     run_test("POST /api/v1/api-keys - Create API key", test_create_api_key)
 
@@ -1260,16 +1326,11 @@ def test_organization_webhook_token(client: SpooledClient) -> None:
     def test_clear_webhook_token() -> None:
         try:
             client.organizations.clear_webhook_token()
-            log("Webhook token cleared successfully")
-        except SpooledError as e:
-            if e.status_code == 404:
-                log("Clear webhook token endpoint not available")
-            else:
-                raise
+            raise AssertionError("clear_webhook_token should raise UnsupportedOperationError")
+        except UnsupportedOperationError:
+            log("Clearing the webhook token is unsupported (rotate it instead)")
 
-    run_test(
-        "POST /api/v1/organizations/webhook-token/clear - Clear token", test_clear_webhook_token
-    )
+    run_test("clear_webhook_token raises UnsupportedOperationError", test_clear_webhook_token)
 
 
 def test_billing(client: SpooledClient) -> None:
@@ -1298,7 +1359,12 @@ def test_billing(client: SpooledClient) -> None:
             else:
                 log(f"Billing portal: {e.message}")
 
-    run_test("POST /api/v1/billing/portal - Create portal session", test_create_portal)
+    run_test(
+        "POST /api/v1/billing/portal - Create portal session",
+        test_create_portal,
+        skip=not RUN_UNSAFE,
+        skip_reason=UNSAFE_REASON,
+    )
 
 
 def test_auth(client: SpooledClient) -> None:
@@ -1377,7 +1443,12 @@ def test_registration() -> None:
             else:
                 log(f"Registration returned {e.code}")
 
-    run_test("POST /api/v1/organizations - Create new organization", test_create_org)
+    run_test(
+        "POST /api/v1/organizations - Create new organization",
+        test_create_org,
+        skip=not RUN_UNSAFE,
+        skip_reason=UNSAFE_REASON,
+    )
 
 
 def test_realtime(client: SpooledClient) -> None:
@@ -1672,25 +1743,28 @@ def test_error_handling(client: SpooledClient) -> None:
     run_test("401 for invalid API key", test_unauthorized)
 
 
-def test_metrics() -> None:
+def test_metrics(client: SpooledClient) -> None:
     print("\n📈 Metrics")
     print("─" * 60)
 
-    import urllib.request
-
     def test_metrics_endpoint() -> None:
+        if METRICS_TOKEN:
+            content = client.metrics.get(token=METRICS_TOKEN)
+            assert_true(
+                "spooled" in content.lower() or "http" in content.lower(), "should have metrics"
+            )
+            log("Metrics endpoint accessible with the metrics token")
+            return
         try:
-            req = urllib.request.Request(f"{BASE_URL}/metrics")
-            with urllib.request.urlopen(req, timeout=5) as resp:
-                content = resp.read().decode()
-                assert_true(
-                    "spooled" in content.lower() or "http" in content.lower(), "should have metrics"
-                )
-                log("Metrics endpoint accessible")
-        except Exception as e:
-            log(f"Metrics: {e}")
+            content = client.metrics.get()
+        except AuthenticationError:
+            log("Metrics endpoint is token-protected (401 with an API key)")
+            return
+        if not IS_LOCAL:
+            raise AssertionError("/metrics answered without the metrics token")
+        log("Metrics endpoint is open (no METRICS_TOKEN configured on this server)")
 
-    run_test("GET /metrics - Prometheus metrics", test_metrics_endpoint)
+    run_test("GET /metrics - token-protected Prometheus metrics", test_metrics_endpoint)
 
 
 def test_concurrent_operations(client: SpooledClient) -> None:
@@ -1865,6 +1939,7 @@ def test_grpc(client: SpooledClient) -> None:
     queue_name = f"{test_prefix}-grpc"
     worker_id = ""
     job_id = ""
+    lease_id = ""
     grpc_client = None
 
     def test_connect() -> None:
@@ -1938,6 +2013,7 @@ def test_grpc(client: SpooledClient) -> None:
     run_test("gRPC: Get queue stats", test_grpc_get_queue_stats)
 
     def test_grpc_dequeue() -> None:
+        nonlocal lease_id
         result = grpc_client.queue.dequeue(
             queue_name=queue_name,
             worker_id=worker_id,
@@ -1946,6 +2022,8 @@ def test_grpc(client: SpooledClient) -> None:
         )
         assert_equal(len(result.jobs), 1, "should dequeue 1 job")
         assert_equal(result.jobs[0].id, job_id, "dequeued job id matches")
+        lease_id = result.jobs[0].lease_id or ""
+        assert_true(bool(lease_id), "dequeued job should carry a lease_id")
         log(f"Dequeued job: {result.jobs[0].id}")
 
     run_test("gRPC: Dequeue job", test_grpc_dequeue)
@@ -1955,6 +2033,7 @@ def test_grpc(client: SpooledClient) -> None:
             job_id=job_id,
             worker_id=worker_id,
             extension_secs=60,
+            lease_id=lease_id,
         )
         assert_equal(result.success, True, "renew lease success")
         log(f"Lease renewed, expires: {result.new_expires_at}")
@@ -1966,6 +2045,7 @@ def test_grpc(client: SpooledClient) -> None:
             job_id=job_id,
             worker_id=worker_id,
             result={"processed": True, "message": "Done via gRPC"},
+            lease_id=lease_id,
         )
         assert_equal(result.success, True, "complete success")
         log("Job completed via gRPC")
@@ -1981,11 +2061,13 @@ def test_grpc(client: SpooledClient) -> None:
         fail_job_id = enqueue_result.job_id
 
         # Dequeue it
-        grpc_client.queue.dequeue(
+        dequeued = grpc_client.queue.dequeue(
             queue_name=queue_name,
             worker_id=worker_id,
             batch_size=1,
         )
+        leases = {job.id: job.lease_id or "" for job in dequeued.jobs}
+        assert_true(fail_job_id in leases, "should dequeue the job to fail")
 
         # Fail it
         fail_result = grpc_client.queue.fail(
@@ -1993,6 +2075,7 @@ def test_grpc(client: SpooledClient) -> None:
             worker_id=worker_id,
             error="Test failure from gRPC",
             retry=True,
+            lease_id=leases[fail_job_id],
         )
         assert_equal(fail_result.success, True, "fail success")
         log(f"Job failed, will_retry: {fail_result.will_retry}")
@@ -2261,10 +2344,12 @@ def test_grpc_advanced(client: SpooledClient) -> None:
             return
 
         # Complete with result
+        leases = {j.id: j.lease_id or "" for j in dequeue_result.jobs}
         result = grpc_client.queue.complete(
             job_id=target_job_id,
             worker_id=worker_id,
             result={"output": "success", "processed_at": "now"},
+            lease_id=leases[target_job_id],
         )
         assert_equal(result.success, True, "complete success")
 
@@ -2297,11 +2382,13 @@ def test_grpc_advanced(client: SpooledClient) -> None:
             return
 
         # Fail with retry
+        leases = {j.id: j.lease_id or "" for j in dequeue_result.jobs}
         result = grpc_client.queue.fail(
             job_id=target_job_id,
             worker_id=worker_id,
             error="Test failure - should retry",
             retry=True,
+            lease_id=leases[target_job_id],
         )
         assert_equal(result.success, True, "fail recorded")
         log(f"will_retry={result.will_retry}")
@@ -2383,6 +2470,7 @@ def test_grpc_error_handling(client: SpooledClient) -> None:
             grpc_client.queue.complete(
                 job_id="unclaimed-job-123",
                 worker_id="invalid-worker",
+                lease_id="not-a-lease",
             )
         except Exception as e:
             log(f"Complete error (expected): {type(e).__name__}")
@@ -2465,7 +2553,7 @@ def test_webhook_delivery(client: SpooledClient) -> None:
     queue_name = f"{test_prefix}-webhook-delivery"
     webhook_url = f"http://localhost:{WEBHOOK_PORT}/webhook"
     webhook_id = ""
-    ssrf_blocked = False
+    ssrf_blocked = not IS_LOCAL  # production refuses private webhook URLs
 
     def test_setup_webhook() -> None:
         nonlocal webhook_id, ssrf_blocked
@@ -2607,7 +2695,12 @@ def test_email_login(client: SpooledClient) -> None:
             else:
                 log(f"Email login start returned {e.status_code}")
 
-    run_test("POST /api/v1/auth/email/start - Start email login", test_start_email_login)
+    run_test(
+        "POST /api/v1/auth/email/start - Start email login",
+        test_start_email_login,
+        skip=not RUN_UNSAFE,
+        skip_reason=UNSAFE_REASON,
+    )
 
     def test_check_email() -> None:
         try:
@@ -2690,6 +2783,174 @@ def test_grpc_tier_limits(client: SpooledClient) -> None:
     run_test("gRPC Tier: Test with main org", test_grpc_with_main_org)
 
 
+def test_backend_0_1_122(client: SpooledClient) -> None:
+    """Job filters/history, worker counters, webhook formats/events, inbound
+    log, rate-limit headers and gRPC dead-letter/stable worker id."""
+    print("\n🆕 Backend 0.1.122 additions")
+    print("─" * 60)
+
+    queue_name = f"{test_prefix}-wave8"
+    job_ids: list[str] = []
+    worker_id = ""
+
+    def test_list_filters_and_has_more() -> None:
+        for i in range(3):
+            job_ids.append(
+                client.jobs.create(
+                    {"queue_name": queue_name, "payload": {"job_type": "wave8_type", "n": i}}
+                ).id
+            )
+        since = datetime.now(timezone.utc) - timedelta(minutes=10)
+        page = client.jobs.list(
+            {
+                "queue_name": queue_name,
+                "status": ["pending", "scheduled"],
+                "job_type": "wave8_type",
+                "q": "wave8",
+                "created_after": since,
+                "limit": 2,
+            }
+        )
+        assert_equal(len(page), 2, "page size")
+        assert_equal(page.has_more, True, "has_more on a full page")
+        rest = client.jobs.list(
+            {"queue_name": queue_name, "job_type": "wave8_type", "limit": 2, "offset": 2}
+        )
+        assert_equal(len(rest), 1, "last page size")
+        assert_equal(rest.has_more, False, "has_more on the last page")
+        try:
+            client.jobs.list({"created_after": since, "created_before": since})
+            raise AssertionError("an empty created window should be a 400")
+        except SpooledError as e:
+            assert_equal(e.status_code, 400, "status code")
+
+    run_test(
+        "GET /api/v1/jobs - status list, q, job_type, created window, X-Has-More",
+        test_list_filters_and_has_more,
+    )
+
+    def test_history_and_worker_counters() -> None:
+        nonlocal worker_id
+        reg = client.workers.register(
+            {"queue_name": queue_name, "hostname": "wave8-host", "worker_id": f"{test_prefix}-w8"}
+        )
+        worker_id = reg.id
+        claimed = client.jobs.claim({"queue_name": queue_name, "worker_id": worker_id, "limit": 1})
+        assert_equal(len(claimed.jobs), 1, "claimed one job")
+        job = claimed.jobs[0]
+        client.jobs.complete(
+            job.id, {"worker_id": worker_id, "lease_id": job.lease_id, "result": {"ok": 1}}
+        )
+        events = client.jobs.history(job.id)
+        kinds = [event.event_type for event in events]
+        assert_true(len(kinds) >= 2, f"history should have events, got {kinds}")
+        assert_equal(events.has_more, False, "history has_more")
+        newest = client.jobs.history(job.id, {"order_dir": "desc", "limit": 1})
+        assert_equal(newest[0].id, events[-1].id, "desc order puts the newest first")
+        worker = client.workers.get(worker_id)
+        assert_equal(worker.jobs_processed, 1, "jobs_processed")
+        assert_equal(worker.jobs_failed, 0, "jobs_failed")
+        listed = [w for w in client.workers.list() if w.id == worker_id]
+        assert_equal(listed[0].jobs_processed, 1, "list jobs_processed")
+
+    run_test(
+        "GET /api/v1/jobs/{id}/history and worker jobs_processed/jobs_failed",
+        test_history_and_worker_counters,
+    )
+
+    def test_webhook_formats_and_events() -> None:
+        webhook = client.webhooks.create(
+            {
+                "name": f"{test_prefix}-wave8-webhook",
+                "url": PUBLIC_WEBHOOK_URL,
+                "events": [
+                    "job.deadlettered",
+                    "job.retried",
+                    "workflow.completed",
+                    "workflow.failed",
+                ],
+                "format": "slack",
+            }
+        )
+        try:
+            assert_equal(webhook.format, "slack", "format")
+            listed = [w for w in client.webhooks.list() if w.id == webhook.id]
+            assert_equal(len(listed), 1, "listed")
+            assert_true("job.deadlettered" in listed[0].events, "new event listed")
+            updated = client.webhooks.update(webhook.id, {"format": "teams", "enabled": False})
+            assert_equal(updated.format, "teams", "updated format")
+            assert_equal(client.webhooks.get(webhook.id).enabled, False, "disabled")
+        finally:
+            client.webhooks.delete(webhook.id)
+
+    run_test("Outgoing webhooks: wave-8 events and format", test_webhook_formats_and_events)
+
+    def test_inbound_deliveries() -> None:
+        rows = client.webhooks.list_inbound_deliveries(
+            {"since": datetime.now(timezone.utc) - timedelta(days=1), "limit": 5}
+        )
+        assert_true(isinstance(rows, list), "should return a list")
+        log(f"Inbound log entries: {len(rows)}")
+
+    run_test("GET /api/v1/webhooks/deliveries - inbound webhook log", test_inbound_deliveries)
+
+    def test_rate_limit_headers() -> None:
+        client.jobs.get_stats()
+        info = client.rate_limit
+        assert_defined(info, "rate limit info")
+        assert_true(info.limit is not None and info.limit > 0, "X-RateLimit-Limit")
+        assert_defined(info.remaining, "X-RateLimit-Remaining")
+        assert_defined(info.reset, "X-RateLimit-Reset")
+        drift = abs((info.reset - datetime.now(timezone.utc)).total_seconds())
+        assert_true(drift < 3600, f"reset should be Unix seconds near now, off by {drift}s")
+        log(f"Rate limit: {info.remaining}/{info.limit} scope={info.scope}")
+
+    run_test("X-RateLimit-* on a successful response (client.rate_limit)", test_rate_limit_headers)
+
+    if worker_id:
+        try:
+            client.workers.deregister(worker_id)
+        except Exception:
+            pass
+    for jid in job_ids:
+        try:
+            client.jobs.cancel(jid)
+        except Exception:
+            pass
+
+    if SKIP_GRPC:
+        return
+    try:
+        from spooled.grpc import SpooledGrpcClient
+    except ImportError:
+        return
+
+    def test_grpc_dead_letter_and_worker_id() -> None:
+        use_tls = ":443" in GRPC_ADDRESS or "grpc.spooled" in GRPC_ADDRESS
+        with SpooledGrpcClient(address=GRPC_ADDRESS, api_key=API_KEY, use_tls=use_tls) as grpc_c:
+            stable_id = f"{test_prefix}-grpc-w8"
+            first = grpc_c.workers.register(queue_name, "wave8-grpc", worker_id=stable_id)
+            again = grpc_c.workers.register(queue_name, "wave8-grpc", worker_id=stable_id)
+            assert_equal(first.worker_id, stable_id, "stable worker id")
+            assert_equal(again.worker_id, stable_id, "re-register keeps the id")
+            try:
+                enq = grpc_c.queue.enqueue(queue_name=queue_name, payload={"x": 1}, max_retries=3)
+                got = grpc_c.queue.dequeue(queue_name, stable_id, batch_size=1)
+                assert_equal(len(got.jobs), 1, "dequeued")
+                failed = grpc_c.queue.fail(
+                    enq.job_id, stable_id, "give up", retry=False, lease_id=got.jobs[0].lease_id
+                )
+                assert_equal(failed.will_retry, False, "will_retry")
+                assert_equal(client.jobs.get(enq.job_id).status, "deadletter", "REST status")
+            finally:
+                grpc_c.workers.deregister(stable_id)
+
+    run_test(
+        "gRPC: fail(retry=False) dead-letters; register(worker_id=...) upserts",
+        test_grpc_dead_letter_and_worker_id,
+    )
+
+
 # ─────────────────────────────────────────────────────────────────────────────
 # Summary
 # ─────────────────────────────────────────────────────────────────────────────
@@ -2736,7 +2997,7 @@ def main() -> None:
     print("🧪 SPOOLED COMPREHENSIVE TEST SUITE (Python)")
     print("=" * 60)
     print(f"Base URL:      {BASE_URL}")
-    print(f"API Key:       {API_KEY[:12]}...")
+    print(f"API Key:       {API_KEY[:8]}... (prefix only)")
     print(f"Webhook Port:  {WEBHOOK_PORT}")
     print(f"Verbose:       {VERBOSE}")
     print(f"Skip gRPC:     {SKIP_GRPC}")
@@ -2745,8 +3006,13 @@ def main() -> None:
     test_prefix = generate_test_id()
     print(f"\nTest Prefix:   {test_prefix}")
 
-    print("\n🚀 Starting webhook server...")
-    start_webhook_server()
+    if IS_LOCAL:
+        print("\n🚀 Starting webhook server...")
+        start_webhook_server()
+    else:
+        print("\nWebhook server not started (a non-local server cannot reach it)")
+    if not RUN_UNSAFE:
+        print("Unsafe steps:  skipped (non-local BASE_URL; ALLOW_UNSAFE=1 runs them)")
 
     client = SpooledClient(
         api_key=API_KEY,
@@ -2816,7 +3082,7 @@ def main() -> None:
         test_error_handling(client)
 
         # Metrics
-        test_metrics()
+        test_metrics(client)
 
         # Concurrent operations
         test_concurrent_operations(client)
@@ -2849,6 +3115,9 @@ def main() -> None:
         # Tier Limits
         test_tier_limits(client)
         test_grpc_tier_limits(client)
+
+        # Backend 0.1.122 additions
+        test_backend_0_1_122(client)
 
     finally:
         print("\n🧹 Cleaning up...")

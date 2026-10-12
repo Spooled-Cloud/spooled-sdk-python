@@ -80,14 +80,66 @@ print(job.id, job.status, job.payload)
 ### List Jobs
 
 ```python
+from datetime import datetime, timezone
+
 jobs = client.jobs.list({
     "queue_name": "my-queue",
-    "status": "pending",
-    "tag": "billing",  # Optional: filter by a single tag
+    "status": ["pending", "failed"],  # One status, a list, or "pending,failed"
+    "tag": "billing",                 # Optional: filter by a single tag
+    "q": "inv",                       # Optional: id prefix, queue name or payload.job_type
+    "job_type": "send_invoice",       # Optional: exact payload.job_type
+    "created_after": datetime(2026, 10, 1, tzinfo=timezone.utc),  # Optional, inclusive
+    "created_before": datetime(2026, 10, 2, tzinfo=timezone.utc),  # Optional, exclusive
     "limit": 50,
     "offset": 0,
 })
+print(len(jobs), jobs.has_more)
 ```
+
+The result is a `Page`: a plain `list` of `JobSummary` with a `has_more` attribute read
+from the `X-Has-More` response header (`True` when another page follows, `None` if the
+server did not send it). Page through everything with `offset`:
+
+```python
+offset = 0
+while True:
+    page = client.jobs.list({"status": "failed", "limit": 100, "offset": offset})
+    handle(page)
+    if not page.has_more:
+        break
+    offset += len(page)
+```
+
+Times are sent as RFC 3339; a naive `datetime` is taken as UTC. An invalid filter value
+(unknown status, unparseable time, `created_after >= created_before`) is a 400
+`ValidationError` from the API, or a pydantic error before the request for values the
+SDK can check itself.
+
+### Job History
+
+```python
+events = client.jobs.history("job_xxx")                      # oldest first
+latest = client.jobs.history("job_xxx", {"order_dir": "desc", "limit": 20})
+for event in events:
+    print(event.created_at, event.event_type, event.worker_id, event.details)
+print(events.has_more)
+```
+
+Each `JobHistoryEvent` has `id`, `job_id`, `event_type` (free-form: `created`,
+`claimed`, `completed`, `failed`, ...), `worker_id`, `details` (any JSON) and
+`created_at`. `limit` is 1-500 (default 100).
+
+### Worker Endpoints (claim, complete, fail, heartbeat)
+
+```python
+claimed = client.jobs.claim({"queue_name": "my-queue", "worker_id": "worker-1", "limit": 1})
+for job in claimed.jobs:
+    client.jobs.heartbeat(job.id, {"worker_id": "worker-1", "lease_id": job.lease_id})
+    client.jobs.complete(job.id, {"worker_id": "worker-1", "lease_id": job.lease_id, "result": {}})
+```
+
+`lease_id` is required on `complete`, `fail` and `heartbeat` (the API answers 422
+without it) and fences the call to the lease you hold. `SpooledWorker` handles this.
 
 ### Cancel Job
 
@@ -105,7 +157,7 @@ job = client.jobs.retry("job_xxx")
 
 ```python
 result = client.jobs.boost_priority("job_xxx", priority=10)
-print(result.priority, result.previous_priority)
+print(result.old_priority, result.new_priority)
 ```
 
 ### Get Statistics
@@ -139,7 +191,8 @@ print(result.success_count, result.failure_count)
 ### DLQ Operations
 
 ```python
-# List DLQ jobs
+# List DLQ jobs (same q/job_type/created_after/created_before/tag filters as
+# jobs.list, no status; the result has has_more too)
 dlq_jobs = client.jobs.dlq.list({"queue_name": "my-queue"})
 
 # Retry DLQ jobs
@@ -267,6 +320,17 @@ print(status.progress_percent, status.completed_jobs)
 client.workflows.cancel("wf_xxx")
 ```
 
+## Workers
+
+```python
+for worker in client.workers.list():
+    print(worker.id, worker.status, worker.jobs_processed, worker.jobs_failed)
+```
+
+`jobs_processed` counts jobs the worker completed and `jobs_failed` the failures it
+reported (each retry scheduled or dead-letter it caused); both are `None` on servers that
+do not send them. `workers.get(id)` carries them too.
+
 ## Webhooks
 
 ### Create Outgoing Webhook
@@ -275,10 +339,25 @@ client.workflows.cancel("wf_xxx")
 webhook = client.webhooks.create({
     "name": "Job Notifications",
     "url": "https://myapp.com/webhooks/spooled",
-    "events": ["job.completed", "job.failed"],
+    "events": ["job.completed", "job.failed", "job.deadlettered"],
     "secret": "whsec_...",  # Optional: signs deliveries with X-Spooled-Signature
 })
+
+# Post straight into a chat channel: the URL is the service's incoming-webhook URL
+slack = client.webhooks.create({
+    "name": "Ops channel",
+    "url": "https://hooks.slack.com/services/...",
+    "events": ["job.deadlettered", "workflow.failed"],
+    "format": "slack",  # json (default), slack, discord or teams
+})
 ```
+
+Events: `job.created`, `job.started`, `job.completed`, `job.failed`, `job.cancelled`,
+`job.deadlettered`, `job.retried`, `queue.paused`, `queue.resumed`,
+`worker.registered`, `worker.deregistered`, `schedule.triggered`,
+`workflow.completed`, `workflow.failed`. Webhook objects read `events` and `format` as
+plain strings too, so a webhook with an event or format added by a newer server still
+parses; `update(..., {"format": "teams"})` changes the format, leaving it out keeps it.
 
 ### Update Outgoing Webhook
 
@@ -333,8 +412,36 @@ Delivery history is retained, not archived. The per-organization retention sweep
 
 ```python
 result = client.webhooks.retry_delivery("wh_xxx", "whd_xxx")
-print(result.status)
+print(result.success, result.message)
 ```
+
+### Inbound Webhook Log
+
+Requests accepted by `POST /webhooks/{org_id}/custom` (see `client.ingest.custom`),
+newest first and without their payloads. Needs an unrestricted API key.
+
+```python
+from datetime import datetime, timedelta, timezone
+
+for entry in client.webhooks.list_inbound_deliveries({
+    "status": "duplicate",                 # Optional: created or duplicate
+    "since": datetime.now(timezone.utc) - timedelta(days=1),
+    "queue_name": "orders",                # Optional
+    "limit": 50,                           # 1-100
+}):
+    print(entry.created_at, entry.event_type, entry.matched_queue, entry.job_id, entry.status)
+```
+
+`job_id` and `status` are `None` for entries recorded before the server started storing them.
+
+## Rate Limits
+
+The API sends `X-RateLimit-Limit`, `X-RateLimit-Remaining`, `X-RateLimit-Reset` (Unix
+seconds) and `X-RateLimit-Scope` on every response. `client.rate_limit` holds the latest
+values as a `RateLimitInfo` (`limit`, `remaining`, `reset` as an aware UTC `datetime`,
+`reset_epoch`, `scope`), or `None` before the first response. A 429 raises
+`RateLimitError` with the same fields plus `retry_after` from `Retry-After`, and is
+retried automatically after that delay.
 
 ## Error Handling
 
