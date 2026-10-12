@@ -9,6 +9,8 @@ from typing import Any, Literal
 
 from pydantic import BaseModel, Field
 
+# Response models read plan tiers as ``PlanTier | str`` so a tier added by a
+# newer server still parses.
 PlanTier = Literal["free", "starter", "pro", "enterprise"]
 
 # Backend organization settings / custom_limits is serde_json::Value (any JSON).
@@ -21,7 +23,7 @@ class Organization(BaseModel):
     id: str
     name: str
     slug: str
-    plan_tier: PlanTier
+    plan_tier: PlanTier | str
     billing_email: str | None = None
     settings: JsonValue = None
     custom_limits: JsonValue = None
@@ -40,7 +42,7 @@ class OrganizationSummary(BaseModel):
     id: str
     name: str
     slug: str
-    plan_tier: PlanTier
+    plan_tier: PlanTier | str
     created_at: datetime
 
 
@@ -145,7 +147,7 @@ class UsageWarning(BaseModel):
 class UsageInfo(BaseModel):
     """Usage information."""
 
-    plan: PlanTier
+    plan: PlanTier | str
     plan_display_name: str
     limits: PlanLimits
     usage: ResourceUsage

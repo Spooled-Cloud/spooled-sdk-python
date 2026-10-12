@@ -46,4 +46,13 @@
 - gRPC `Complete`, `Fail`, `RenewLease` need `lease_id` (INVALID_ARGUMENT otherwise); `Fail.retry` defaults to true (false = dead-letter now). `client.grpc` dials `grpc_address` (default `grpc.spooled.cloud:443`).
 - Name limits: schedule name/queue_name, workflow name and workflow job queue_name allow 255 characters; queue_name on jobs stays 100.
 
+- Response models never fail on a new enum value: every enum-typed response field is `Literal[...] | str` (job/worker/workflow status, plan tier, webhook events/format/last_status, delivery status, dependency_mode). Request params stay strict `Literal`s.
+- Outgoing webhooks (backend 0.1.122): 14 events (adds `job.deadlettered`, `job.retried`, `workflow.completed`, `workflow.failed`) and `format` = `json` (default) / `slack` / `discord` / `teams` on create/update/read. An omitted `format` is not sent; servers before 0.1.122 omit it on reads (model default `json`).
+- `GET /jobs`, `GET /jobs/dlq` and `GET /jobs/{id}/history` send `X-Has-More`; the SDK returns `Page` (a `list` subclass with `has_more`, `None` when the header is absent). `GET /jobs` filters: `status` comma list, `q`, `job_type`, `created_after`/`created_before` (RFC 3339; invalid or empty window is 400). DLQ takes the same filters except status.
+- `GET /jobs/{id}/history?order_dir=asc|desc&limit=1..500&offset=` (backend also accepts `order`); rows `{id, job_id, event_type, worker_id, details, created_at}`.
+- Worker list/get carry `jobs_processed` / `jobs_failed` (DB trigger, synchronous with the ack).
+- `GET /webhooks/deliveries` is the inbound log (`status` created|duplicate, `since`, `queue_name`, `limit`, `offset`); rows have no payload; unrestricted keys only. SDK: `webhooks.list_inbound_deliveries`.
+- `X-RateLimit-Limit/Remaining/Reset/Scope` are on every response (Reset = Unix seconds). The HTTP clients keep the latest as `client.rate_limit`; `RateLimitError` adds `scope`.
+- REST `complete`/`fail`/`heartbeat` require `lease_id` (422 without it). The params keep it optional for compatibility; docs say required.
 - gRPC: `FailRequest.retry` is proto3 `optional` (omitted = retry per max_retries, false = dead-letter now). The SDK sets the field whenever `retry` is not None. `RegisterWorkerRequest.worker_id` (field 7) is optional; another org's id is `ALREADY_EXISTS` -> `ConflictError`. Payload/result are `google.protobuf.Struct`: object payloads only, integers >= 2^53 lose precision (REST keeps them).
+- `GET /metrics` takes the server's `METRICS_TOKEN` as a bearer, not an API key; `metrics.get(token=...)`.

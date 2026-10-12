@@ -5,7 +5,7 @@ Official Python SDK for the Spooled Cloud job queue service.
 
 Example:
     >>> from spooled import SpooledClient
-    >>> client = SpooledClient(api_key="sk_live_...")
+    >>> client = SpooledClient(api_key="sp_live_...")
     >>> result = client.jobs.create(
     ...     queue_name="emails",
     ...     payload={"to": "user@example.com"}

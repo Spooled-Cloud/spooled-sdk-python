@@ -38,7 +38,9 @@ from spooled.types.billing import (
 from spooled.types.common import (
     JsonObject,
     JsonValue,
+    Page,
     PaginationParams,
+    RateLimitInfo,
 )
 from spooled.types.dashboard import (
     DashboardData,
@@ -69,6 +71,8 @@ from spooled.types.jobs import (
     FailJobResponse,
     Job,
     JobHeartbeatParams,
+    JobHistoryEvent,
+    JobHistoryParams,
     JobStats,
     JobStatus,
     JobSummary,
@@ -114,13 +118,17 @@ from spooled.types.schedules import (
 )
 from spooled.types.webhooks import (
     CreateOutgoingWebhookParams,
+    InboundDeliveryStatus,
+    InboundWebhookDelivery,
     ListDeliveriesParams,
+    ListInboundDeliveriesParams,
     OutgoingWebhook,
     OutgoingWebhookDelivery,
     RetryDeliveryResponse,
     TestWebhookResponse,
     UpdateOutgoingWebhookParams,
     WebhookEvent,
+    WebhookFormat,
     WebhookLastStatus,
 )
 from spooled.types.workers import (
@@ -149,6 +157,8 @@ __all__ = [
     "JsonValue",
     "JsonObject",
     "PaginationParams",
+    "Page",
+    "RateLimitInfo",
     # Jobs
     "JobStatus",
     "Job",
@@ -171,6 +181,8 @@ __all__ = [
     "FailJobParams",
     "FailJobResponse",
     "JobHeartbeatParams",
+    "JobHistoryEvent",
+    "JobHistoryParams",
     "ListDlqParams",
     "RetryDlqParams",
     "RetryDlqResponse",
@@ -211,6 +223,7 @@ __all__ = [
     "AddDependenciesResponse",
     # Webhooks
     "WebhookEvent",
+    "WebhookFormat",
     "WebhookLastStatus",
     "OutgoingWebhook",
     "OutgoingWebhookDelivery",
@@ -219,6 +232,9 @@ __all__ = [
     "TestWebhookResponse",
     "ListDeliveriesParams",
     "RetryDeliveryResponse",
+    "InboundDeliveryStatus",
+    "InboundWebhookDelivery",
+    "ListInboundDeliveriesParams",
     # API Keys
     "ApiKey",
     "ApiKeySummary",

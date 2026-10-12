@@ -103,7 +103,7 @@ class WebSocketClient:
     Example:
         >>> ws = WebSocketClient(WebSocketConnectionOptions(
         ...     ws_url="wss://api.spooled.cloud",
-        ...     token="sk_live_...",
+        ...     token="sp_live_...",
         ... ))
         >>>
         >>> # Set up handlers
@@ -480,7 +480,7 @@ class AsyncWebSocketClient:
     Example:
         >>> async with AsyncWebSocketClient(WebSocketConnectionOptions(
         ...     ws_url="wss://api.spooled.cloud",
-        ...     token="sk_live_...",
+        ...     token="sp_live_...",
         ... )) as ws:
         ...     await ws.subscribe(SubscriptionFilter(queue="emails"))
         ...     async for event in ws.events():

@@ -173,7 +173,15 @@ class PayloadTooLargeError(SpooledError):
 
 
 class RateLimitError(SpooledError):
-    """429 - Rate limit exceeded."""
+    """429 - Rate limit exceeded.
+
+    ``limit``, ``remaining`` and ``reset`` come from the ``X-RateLimit-Limit``,
+    ``X-RateLimit-Remaining`` and ``X-RateLimit-Reset`` headers (``reset`` is
+    the Unix-seconds value as an aware UTC ``datetime``), ``scope`` from
+    ``X-RateLimit-Scope`` and ``retry_after`` from ``Retry-After``. The API
+    sends the ``X-RateLimit-*`` headers on every response; the latest values
+    are also on ``client.rate_limit``.
+    """
 
     def __init__(
         self,
@@ -186,6 +194,7 @@ class RateLimitError(SpooledError):
         limit: int | None = None,
         remaining: int | None = None,
         reset: datetime | None = None,
+        scope: str | None = None,
     ) -> None:
         super().__init__(
             message,
@@ -198,6 +207,7 @@ class RateLimitError(SpooledError):
         self.limit = limit
         self.remaining = remaining
         self.reset = reset
+        self.scope = scope
 
     def is_retryable(self) -> bool:
         return True
@@ -485,6 +495,9 @@ def create_error_from_response(
             reset_epoch = _parse_int_header(_header_get(headers, "X-RateLimit-Reset"))
             if reset_epoch is not None:
                 rate_kwargs["reset"] = datetime.fromtimestamp(reset_epoch, tz=timezone.utc)
+            scope = _header_get(headers, "X-RateLimit-Scope")
+            if scope:
+                rate_kwargs["scope"] = scope.strip()
             return RateLimitError(
                 message,
                 code=code,

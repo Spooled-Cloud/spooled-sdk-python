@@ -68,7 +68,7 @@ class SpooledWorker:
     Example:
         >>> from spooled import SpooledClient, SpooledWorker
         >>>
-        >>> client = SpooledClient(api_key="sk_live_...")
+        >>> client = SpooledClient(api_key="sp_live_...")
         >>> worker = SpooledWorker(client, queue_name="my-queue", concurrency=10)
         >>>
         >>> @worker.process

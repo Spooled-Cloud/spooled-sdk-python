@@ -13,6 +13,7 @@ import httpx
 
 from spooled.config import API_BASE_PATH, ResolvedConfig
 from spooled.errors import NetworkError, TimeoutError, create_error_from_response
+from spooled.types.common import RateLimitInfo
 from spooled.utils.casing import convert_query_params, convert_request, convert_response
 from spooled.utils.circuit_breaker import CircuitBreaker
 from spooled.utils.retry import with_retry
@@ -81,6 +82,9 @@ class HttpClient:
         # refresh; it must not stop *other* threads from joining the wait.
         self._refresh_lock = threading.Lock()
         self._refresh_state = threading.local()
+        # X-RateLimit-* of the most recent response that carried them (the API
+        # sends them on every response). Shared by all threads using this client.
+        self.rate_limit: RateLimitInfo | None = None
 
         # Create httpx client
         self._client = httpx.Client(
@@ -184,9 +188,13 @@ class HttpClient:
         timeout: float | None = None,
         skip_request_conversion: bool = False,
         skip_response_conversion: bool = False,
+        with_headers: bool = False,
         _allow_refresh: bool = True,
     ) -> Any:
-        """Execute a single HTTP request (no retry)."""
+        """Execute a single HTTP request (no retry).
+
+        With ``with_headers=True`` the result is ``(body, response headers)``.
+        """
         auth_before = self._auth_token
         request_headers = self._build_headers(headers)
 
@@ -224,6 +232,10 @@ class HttpClient:
         if self.config.debug_fn:
             self.config.debug_fn(f"Response: {response.status_code}", {"url": url})
 
+        rate_limit = RateLimitInfo.from_headers(response.headers)
+        if rate_limit is not None:
+            self.rate_limit = rate_limit
+
         # Handle non-OK responses
         if not response.is_success:
             # On 401, attempt a one-time token refresh and replay the request.
@@ -243,6 +255,7 @@ class HttpClient:
                     timeout=timeout,
                     skip_request_conversion=skip_request_conversion,
                     skip_response_conversion=skip_response_conversion,
+                    with_headers=with_headers,
                     _allow_refresh=False,
                 )
 
@@ -257,18 +270,21 @@ class HttpClient:
             )
 
         # Parse response body
-        if response.status_code == 204:
-            return None
-
+        data: Any
         content_type = response.headers.get("Content-Type", "")
-        if "application/json" in content_type:
+        if response.status_code == 204:
+            data = None
+        elif "application/json" in content_type:
             data = response.json()
             if not skip_response_conversion:
                 data = convert_response(data)
-            return data
+        else:
+            # Non-JSON response (e.g., Prometheus metrics)
+            data = response.text
 
-        # Non-JSON response (e.g., Prometheus metrics)
-        return response.text
+        if with_headers:
+            return data, response.headers
+        return data
 
     def request(
         self,
@@ -285,6 +301,7 @@ class HttpClient:
         skip_response_conversion: bool = False,
         skip_retry: bool = False,
         idempotent: bool | None = None,
+        with_headers: bool = False,
     ) -> Any:
         """Make an HTTP request with retry and circuit breaker.
 
@@ -292,6 +309,9 @@ class HttpClient:
         safe. Worker acks (complete/fail/heartbeat) pass ``True``: they are
         POSTs, but lease-fenced on the server, so a replay answers 409 instead
         of acting twice and a lost ack can be retried instead of re-running the job.
+
+        ``with_headers=True`` returns ``(body, response headers)`` instead of
+        the body alone (list endpoints read ``X-Has-More`` from them).
         """
         url = self._build_url(path, params, skip_api_prefix)
 
@@ -306,6 +326,7 @@ class HttpClient:
                     timeout=timeout,
                     skip_request_conversion=skip_request_conversion,
                     skip_response_conversion=skip_response_conversion,
+                    with_headers=with_headers,
                 )
             )
 
@@ -338,8 +359,9 @@ class HttpClient:
         skip_api_prefix: bool = False,
         skip_response_conversion: bool = False,
         skip_retry: bool = False,
+        with_headers: bool = False,
     ) -> Any:
-        """Make a GET request."""
+        """Make a GET request (``with_headers=True``: ``(body, headers)``)."""
         return self.request(
             "GET",
             path,
@@ -349,6 +371,7 @@ class HttpClient:
             skip_api_prefix=skip_api_prefix,
             skip_response_conversion=skip_response_conversion,
             skip_retry=skip_retry,
+            with_headers=with_headers,
         )
 
     def post(

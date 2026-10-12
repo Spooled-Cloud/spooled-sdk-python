@@ -64,7 +64,7 @@ class AsyncSpooledWorker:
         >>> from spooled import AsyncSpooledClient, AsyncSpooledWorker
         >>>
         >>> async def main():
-        ...     async with AsyncSpooledClient(api_key="sk_live_...") as client:
+        ...     async with AsyncSpooledClient(api_key="sp_live_...") as client:
         ...         worker = AsyncSpooledWorker(client, queue_name="my-queue")
         ...
         ...         @worker.process

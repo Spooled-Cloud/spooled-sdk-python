@@ -7,7 +7,9 @@ from __future__ import annotations
 from datetime import datetime, timedelta, timezone
 from typing import Any, Literal
 
-from pydantic import AliasChoices, BaseModel, Field
+from pydantic import AliasChoices, BaseModel, Field, field_validator
+
+from spooled.types.common import to_rfc3339
 
 # Backend `tags` is serde_json::Value: object (`{"urgent": true}`) or string array.
 JsonTags = dict[str, Any] | list[Any] | None
@@ -32,7 +34,8 @@ def coerce_fail_error(message: object) -> str:
     return text[:FAIL_ERROR_MAX_LENGTH]
 
 
-# Job status enum
+# Job status enum. Response models read ``status`` as ``JobStatus | str`` so a
+# status added by a newer server still parses.
 JobStatus = Literal[
     "pending",
     "scheduled",
@@ -76,7 +79,7 @@ class Job(BaseModel):
     id: str
     organization_id: str
     queue_name: str
-    status: JobStatus
+    status: JobStatus | str
     payload: JsonValue
     result: JsonValue = None
     retry_count: int
@@ -107,7 +110,7 @@ class JobSummary(BaseModel):
 
     id: str
     queue_name: str
-    status: JobStatus
+    status: JobStatus | str
     priority: int
     retry_count: int = Field(
         default=0,
@@ -137,12 +140,51 @@ class JobStats(BaseModel):
     total: int
 
 
+def _split_status_list(value: Any) -> Any:
+    """Accept ``"failed,deadletter"`` as well as a list or a single status."""
+    if isinstance(value, str) and "," in value:
+        return [part.strip() for part in value.split(",") if part.strip()]
+    return value
+
+
+def _job_list_query(params: BaseModel) -> dict[str, Any]:
+    """Query parameters of a job list: status list joined, times in RFC 3339."""
+    query: dict[str, Any] = params.model_dump(exclude_none=True)
+    status = query.get("status")
+    if isinstance(status, list):
+        if status:
+            query["status"] = ",".join(status)
+        else:
+            del query["status"]
+    for key in ("created_after", "created_before"):
+        value = getattr(params, key, None)
+        if isinstance(value, datetime):
+            query[key] = to_rfc3339(value)
+    return query
+
+
 class ListJobsParams(BaseModel):
-    """Parameters for listing jobs."""
+    """Parameters for listing jobs.
+
+    * ``status`` - one status, a list, or a comma-separated string
+      (``"failed,deadletter"``); a job matching any of them is listed.
+    * ``q`` - search text, case-insensitive: a job whose id starts with it,
+      or whose queue name or ``payload.job_type`` contains it.
+    * ``job_type`` - exact ``payload.job_type``.
+    * ``created_after`` / ``created_before`` - creation window (after is
+      inclusive, before exclusive); a naive ``datetime`` is taken as UTC.
+
+    ``jobs.list()`` returns a :class:`~spooled.types.common.Page`, whose
+    ``has_more`` says whether another page follows.
+    """
 
     queue_name: str | None = None
-    status: JobStatus | None = None
-    tag: str | None = Field(default=None, max_length=64)
+    status: JobStatus | list[JobStatus] | None = None
+    q: str | None = None
+    job_type: str | None = None
+    created_after: datetime | None = None
+    created_before: datetime | None = None
+    tag: str | None = Field(default=None, max_length=1024)
     """Filter by a single tag (matches Postgres `tags ? tag` semantics)."""
     limit: int = Field(default=50, ge=1, le=100)
     offset: int = Field(default=0, ge=0)
@@ -150,6 +192,15 @@ class ListJobsParams(BaseModel):
     order_dir: str | None = Field(default=None, pattern="^(asc|desc)$")
 
     model_config = {"extra": "forbid"}
+
+    @field_validator("status", mode="before")
+    @classmethod
+    def split_status_list(cls, value: Any) -> Any:
+        return _split_status_list(value)
+
+    def to_query(self) -> dict[str, Any]:
+        """Query parameters for ``GET /jobs``."""
+        return _job_list_query(self)
 
 
 class BatchJobStatus(BaseModel):
@@ -160,7 +211,7 @@ class BatchJobStatus(BaseModel):
     """
 
     id: str
-    status: JobStatus
+    status: JobStatus | str
     queue_name: str
     retry_count: int
     created_at: datetime
@@ -233,7 +284,8 @@ class ClaimedJob(BaseModel):
 
     ``lease_id`` is the lease fencing token returned by the backend on claim;
     echo it back on complete/fail/heartbeat so the operation applies only to
-    the lease this worker actually holds (``None`` = legacy server).
+    the lease this worker actually holds. The API requires it on all three
+    (422 without it).
     """
 
     id: str
@@ -253,7 +305,11 @@ class ClaimJobsResponse(BaseModel):
 
 
 class CompleteJobParams(BaseModel):
-    """Parameters for completing a job."""
+    """Parameters for completing a job.
+
+    ``lease_id`` (from the claimed job) is required by the API: a request
+    without it is rejected with 422.
+    """
 
     worker_id: str
     result: JsonValue = None
@@ -269,7 +325,11 @@ class CompleteJobResponse(BaseModel):
 
 
 class FailJobParams(BaseModel):
-    """Parameters for failing a job."""
+    """Parameters for failing a job.
+
+    ``lease_id`` (from the claimed job) is required by the API: a request
+    without it is rejected with 422.
+    """
 
     worker_id: str
     error: str = Field(..., min_length=1, max_length=FAIL_ERROR_MAX_LENGTH)
@@ -286,7 +346,11 @@ class FailJobResponse(BaseModel):
 
 
 class JobHeartbeatParams(BaseModel):
-    """Parameters for job heartbeat."""
+    """Parameters for job heartbeat.
+
+    ``lease_id`` (from the claimed job) is required by the API: a request
+    without it is rejected with 422.
+    """
 
     worker_id: str
     lease_duration_secs: int = Field(default=30, ge=5, le=3600)
@@ -296,11 +360,57 @@ class JobHeartbeatParams(BaseModel):
 
 
 class ListDlqParams(BaseModel):
-    """Parameters for listing DLQ jobs."""
+    """Parameters for listing DLQ jobs.
+
+    The search filters (``q``, ``job_type``, ``created_after``,
+    ``created_before``, ``tag``) work as on :class:`ListJobsParams`; there is
+    no ``status`` (always ``deadletter``).
+    """
 
     queue_name: str | None = None
+    q: str | None = None
+    job_type: str | None = None
+    created_after: datetime | None = None
+    created_before: datetime | None = None
+    tag: str | None = Field(default=None, max_length=1024)
     limit: int = Field(default=50, ge=1, le=100)
     offset: int = Field(default=0, ge=0)
+    order_by: str | None = None
+    order_dir: str | None = Field(default=None, pattern="^(asc|desc)$")
+
+    model_config = {"extra": "forbid"}
+
+    def to_query(self) -> dict[str, Any]:
+        """Query parameters for ``GET /jobs/dlq``."""
+        return _job_list_query(self)
+
+
+class JobHistoryEvent(BaseModel):
+    """One recorded lifecycle event of a job (``GET /jobs/{id}/history``).
+
+    ``event_type`` is a free-form string (for example ``created``,
+    ``claimed``, ``completed``, ``failed``, ``retried``); new kinds can appear
+    without an SDK update. ``details`` is any JSON (at most 64 KB).
+    """
+
+    id: str
+    job_id: str
+    event_type: str
+    worker_id: str | None = None
+    details: JsonValue = None
+    created_at: datetime
+
+
+class JobHistoryParams(BaseModel):
+    """Paging of ``GET /jobs/{id}/history``.
+
+    ``order_dir`` is ``asc`` (server default, oldest first) or ``desc``;
+    ``limit`` is 1-500 (server default 100).
+    """
+
+    order_dir: Literal["asc", "desc"] | None = None
+    limit: int | None = Field(default=None, ge=1, le=500)
+    offset: int | None = Field(default=None, ge=0)
 
     model_config = {"extra": "forbid"}
 

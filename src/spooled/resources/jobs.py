@@ -8,6 +8,7 @@ import builtins
 from typing import TYPE_CHECKING, Any
 
 from spooled.resources.base import AsyncBaseResource, BaseResource
+from spooled.types.common import Page, parse_has_more
 from spooled.types.jobs import (
     BatchJobStatus,
     BoostPriorityResponse,
@@ -23,6 +24,8 @@ from spooled.types.jobs import (
     FailJobResponse,
     Job,
     JobHeartbeatParams,
+    JobHistoryEvent,
+    JobHistoryParams,
     JobStats,
     JobSummary,
     ListDlqParams,
@@ -44,15 +47,18 @@ class DlqResource:
     def __init__(self, http: HttpClient) -> None:
         self._http = http
 
-    def list(
-        self, params: ListDlqParams | dict[str, Any] | None = None
-    ) -> builtins.list[JobSummary]:
-        """List jobs in dead-letter queue."""
+    def list(self, params: ListDlqParams | dict[str, Any] | None = None) -> Page[JobSummary]:
+        """List jobs in dead-letter queue.
+
+        Returns a list with ``has_more`` (from ``X-Has-More``) for paging.
+        """
         if isinstance(params, dict):
             params = ListDlqParams.model_validate(params)
-        query_params = params.model_dump(exclude_none=True) if params else None
-        data = self._http.get("/jobs/dlq", params=query_params)
-        return [JobSummary.model_validate(item) for item in data]
+        query_params = params.to_query() if params else None
+        data, headers = self._http.get("/jobs/dlq", params=query_params, with_headers=True)
+        return Page(
+            (JobSummary.model_validate(item) for item in data), has_more=parse_has_more(headers)
+        )
 
     def retry(self, params: RetryDlqParams | dict[str, Any]) -> RetryDlqResponse:
         """Retry jobs from DLQ."""
@@ -75,15 +81,18 @@ class AsyncDlqResource:
     def __init__(self, http: AsyncHttpClient) -> None:
         self._http = http
 
-    async def list(
-        self, params: ListDlqParams | dict[str, Any] | None = None
-    ) -> builtins.list[JobSummary]:
-        """List jobs in dead-letter queue."""
+    async def list(self, params: ListDlqParams | dict[str, Any] | None = None) -> Page[JobSummary]:
+        """List jobs in dead-letter queue.
+
+        Returns a list with ``has_more`` (from ``X-Has-More``) for paging.
+        """
         if isinstance(params, dict):
             params = ListDlqParams.model_validate(params)
-        query_params = params.model_dump(exclude_none=True) if params else None
-        data = await self._http.get("/jobs/dlq", params=query_params)
-        return [JobSummary.model_validate(item) for item in data]
+        query_params = params.to_query() if params else None
+        data, headers = await self._http.get("/jobs/dlq", params=query_params, with_headers=True)
+        return Page(
+            (JobSummary.model_validate(item) for item in data), has_more=parse_has_more(headers)
+        )
 
     async def retry(self, params: RetryDlqParams | dict[str, Any]) -> RetryDlqResponse:
         """Retry jobs from DLQ."""
@@ -126,20 +135,46 @@ class JobsResource(BaseResource):
         result = self.create(params)
         return self.get(result.id)
 
-    def list(
-        self, params: ListJobsParams | dict[str, Any] | None = None
-    ) -> builtins.list[JobSummary]:
-        """List jobs with optional filtering."""
+    def list(self, params: ListJobsParams | dict[str, Any] | None = None) -> Page[JobSummary]:
+        """List jobs with optional filtering.
+
+        Filters: ``queue_name``, ``status`` (one, a list or ``"a,b"``), ``q``,
+        ``job_type``, ``created_after``, ``created_before``, ``tag``. Returns a
+        list with ``has_more`` (from ``X-Has-More``): when it is ``True``, ask
+        for the next page with ``offset + limit``.
+        """
         if isinstance(params, dict):
             params = ListJobsParams.model_validate(params)
-        query_params = params.model_dump(exclude_none=True) if params else None
-        data = self._http.get("/jobs", params=query_params)
-        return [JobSummary.model_validate(item) for item in data]
+        query_params = params.to_query() if params else None
+        data, headers = self._http.get("/jobs", params=query_params, with_headers=True)
+        return Page(
+            (JobSummary.model_validate(item) for item in data), has_more=parse_has_more(headers)
+        )
 
     def get(self, job_id: str) -> Job:
         """Get a job by ID."""
         data = self._http.get(f"/jobs/{job_id}")
         return Job.model_validate(data)
+
+    def history(
+        self, job_id: str, params: JobHistoryParams | dict[str, Any] | None = None
+    ) -> Page[JobHistoryEvent]:
+        """A job's recorded lifecycle events (``GET /jobs/{id}/history``).
+
+        Oldest first unless ``order_dir="desc"``. Returns a list with
+        ``has_more`` for paging. Another organization's job, or one outside an
+        API key's queue scope, raises ``NotFoundError``.
+        """
+        if isinstance(params, dict):
+            params = JobHistoryParams.model_validate(params)
+        query_params = params.model_dump(exclude_none=True) if params else None
+        data, headers = self._http.get(
+            f"/jobs/{job_id}/history", params=query_params, with_headers=True
+        )
+        return Page(
+            (JobHistoryEvent.model_validate(item) for item in data),
+            has_more=parse_has_more(headers),
+        )
 
     def cancel(self, job_id: str) -> None:
         """Cancel a pending or scheduled job."""
@@ -246,20 +281,35 @@ class AsyncJobsResource(AsyncBaseResource):
         result = await self.create(params)
         return await self.get(result.id)
 
-    async def list(
-        self, params: ListJobsParams | dict[str, Any] | None = None
-    ) -> builtins.list[JobSummary]:
-        """List jobs with optional filtering."""
+    async def list(self, params: ListJobsParams | dict[str, Any] | None = None) -> Page[JobSummary]:
+        """List jobs with optional filtering (see ``JobsResource.list``)."""
         if isinstance(params, dict):
             params = ListJobsParams.model_validate(params)
-        query_params = params.model_dump(exclude_none=True) if params else None
-        data = await self._http.get("/jobs", params=query_params)
-        return [JobSummary.model_validate(item) for item in data]
+        query_params = params.to_query() if params else None
+        data, headers = await self._http.get("/jobs", params=query_params, with_headers=True)
+        return Page(
+            (JobSummary.model_validate(item) for item in data), has_more=parse_has_more(headers)
+        )
 
     async def get(self, job_id: str) -> Job:
         """Get a job by ID."""
         data = await self._http.get(f"/jobs/{job_id}")
         return Job.model_validate(data)
+
+    async def history(
+        self, job_id: str, params: JobHistoryParams | dict[str, Any] | None = None
+    ) -> Page[JobHistoryEvent]:
+        """A job's recorded lifecycle events (see ``JobsResource.history``)."""
+        if isinstance(params, dict):
+            params = JobHistoryParams.model_validate(params)
+        query_params = params.model_dump(exclude_none=True) if params else None
+        data, headers = await self._http.get(
+            f"/jobs/{job_id}/history", params=query_params, with_headers=True
+        )
+        return Page(
+            (JobHistoryEvent.model_validate(item) for item in data),
+            has_more=parse_has_more(headers),
+        )
 
     async def cancel(self, job_id: str) -> None:
         """Cancel a pending or scheduled job."""

@@ -12,6 +12,8 @@ from pydantic import AliasChoices, BaseModel, ConfigDict, Field, model_validator
 # Backend workflow job payload is serde_json::Value (any JSON).
 JsonValue = Any
 
+# Response models read ``status`` as ``WorkflowStatus | str`` so a status
+# added by a newer server still parses.
 WorkflowStatus = Literal["pending", "running", "completed", "failed", "cancelled"]
 
 
@@ -20,7 +22,7 @@ class WorkflowResponse(BaseModel):
 
     id: str
     name: str
-    status: WorkflowStatus
+    status: WorkflowStatus | str
     total_jobs: int | None = None  # Not always returned
     completed_jobs: int | None = None  # Not always returned
     failed_jobs: int | None = None  # Not always returned
@@ -133,7 +135,7 @@ class JobWithDependencies(BaseModel):
     job_id: str
     dependencies: list[JobDependency] = Field(default_factory=list)
     dependents: list[JobDependency] = Field(default_factory=list)
-    dependency_mode: Literal["all", "any"] = "all"
+    dependency_mode: Literal["all", "any"] | str = "all"
     dependencies_met: bool = False
 
 
@@ -204,7 +206,7 @@ class WorkflowJob(BaseModel):
     attempt: int | None = None
     timeout_seconds: int | None = None
     depends_on: list[str] | None = None
-    dependency_mode: Literal["all", "any"] | None = None
+    dependency_mode: Literal["all", "any"] | str | None = None
     created_at: datetime | None = None
     started_at: datetime | None = None
     completed_at: datetime | None = None

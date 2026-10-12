@@ -9,6 +9,8 @@ from typing import Any, Literal
 
 from pydantic import BaseModel, Field
 
+# Response models read ``status`` as ``WorkerStatus | str`` so a status added
+# by a newer server still parses.
 WorkerStatus = Literal["healthy", "degraded", "offline", "draining"]
 
 # Backend worker metadata is serde_json::Value (any JSON).
@@ -27,12 +29,17 @@ class Worker(BaseModel):
     # Support both field names (max_concurrency from list, max_concurrent_jobs from get)
     max_concurrency: int | None = Field(default=None, alias="max_concurrent_jobs")
     current_jobs: int | None = Field(default=None, alias="current_job_count")
-    status: WorkerStatus
+    status: WorkerStatus | str
     last_heartbeat: datetime
     metadata: JsonValue = None
     version: str | None = None
     registered_at: datetime | None = Field(default=None, alias="created_at")
     updated_at: datetime | None = None
+    # Jobs this worker completed / failures it reported (each retry scheduled
+    # or dead-letter it caused), counted by the server since backend 0.1.122.
+    # None when the server does not send them.
+    jobs_processed: int | None = None
+    jobs_failed: int | None = None
 
     model_config = {"populate_by_name": True}
 
@@ -43,10 +50,15 @@ class WorkerSummary(BaseModel):
     id: str
     queue_name: str
     hostname: str
-    status: WorkerStatus
+    status: WorkerStatus | str
     current_jobs: int
     max_concurrency: int
     last_heartbeat: datetime
+    # Jobs this worker completed / failures it reported (each retry scheduled
+    # or dead-letter it caused), counted by the server since backend 0.1.122.
+    # None when the server does not send them.
+    jobs_processed: int | None = None
+    jobs_failed: int | None = None
 
 
 class RegisterWorkerParams(BaseModel):

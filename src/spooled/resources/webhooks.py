@@ -10,7 +10,9 @@ from typing import Any
 from spooled.resources.base import AsyncBaseResource, BaseResource
 from spooled.types.webhooks import (
     CreateOutgoingWebhookParams,
+    InboundWebhookDelivery,
     ListDeliveriesParams,
+    ListInboundDeliveriesParams,
     OutgoingWebhook,
     OutgoingWebhookDelivery,
     RetryDeliveryResponse,
@@ -78,6 +80,20 @@ class WebhooksResource(BaseResource):
         data = self._http.post(f"/outgoing-webhooks/{webhook_id}/retry/{delivery_id}")
         return RetryDeliveryResponse.model_validate(data)
 
+    def list_inbound_deliveries(
+        self, params: ListInboundDeliveriesParams | dict[str, Any] | None = None
+    ) -> builtins.list[InboundWebhookDelivery]:
+        """List the inbound webhook log (``GET /webhooks/deliveries``), newest first.
+
+        Requests accepted by ``POST /webhooks/{org_id}/custom``, without their
+        payloads. Needs an unrestricted API key (a queue-scoped key gets 403).
+        """
+        if isinstance(params, dict):
+            params = ListInboundDeliveriesParams.model_validate(params)
+        query_params = params.to_query() if params else None
+        data = self._http.get("/webhooks/deliveries", params=query_params)
+        return [InboundWebhookDelivery.model_validate(item) for item in data]
+
 
 class AsyncWebhooksResource(AsyncBaseResource):
     """Outgoing webhooks resource (async)."""
@@ -141,3 +157,17 @@ class AsyncWebhooksResource(AsyncBaseResource):
             f"/outgoing-webhooks/{webhook_id}/retry/{delivery_id}"
         )
         return RetryDeliveryResponse.model_validate(data)
+
+    async def list_inbound_deliveries(
+        self, params: ListInboundDeliveriesParams | dict[str, Any] | None = None
+    ) -> builtins.list[InboundWebhookDelivery]:
+        """List the inbound webhook log (``GET /webhooks/deliveries``), newest first.
+
+        Requests accepted by ``POST /webhooks/{org_id}/custom``, without their
+        payloads. Needs an unrestricted API key (a queue-scoped key gets 403).
+        """
+        if isinstance(params, dict):
+            params = ListInboundDeliveriesParams.model_validate(params)
+        query_params = params.to_query() if params else None
+        data = await self._http.get("/webhooks/deliveries", params=query_params)
+        return [InboundWebhookDelivery.model_validate(item) for item in data]

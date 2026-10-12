@@ -40,6 +40,7 @@ from spooled.utils.jwt import decode_jwt_exp, jwt_needs_refresh
 if TYPE_CHECKING:
     from spooled.grpc.client import SpooledGrpcClient
     from spooled.realtime.unified import SpooledRealtime
+    from spooled.types.common import RateLimitInfo
 
 
 class SpooledClient:
@@ -48,7 +49,7 @@ class SpooledClient:
 
     Example:
         >>> from spooled import SpooledClient
-        >>> client = SpooledClient(api_key="sk_live_...")
+        >>> client = SpooledClient(api_key="sp_live_...")
         >>>
         >>> # Create a job
         >>> result = client.jobs.create({
@@ -60,7 +61,7 @@ class SpooledClient:
         >>> queues = client.queues.list()
 
     Using as context manager:
-        >>> with SpooledClient(api_key="sk_live_...") as client:
+        >>> with SpooledClient(api_key="sp_live_...") as client:
         ...     job = client.jobs.create({"queue_name": "test", "payload": {}})
     """
 
@@ -81,7 +82,7 @@ class SpooledClient:
         Initialize the Spooled client.
 
         Args:
-            api_key: API key for authentication (sk_live_... or sk_test_...)
+            api_key: API key for authentication (sp_live_...)
             access_token: JWT access token (alternative to api_key)
             refresh_token: JWT refresh token for auto-refresh
             admin_key: Admin key for admin operations
@@ -233,13 +234,24 @@ class SpooledClient:
 
     @property
     def metrics(self) -> MetricsResource:
-        """Metrics endpoint (public)."""
+        """Prometheus metrics (``GET /metrics``; needs the server's metrics token)."""
         return self._metrics
 
     @property
     def admin(self) -> AdminResource:
         """Admin endpoints (requires admin_key)."""
         return self._admin
+
+    @property
+    def rate_limit(self) -> RateLimitInfo | None:
+        """Rate-limit state from the most recent API response.
+
+        The API sends ``X-RateLimit-Limit``, ``X-RateLimit-Remaining``,
+        ``X-RateLimit-Reset`` (Unix seconds) and ``X-RateLimit-Scope`` on every
+        response; this is the latest set seen by this client (``None`` before
+        the first response). Shared by everything using this client.
+        """
+        return self._http.rate_limit
 
     @property
     def ingest(self) -> IngestResource:
@@ -389,7 +401,7 @@ class SpooledClient:
             >>> debug_client = client.with_options(debug=True)
             >>>
             >>> # Create client with different API key
-            >>> other_client = client.with_options(api_key="sk_live_other")
+            >>> other_client = client.with_options(api_key="sp_live_other")
         """
         overrides: dict[str, Any] = {
             "api_key": api_key,
@@ -511,6 +523,6 @@ def create_client(
 
     Example:
         >>> from spooled import create_client
-        >>> client = create_client(api_key="sk_live_...")
+        >>> client = create_client(api_key="sp_live_...")
     """
     return SpooledClient(api_key=api_key, **kwargs)
