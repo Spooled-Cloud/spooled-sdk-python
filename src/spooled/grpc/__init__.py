@@ -11,7 +11,7 @@ Example:
     >>>
     >>> grpc_client = SpooledGrpcClient(
     ...     address="grpc.spooled.cloud:443",
-    ...     api_key="sk_live_...",
+    ...     api_key="sp_live_...",
     ... )
     >>>
     >>> # Enqueue a job

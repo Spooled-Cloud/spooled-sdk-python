@@ -10,3 +10,4 @@
 - SSE streams use `SSE_TIMEOUT` (read 60 s; server keep-alive 15 s), check the HTTP status (`stream_error`), stop on non-retryable errors (401/403/404), restore the retry counter only when an event arrives, and end a job stream after its terminal status. The unified SSE client reconnects on a clean end and gives up (`last_error` + `error` event) on a rejected token.
 - `with_options()` goes through `config.merge_client_config`, which carries every field; `ws_url` is carried only when it was set explicitly.
 
+- gRPC stubs are generated with the locked `grpcio-tools` (1.80.0, protobuf gencode 6.31.1) by `scripts/generate_grpc.sh`; `proto/spooled.proto` is a copy of `spooled-backend/proto/spooled.proto`.

@@ -25,12 +25,13 @@ from pathlib import Path
 import sys
 
 path = Path(sys.argv[1])
-content = path.read_text()
+# Bytes in and out: text mode would write CRLF line endings on Windows.
+content = path.read_bytes()
 content = content.replace(
-    "import spooled_pb2 as spooled__pb2",
-    "from spooled.grpc.stubs import spooled_pb2 as spooled__pb2",
+    b"import spooled_pb2 as spooled__pb2",
+    b"from spooled.grpc.stubs import spooled_pb2 as spooled__pb2",
 )
-path.write_text(content)
+path.write_bytes(content)
 PY
 
 

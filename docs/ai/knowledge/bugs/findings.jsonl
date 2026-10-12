@@ -54,3 +54,4 @@
 {"id":"PS-55","sev":"P2","summary":"Workflow jobs returned invented `key: \"\"`","path":"types/workflows.py, resources/workflows.py","status":"fixed","note":"key is None (SDKNP-18)"}
 {"id":"PS-56","sev":"P3","summary":"`clear_webhook_token` can never succeed","path":"resources/organizations.py","status":"fixed","note":"UnsupportedOperationError (SDKNP-26)"}
 {"id":"PS-57","sev":"P2","summary":"Empty/over-long fail text rejected with 400, job stuck until lease expiry","path":"types/jobs.py, worker/*.py","status":"fixed","note":"coerce_fail_error (brief item 4)"}
+{"id":"PS-59","sev":"P2","summary":"gRPC `fail(retry=False)` and ProcessJobs fail retried instead of dead-lettering (stale proto, plain `bool retry`)","path":"proto/spooled.proto, grpc/client.py","status":"fixed","note":"Proto synced with backend (`optional bool retry`, `optional string worker_id`), stubs regenerated, field set only when not None (1.4.0)"}

@@ -138,7 +138,9 @@ class GrpcFailRequest(BaseModel):
     error: str = Field(..., min_length=1, max_length=2048)
     # ``retry`` defaults to True (honouring max_retries); the server reads a false
     # value as "dead-letter now", so only pass False to give up on the job.
-    retry: bool = True
+    # ``None`` leaves the proto3 ``optional`` field unset, which the server
+    # treats like True.
+    retry: bool | None = True
     # Required by the server (INVALID_ARGUMENT otherwise); see GrpcCompleteRequest.
     lease_id: str
 
@@ -201,6 +203,11 @@ class GrpcRegisterWorkerRequest(BaseModel):
     max_concurrency: int = Field(default=5, ge=1, le=100)
     version: str = __version__
     metadata: dict[str, str] | None = None
+    # Stable worker id: re-registering the same id after a restart updates that
+    # worker instead of adding one (see RegisterWorkerParams.worker_id).
+    worker_id: str | None = Field(
+        default=None, min_length=1, max_length=128, pattern=r"^[A-Za-z0-9._-]+$"
+    )
 
     model_config = {"extra": "forbid"}
 
@@ -252,7 +259,12 @@ def _dict_to_struct(d: dict[str, Any] | None) -> struct_pb2.Struct | None:
 
 
 def _struct_to_dict(struct: struct_pb2.Struct | None) -> dict[str, Any] | None:
-    """Convert a protobuf Struct to a Python dict."""
+    """Convert a protobuf Struct to a Python dict.
+
+    gRPC carries payload/result as ``google.protobuf.Struct``: only JSON
+    objects fit (a non-object REST payload arrives empty), and numbers are
+    doubles, so integers of 2**53 and above lose precision. REST keeps both.
+    """
     if struct is None:
         return None
     # MessageToDict preserves all nested structures
@@ -309,7 +321,12 @@ def _map_grpc_error(error: Any, timeout_seconds: float | None) -> SpooledError:
             return NotFoundError(details or "Resource not found")
         if code == grpc.StatusCode.INVALID_ARGUMENT:
             return ValidationError(details or "Validation failed")
-        if code in (grpc.StatusCode.FAILED_PRECONDITION, grpc.StatusCode.ABORTED):
+        if code in (
+            grpc.StatusCode.FAILED_PRECONDITION,
+            grpc.StatusCode.ABORTED,
+            # Register with a worker_id another organization uses (REST: 409).
+            grpc.StatusCode.ALREADY_EXISTS,
+        ):
             return ConflictError(details or "Operation conflict")
         if code == grpc.StatusCode.RESOURCE_EXHAUSTED:
             return RateLimitError(details or "Rate limit exceeded")
@@ -328,6 +345,28 @@ def _call_unary(
         if grpc is not None and isinstance(error, grpc.RpcError):
             raise _map_grpc_error(error, timeout_seconds) from error
         raise
+
+
+def _build_fail_request(
+    job_id: str, worker_id: str, error: str, retry: bool | None, lease_id: str
+) -> Any:
+    """Build a proto ``FailRequest``, putting ``retry`` on the wire when it is set.
+
+    ``retry`` is a proto3 ``optional bool``: ``False`` must be sent explicitly or
+    the server cannot tell it from "omitted" and retries the job instead of
+    dead-lettering it. ``None`` leaves the field unset (server default: retry).
+    """
+    from spooled.grpc.stubs import FailRequest
+
+    request = FailRequest(
+        job_id=job_id,
+        worker_id=worker_id,
+        error=error,
+        lease_id=lease_id,
+    )
+    if retry is not None:
+        request.retry = retry
+    return request
 
 
 def _proto_job_to_grpc_job(job: Any) -> GrpcJob:
@@ -504,7 +543,6 @@ class ProcessJobsStream:
         from spooled.grpc.stubs import (
             CompleteRequest,
             DequeueRequest,
-            FailRequest,
             RenewLeaseRequest,
         )
         from spooled.grpc.stubs import (
@@ -533,12 +571,12 @@ class ProcessJobsStream:
             )
             proto_req.complete.CopyFrom(complete_req)
         elif request.fail:
-            fail_req = FailRequest(
-                job_id=request.fail.job_id,
-                worker_id=request.fail.worker_id,
-                error=request.fail.error,
-                retry=request.fail.retry,
-                lease_id=request.fail.lease_id,
+            fail_req = _build_fail_request(
+                request.fail.job_id,
+                request.fail.worker_id,
+                request.fail.error,
+                request.fail.retry,
+                request.fail.lease_id,
             )
             proto_req.fail.CopyFrom(fail_req)
         elif request.renew_lease:
@@ -751,7 +789,7 @@ class GrpcQueueService:
         worker_id: str,
         error: str,
         *,
-        retry: bool = True,
+        retry: bool | None = True,
         lease_id: str,
     ) -> GrpcFailResponse:
         """
@@ -762,7 +800,8 @@ class GrpcQueueService:
             worker_id: Worker ID
             error: Error message
             retry: Whether to retry the job (default True: the server reschedules
-                it until ``max_retries`` is used up; False dead-letters it now)
+                it until ``max_retries`` is used up; False dead-letters it now;
+                None leaves the field unset, which the server treats like True)
             lease_id: Lease fencing token from the dequeued job (required: the
                 server rejects settlement without it). The failure succeeds only
                 if it matches the job's current lease.
@@ -770,15 +809,7 @@ class GrpcQueueService:
         Returns:
             GrpcFailResponse with success flag and retry info
         """
-        from spooled.grpc.stubs import FailRequest
-
-        request = FailRequest(
-            job_id=job_id,
-            worker_id=worker_id,
-            error=error,
-            retry=retry,
-            lease_id=lease_id,
-        )
+        request = _build_fail_request(job_id, worker_id, error, retry, lease_id)
 
         response = _call_unary(self._stub.Fail, request, self._metadata, self._timeout_seconds)
         return GrpcFailResponse(
@@ -904,7 +935,7 @@ class GrpcQueueService:
             >>> for job in stream:
             ...     print(f"Processing: {job.id}")
             ...     # Process job...
-            ...     grpc_client.queue.complete(job.id, "worker-1")
+            ...     grpc_client.queue.complete(job.id, "worker-1", lease_id=job.lease_id)
             >>> stream.cancel()
         """
         from spooled.grpc.stubs import StreamJobsRequest
@@ -955,6 +986,7 @@ class GrpcQueueService:
             ...         stream.send(ProcessRequest(complete=GrpcCompleteRequest(
             ...             job_id=response.job.id,
             ...             worker_id="worker-1",
+            ...             lease_id=response.job.lease_id,
             ...         )))
             ...     elif response.error:
             ...         print(f"Error: {response.error}")
@@ -992,6 +1024,7 @@ class GrpcWorkersService:
         max_concurrency: int = 5,
         version: str = __version__,
         metadata: dict[str, str] | None = None,
+        worker_id: str | None = None,
     ) -> GrpcRegisterWorkerResponse:
         """
         Register a worker via gRPC.
@@ -1003,6 +1036,12 @@ class GrpcWorkersService:
             max_concurrency: Maximum concurrent jobs
             version: Worker version
             metadata: Additional worker metadata
+            worker_id: Optional stable worker id (1-128 characters: letters,
+                digits, ``-``, ``_``, ``.``). Registering the same id again
+                after a restart updates that worker instead of adding one, so
+                it does not count twice against the plan's worker limit.
+                Omitted: the server assigns a new id. An id another
+                organization uses raises ``ConflictError`` (ALREADY_EXISTS).
 
         Returns:
             GrpcRegisterWorkerResponse with worker_id and timing info
@@ -1019,6 +1058,8 @@ class GrpcWorkersService:
 
         if metadata:
             request.metadata.update(metadata)
+        if worker_id:
+            request.worker_id = worker_id
 
         response = _call_unary(self._stub.Register, request, self._metadata, self._timeout_seconds)
         return GrpcRegisterWorkerResponse(
@@ -1115,7 +1156,7 @@ class SpooledGrpcClient:
         >>>
         >>> grpc_client = SpooledGrpcClient(
         ...     address="grpc.spooled.cloud:443",
-        ...     api_key="sk_live_...",
+        ...     api_key="sp_live_...",
         ... )
         >>>
         >>> # Wait for connection
@@ -1131,7 +1172,7 @@ class SpooledGrpcClient:
         >>> # Stream jobs (server-side streaming)
         >>> for job in grpc_client.queue.stream_jobs("my-queue", "worker-1"):
         ...     print(f"Received: {job.id}")
-        ...     grpc_client.queue.complete(job.id, "worker-1")
+        ...     grpc_client.queue.complete(job.id, "worker-1", lease_id=job.lease_id)
         >>>
         >>> grpc_client.close()
     """

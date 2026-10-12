@@ -59,3 +59,4 @@
 | PS-55 | P2 | ~~Workflow jobs returned invented `key: ""`~~ **FIXED 1.3.0** | `types/workflows.py, resources/workflows.py`; key is None (SDKNP-18) |
 | PS-56 | P3 | ~~`clear_webhook_token` can never succeed~~ **FIXED 1.3.0** | `resources/organizations.py`; UnsupportedOperationError (SDKNP-26) |
 | PS-57 | P2 | ~~Empty/over-long fail text rejected with 400, job stuck until lease expiry~~ **FIXED 1.3.0** | `types/jobs.py, worker/*.py`; coerce_fail_error (brief item 4) |
+| PS-59 | P2 | ~~gRPC `fail(retry=False)` and ProcessJobs fail retried instead of dead-lettering (stale proto, plain `bool retry`)~~ **FIXED 1.4.0** | `proto/spooled.proto, grpc/client.py`; Proto synced with backend (`optional bool retry`, `optional string worker_id`), stubs regenerated, field set only when not None (1.4.0) |

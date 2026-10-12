@@ -46,3 +46,4 @@
 - gRPC `Complete`, `Fail`, `RenewLease` need `lease_id` (INVALID_ARGUMENT otherwise); `Fail.retry` defaults to true (false = dead-letter now). `client.grpc` dials `grpc_address` (default `grpc.spooled.cloud:443`).
 - Name limits: schedule name/queue_name, workflow name and workflow job queue_name allow 255 characters; queue_name on jobs stays 100.
 
+- gRPC: `FailRequest.retry` is proto3 `optional` (omitted = retry per max_retries, false = dead-letter now). The SDK sets the field whenever `retry` is not None. `RegisterWorkerRequest.worker_id` (field 7) is optional; another org's id is `ALREADY_EXISTS` -> `ConflictError`. Payload/result are `google.protobuf.Struct`: object payloads only, integers >= 2^53 lose precision (REST keeps them).

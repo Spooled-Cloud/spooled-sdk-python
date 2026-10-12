@@ -272,7 +272,7 @@ class ErrorResponse(_message.Message):
     def __init__(self, code: _Optional[str] = ..., message: _Optional[str] = ...) -> None: ...
 
 class RegisterWorkerRequest(_message.Message):
-    __slots__ = ("queue_name", "hostname", "worker_type", "max_concurrency", "version", "metadata")
+    __slots__ = ("queue_name", "hostname", "worker_type", "max_concurrency", "version", "metadata", "worker_id")
     class MetadataEntry(_message.Message):
         __slots__ = ("key", "value")
         KEY_FIELD_NUMBER: _ClassVar[int]
@@ -286,13 +286,15 @@ class RegisterWorkerRequest(_message.Message):
     MAX_CONCURRENCY_FIELD_NUMBER: _ClassVar[int]
     VERSION_FIELD_NUMBER: _ClassVar[int]
     METADATA_FIELD_NUMBER: _ClassVar[int]
+    WORKER_ID_FIELD_NUMBER: _ClassVar[int]
     queue_name: str
     hostname: str
     worker_type: str
     max_concurrency: int
     version: str
     metadata: _containers.ScalarMap[str, str]
-    def __init__(self, queue_name: _Optional[str] = ..., hostname: _Optional[str] = ..., worker_type: _Optional[str] = ..., max_concurrency: _Optional[int] = ..., version: _Optional[str] = ..., metadata: _Optional[_Mapping[str, str]] = ...) -> None: ...
+    worker_id: str
+    def __init__(self, queue_name: _Optional[str] = ..., hostname: _Optional[str] = ..., worker_type: _Optional[str] = ..., max_concurrency: _Optional[int] = ..., version: _Optional[str] = ..., metadata: _Optional[_Mapping[str, str]] = ..., worker_id: _Optional[str] = ...) -> None: ...
 
 class RegisterWorkerResponse(_message.Message):
     __slots__ = ("worker_id", "lease_duration_secs", "heartbeat_interval_secs")

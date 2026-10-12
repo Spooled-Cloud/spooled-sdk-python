@@ -896,3 +896,109 @@ class TestGrpcExports:
         assert SpooledGrpcClient is not None
         assert GrpcQueueService is not None
         assert GrpcWorkersService is not None
+
+
+class TestGrpcProtoWire:
+    """What actually goes on the wire for fields the server reads with presence."""
+
+    def test_stub_fields_have_presence(self):
+        """`retry` and `worker_id` are proto3 `optional` in the backend proto."""
+        from spooled.grpc.stubs import FailRequest, RegisterWorkerRequest
+
+        assert FailRequest.DESCRIPTOR.fields_by_name["retry"].has_presence
+        worker_id = RegisterWorkerRequest.DESCRIPTOR.fields_by_name["worker_id"]
+        assert worker_id.number == 7
+        assert worker_id.has_presence
+
+    def test_unary_fail_retry_false_is_serialized(self):
+        """retry=False must be on the wire as field 4 (0x20 0x00), or the server
+        retries the job instead of dead-lettering it."""
+        from spooled.grpc.client import GrpcQueueService
+
+        stub = MagicMock()
+        stub.Fail.return_value = MagicMock(success=True, will_retry=False, next_retry_delay_secs=0)
+        service = GrpcQueueService(stub, [])
+
+        service.fail(job_id="a", worker_id="w", error="e", retry=False, lease_id="l")
+        request = stub.Fail.call_args[0][0]
+        assert request.HasField("retry")
+        assert b"\x20\x00" in request.SerializeToString()
+
+        service.fail(job_id="a", worker_id="w", error="e", lease_id="l")
+        request = stub.Fail.call_args[0][0]
+        assert request.HasField("retry")
+        assert b"\x20\x01" in request.SerializeToString()
+
+        service.fail(job_id="a", worker_id="w", error="e", retry=None, lease_id="l")
+        request = stub.Fail.call_args[0][0]
+        assert not request.HasField("retry")
+        assert b"\x20" not in request.SerializeToString()
+
+    def test_process_jobs_fail_retry_false_is_serialized(self):
+        """The ProcessJobs fail message carries an explicit retry=False too."""
+        from spooled.grpc import GrpcFailRequest, ProcessJobsStream, ProcessRequest
+
+        stream = ProcessJobsStream(MagicMock(return_value=iter([])), [])
+        stream.send(
+            ProcessRequest(
+                fail=GrpcFailRequest(
+                    job_id="a", worker_id="w", error="e", retry=False, lease_id="l"
+                )
+            )
+        )
+        stream.send(
+            ProcessRequest(fail=GrpcFailRequest(job_id="a", worker_id="w", error="e", lease_id="l"))
+        )
+        dead_letter = stream._request_queue.get_nowait()
+        default = stream._request_queue.get_nowait()
+        stream.end()
+
+        assert dead_letter.fail.HasField("retry")
+        assert dead_letter.fail.retry is False
+        assert b"\x20\x00" in dead_letter.fail.SerializeToString()
+        assert default.fail.HasField("retry")
+        assert default.fail.retry is True
+
+    def test_register_sends_worker_id(self):
+        """GrpcWorkersService.register forwards a stable worker_id (field 7)."""
+        from spooled.grpc.client import GrpcWorkersService
+
+        stub = MagicMock()
+        stub.Register.return_value = MagicMock(
+            worker_id="w-1", lease_duration_secs=300, heartbeat_interval_secs=10
+        )
+        service = GrpcWorkersService(stub, [])
+
+        result = service.register("q", "host", worker_id="w-1")
+        request = stub.Register.call_args[0][0]
+        assert request.HasField("worker_id")
+        assert request.worker_id == "w-1"
+        assert result.worker_id == "w-1"
+
+        service.register("q", "host")
+        assert not stub.Register.call_args[0][0].HasField("worker_id")
+
+    def test_register_request_model_validates_worker_id(self):
+        from pydantic import ValidationError
+
+        from spooled.grpc import GrpcRegisterWorkerRequest
+
+        assert GrpcRegisterWorkerRequest(queue_name="q", hostname="h").worker_id is None
+        assert (
+            GrpcRegisterWorkerRequest(queue_name="q", hostname="h", worker_id="w_1.a-b").worker_id
+            == "w_1.a-b"
+        )
+        with pytest.raises(ValidationError):
+            GrpcRegisterWorkerRequest(queue_name="q", hostname="h", worker_id="bad id")
+
+    def test_already_exists_maps_to_conflict(self):
+        """A worker_id owned by another organization is ALREADY_EXISTS (REST 409)."""
+        grpc = pytest.importorskip("grpc")
+
+        from spooled.errors import ConflictError
+        from spooled.grpc.client import _map_grpc_error
+
+        error = MagicMock()
+        error.code.return_value = grpc.StatusCode.ALREADY_EXISTS
+        error.details.return_value = "worker id unavailable"
+        assert isinstance(_map_grpc_error(error, 1.0), ConflictError)
