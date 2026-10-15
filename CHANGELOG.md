@@ -2,6 +2,44 @@
 
 All notable changes to the Spooled Python SDK are documented here.
 
+## [1.5.0] - 2026-10-15
+
+Workers stop working a job whose lease is gone, and a partial DLQ retry now
+reports the jobs it left behind. Everything is additive: existing calls,
+parameters and return values keep working, and the fixes only change behaviour
+that was wrong.
+
+### Fixed
+
+- **A worker no longer completes or fails a job after losing its lease.** A job
+  heartbeat answered with HTTP 409 `LEASE_EXPIRED` (the lease timed out, or
+  `lease_id` no longer matches the job's current lease) was logged and retried on
+  the next tick. The handler kept running and then sent `complete` or `fail` with
+  the stale lease, so the same payload could run on two workers. The sync and
+  async workers now treat that 409, on a heartbeat, `complete` or `fail`, as a
+  lost lease: heartbeats and the job timeout timer stop, `ctx.signal` is set, the
+  handler's result is dropped and no further ack is sent for that job. The async
+  worker also cancels the handler task. A sync handler runs in a thread that
+  cannot be killed, so it should watch `ctx.signal` to stop early. Other 409
+  answers, such as "Job is already completed" on a replayed ack, behave as before.
+- **`RetryDlqResponse.job_ids` and `retried_jobs` are the same ids.** The API
+  answers with `retried_jobs`, so `job_ids` was `None`. It now mirrors
+  `retried_jobs`, and a response that only carries the older `job_ids` fills
+  `retried_jobs`.
+
+### Added
+
+- `RetryDlqResponse.skipped_jobs`: the ids a DLQ retry left dead-lettered because
+  reviving their workflow would pass the plan's `max_workflows`. A partial retry
+  is still HTTP 200, so `retried_count` and `skipped_jobs` are the only sign that
+  some jobs were not retried.
+- Worker event `job:lease_lost`, with `JobLeaseLostEventData` (`job_id`,
+  `queue_name`, `lease_id`, `operation` as `"heartbeat"`, `"complete"` or
+  `"fail"`, and the `error`), exported from `spooled.worker`.
+- `spooled.errors.is_lease_expired(error)`: true for a `ConflictError` with code
+  `LEASE_EXPIRED`. The API uses that one code both when the lease timed out and
+  when `lease_id` does not match the job's current lease.
+
 ## [1.4.0] - 2026-10-12
 
 Catches up with backend 0.1.122. Everything is additive: existing calls,

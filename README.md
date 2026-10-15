@@ -379,6 +379,7 @@ print(info.remaining, "of", info.limit, "left until", info.reset, f"({info.scope
 | `job:started` | Job handler started |
 | `job:completed` | Job completed successfully |
 | `job:failed` | Job failed |
+| `job:lease_lost` | Job lease lost; the worker stops and does not ack the job |
 
 ## Environment Variables
 
@@ -398,7 +399,7 @@ use these names by convention:
 - gRPC extra: `grpcio>=1.80.0`, `grpcio-tools>=1.80.0`, `protobuf>=6.33.5`
 - Realtime extra: `websockets>=12.0`, `sseclient-py>=1.8.0`
 
-The package version is defined in `pyproject.toml`. At runtime, `spooled.__version__`, the default REST `User-Agent`, worker options, and REST/gRPC worker registration read installed package metadata; source-only imports fall back to `1.4.0`.
+The package version is defined in `pyproject.toml`. At runtime, `spooled.__version__`, the default REST `User-Agent`, worker options, and REST/gRPC worker registration read installed package metadata; source-only imports fall back to `1.5.0`.
 
 Release maintainers should follow the [publishing checklist](docs/PUBLISHING.md) before creating a tag or publishing to PyPI.
 
