@@ -28,6 +28,7 @@ WorkerEvent = Literal[
     "job:started",
     "job:completed",
     "job:failed",
+    "job:lease_lost",
 ]
 
 
@@ -162,6 +163,22 @@ class JobFailedEventData:
     queue_name: str
     error: str
     will_retry: bool
+
+
+@dataclass
+class JobLeaseLostEventData:
+    """Data for ``job:lease_lost``.
+
+    A heartbeat or a late ack got 409 ``LEASE_EXPIRED`` (the lease timed out,
+    or ``lease_id`` no longer matches). The handler was signalled and this
+    execution will not complete or fail the job.
+    """
+
+    job_id: str
+    queue_name: str
+    lease_id: str | None
+    operation: str
+    error: Exception
 
 
 class SpooledWorkerOptions(BaseModel):

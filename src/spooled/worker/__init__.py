@@ -9,6 +9,7 @@ from spooled.worker.types import (
     JobContext,
     JobFailedEventData,
     JobHandler,
+    JobLeaseLostEventData,
     StartedEventData,
     StoppedEventData,
     WorkerEvent,
@@ -28,4 +29,5 @@ __all__ = [
     "JobClaimedEventData",
     "JobCompletedEventData",
     "JobFailedEventData",
+    "JobLeaseLostEventData",
 ]

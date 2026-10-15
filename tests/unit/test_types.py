@@ -24,6 +24,7 @@ from spooled.types.jobs import (
     JobHeartbeatParams,
     JobSummary,
     PurgeDlqParams,
+    RetryDlqResponse,
 )
 from spooled.types.organizations import (
     CreateOrganizationParams,
@@ -519,6 +520,29 @@ class TestPurgeDlqParams:
     def test_confirm_false_raises(self) -> None:
         with pytest.raises(ValueError, match="confirm"):
             PurgeDlqParams(confirm=False).to_payload()
+
+
+class TestRetryDlqResponse:
+    """POST /jobs/dlq/retry returns retried ids and the ones left dead-lettered."""
+
+    def test_keeps_skipped_jobs_and_aliases_retried_ids(self) -> None:
+        result = RetryDlqResponse.model_validate(
+            {
+                "retried_count": 4,
+                "retried_jobs": ["j1", "j2", "j3", "j4"],
+                "skipped_jobs": ["j5", "j6"],
+            }
+        )
+        assert result.retried_jobs == ["j1", "j2", "j3", "j4"]
+        assert result.skipped_jobs == ["j5", "j6"]
+        # Older callers read job_ids. It stays as the ids that were retried.
+        assert result.job_ids == ["j1", "j2", "j3", "j4"]
+
+    def test_legacy_job_ids_fill_retried_jobs(self) -> None:
+        result = RetryDlqResponse.model_validate({"retried_count": 2, "job_ids": ["j1", "j2"]})
+        assert result.job_ids == ["j1", "j2"]
+        assert result.retried_jobs == ["j1", "j2"]
+        assert result.skipped_jobs == []
 
 
 class TestLeaseFencingParams:

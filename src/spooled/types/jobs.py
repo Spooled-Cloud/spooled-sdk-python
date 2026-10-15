@@ -7,7 +7,7 @@ from __future__ import annotations
 from datetime import datetime, timedelta, timezone
 from typing import Any, Literal
 
-from pydantic import AliasChoices, BaseModel, Field, field_validator
+from pydantic import AliasChoices, BaseModel, Field, field_validator, model_validator
 
 from spooled.types.common import to_rfc3339
 
@@ -426,11 +426,28 @@ class RetryDlqParams(BaseModel):
 
 
 class RetryDlqResponse(BaseModel):
-    """Response from retrying DLQ jobs."""
+    """Response from retrying DLQ jobs.
+
+    A partial retry is still HTTP 200. ``skipped_jobs`` are the dead-lettered
+    workflow steps left in the DLQ because reviving them would pass the plan's
+    ``max_workflows``. ``job_ids`` mirrors ``retried_jobs`` for callers that
+    still read the older name.
+    """
 
     retried_count: int
     retried_jobs: list[str] = []
+    skipped_jobs: list[str] = []
     job_ids: list[str] | None = None  # Alias for backwards compatibility
+
+    @model_validator(mode="after")
+    def fill_job_ids_alias(self) -> RetryDlqResponse:
+        # The API names the retried ids ``retried_jobs``. ``job_ids`` is the
+        # older alias; keep it populated so either field is that same set.
+        if self.job_ids is None:
+            self.job_ids = list(self.retried_jobs)
+        elif not self.retried_jobs:
+            self.retried_jobs = list(self.job_ids)
+        return self
 
 
 class PurgeDlqParams(BaseModel):

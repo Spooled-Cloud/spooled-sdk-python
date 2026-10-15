@@ -325,6 +325,27 @@ class TestDlqResourceComplete:
             assert result.retried_count == 3
 
     @respx.mock
+    def test_retry_dlq_reports_skipped_jobs(self) -> None:
+        """A partial retry is HTTP 200 and lists the ids left in the DLQ."""
+        respx.post(f"{BASE_URL}/api/v1/jobs/dlq/retry").mock(
+            return_value=httpx.Response(
+                200,
+                json={
+                    "retried_count": 4,
+                    "retried_jobs": ["j1", "j2", "j3", "j4"],
+                    "skipped_jobs": ["j5", "j6", "j7", "j8", "j9", "j10"],
+                },
+            )
+        )
+
+        with SpooledClient(api_key=API_KEY, base_url=BASE_URL) as client:
+            result = client.jobs.dlq.retry({"limit": 10})
+            assert result.retried_count == 4
+            assert result.retried_jobs == ["j1", "j2", "j3", "j4"]
+            assert result.skipped_jobs == ["j5", "j6", "j7", "j8", "j9", "j10"]
+            assert result.job_ids == ["j1", "j2", "j3", "j4"]
+
+    @respx.mock
     def test_purge_dlq(self) -> None:
         """Test purging DLQ."""
         route = respx.post(f"{BASE_URL}/api/v1/jobs/dlq/purge").mock(

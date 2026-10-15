@@ -14,7 +14,7 @@ from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any
 
 from spooled._version import __version__
-from spooled.errors import ConflictError
+from spooled.errors import ConflictError, is_lease_expired
 from spooled.types.jobs import ClaimedJob, coerce_fail_error
 from spooled.worker.types import (
     AsyncJobContext,
@@ -23,6 +23,7 @@ from spooled.worker.types import (
     JobClaimedEventData,
     JobCompletedEventData,
     JobFailedEventData,
+    JobLeaseLostEventData,
     JobStartedEventData,
     SpooledWorkerOptions,
     StartedEventData,
@@ -54,6 +55,10 @@ class ActiveJob:
     settled: bool = False
     # Why stop() cancelled the handler; the cancelled task fails the job with it.
     cancel_reason: str | None = None
+    # Set when a heartbeat or a late ack gets 409 LEASE_EXPIRED. The task may
+    # still be running, but this execution must not complete or fail the job:
+    # the scheduler has already given it to someone else.
+    lease_lost: bool = False
 
 
 class AsyncSpooledWorker:
@@ -480,6 +485,10 @@ class AsyncSpooledWorker:
             active.abort_event.set()
             await self._fail_job(active, "Job timeout exceeded")
         except asyncio.CancelledError:
+            # Lease loss cancels the task so an await stops. That is not a
+            # failure to report: the job is no longer ours.
+            if active.lease_lost:
+                raise
             reason = active.cancel_reason
             if reason is None:
                 raise  # a genuine external cancellation, not stop()'s timeout
@@ -527,7 +536,13 @@ class AsyncSpooledWorker:
         """
         async with self._active_jobs_lock:
             worker_id = self._worker_id
-            if active.settled or self._active_jobs.get(active.job.id) is not active:
+            # A lost lease must not be acked: complete/fail with the stale
+            # lease_id 409s, and the payload may already be running elsewhere.
+            if (
+                active.lease_lost
+                or active.settled
+                or self._active_jobs.get(active.job.id) is not active
+            ):
                 return None
             if not worker_id:
                 return None
@@ -549,6 +564,10 @@ class AsyncSpooledWorker:
         if worker_id is None:
             return False
         try:
+            async with self._active_jobs_lock:
+                # Lost between the claim above and this send.
+                if active.lease_lost:
+                    return False
             params: dict[str, Any] = {
                 "worker_id": worker_id,
                 "result": result,
@@ -558,6 +577,9 @@ class AsyncSpooledWorker:
             try:
                 await self._client.jobs.complete(job.id, params)
             except ConflictError as e:
+                if is_lease_expired(e):
+                    await self._lose_lease(active, e, "complete")
+                    return False
                 # The ack is retried on network errors; if the first attempt had
                 # actually landed, the server answers the replay with 409
                 # "Job is already completed" -- that is success, not a failure.
@@ -595,13 +617,23 @@ class AsyncSpooledWorker:
         # leave the job processing until its lease expired.
         error_message = coerce_fail_error(error_message)
         try:
+            async with self._active_jobs_lock:
+                # Lost between the claim above and this send.
+                if active.lease_lost:
+                    return False
             params: dict[str, Any] = {
                 "worker_id": worker_id,
                 "error": error_message,
             }
             if job.lease_id is not None:
                 params["lease_id"] = job.lease_id
-            await self._client.jobs.fail(job.id, params)
+            try:
+                await self._client.jobs.fail(job.id, params)
+            except ConflictError as e:
+                if is_lease_expired(e):
+                    await self._lose_lease(active, e, "fail")
+                    return False
+                raise
 
             self._emit(
                 "job:failed",
@@ -632,6 +664,40 @@ class AsyncSpooledWorker:
             except asyncio.CancelledError:
                 pass
 
+    async def _lose_lease(self, active: ActiveJob, error: Exception, operation: str) -> None:
+        """Stop this execution after 409 ``LEASE_EXPIRED``.
+
+        ``ctx.signal`` is set and the handler task is cancelled, so an await
+        unwinds. The handler's result is dropped: the row is already back to
+        pending, or another worker holds the lease.
+        """
+        async with self._active_jobs_lock:
+            if active.lease_lost:
+                return
+            active.lease_lost = True
+        active.abort_event.set()
+        if self._debug:
+            self._debug(f"Lost lease for job {active.job.id} during {operation}: {error}", None)
+        self._emit(
+            "job:lease_lost",
+            JobLeaseLostEventData(
+                job_id=active.job.id,
+                queue_name=active.job.queue_name,
+                lease_id=active.job.lease_id,
+                operation=operation,
+                error=error,
+            ),
+        )
+        # Cancel after the flag is set, and do not await: the cancelled handler
+        # runs once this coroutine yields, and it must already see lease_lost.
+        current = asyncio.current_task()
+        heartbeat = active.heartbeat_task
+        if heartbeat is not None and heartbeat is not current and not heartbeat.done():
+            heartbeat.cancel()
+        process = active.process_task
+        if process is not None and process is not current and not process.done():
+            process.cancel()
+
     async def _job_heartbeat_loop(self, active: ActiveJob, interval: float) -> None:
         """Send heartbeats bound to one immutable execution."""
         job = active.job
@@ -640,7 +706,12 @@ class AsyncSpooledWorker:
 
             async with self._active_jobs_lock:
                 worker_id = self._worker_id
-                if active.settled or self._active_jobs.get(job.id) is not active or not worker_id:
+                if (
+                    active.lease_lost
+                    or active.settled
+                    or self._active_jobs.get(job.id) is not active
+                    or not worker_id
+                ):
                     break
 
             try:
@@ -652,6 +723,9 @@ class AsyncSpooledWorker:
                     params["lease_id"] = job.lease_id
                 await self._client.jobs.heartbeat(job.id, params)
             except Exception as e:
+                if is_lease_expired(e):
+                    await self._lose_lease(active, e, "heartbeat")
+                    return
                 if self._debug:
                     self._debug(f"Job heartbeat failed for {job.id}: {e}", None)
                 self._emit("error", ErrorEventData(error=e))

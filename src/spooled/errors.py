@@ -125,6 +125,16 @@ class ConflictError(SpooledError):
         )
 
 
+def is_lease_expired(error: BaseException) -> bool:
+    """True for HTTP 409 ``LEASE_EXPIRED``.
+
+    The API uses that one code both when the lease timed out and when
+    ``lease_id`` does not match the job's current lease. Either way this
+    worker no longer holds the job, so it must not complete or fail it.
+    """
+    return isinstance(error, ConflictError) and error.code.upper() == "LEASE_EXPIRED"
+
+
 class ValidationError(SpooledError):
     """400/422 - Validation failed.
 

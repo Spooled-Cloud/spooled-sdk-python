@@ -49,6 +49,8 @@ class FakeClient:
         self.calls: list[tuple[str, Any]] = []
         self._pending = list(jobs)
         self._is_async = is_async
+        self.heartbeat_error: Exception | None = None
+        self.fail_error: Exception | None = None
         self.complete_error: Exception | None = None
         self.workers = SimpleNamespace(
             register=self._wrap(self._register),
@@ -88,9 +90,13 @@ class FakeClient:
 
     def _fail(self, job_id: str, params: Any) -> None:
         self.calls.append(("fail", (job_id, params)))
+        if self.fail_error is not None:
+            raise self.fail_error
 
     def _heartbeat(self, job_id: str, params: Any) -> None:
         self.calls.append(("job_heartbeat", (job_id, params)))
+        if self.heartbeat_error is not None:
+            raise self.heartbeat_error
 
     def _deregister(self, worker_id: str) -> None:
         self.calls.append(("deregister", worker_id))
