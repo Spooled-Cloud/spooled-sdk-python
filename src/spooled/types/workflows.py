@@ -189,9 +189,9 @@ class WorkflowJob(BaseModel):
     model_config = ConfigDict(populate_by_name=True)
 
     id: str
-    # The API does not return the creation-time job key (the jobs table does not
-    # store it); it is only known from the ``POST /workflows`` response. ``None``
-    # means "unknown", not an empty key.
+    # The creation-time job key. Backend 0.1.129+ returns it on workflow
+    # details; ``None`` for workflows created earlier (the key was not stored),
+    # where only the ``POST /workflows`` response maps keys to job IDs.
     key: str | None = None
     queue_name: str = Field(
         default="",
