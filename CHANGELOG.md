@@ -2,6 +2,76 @@
 
 All notable changes to the Spooled Python SDK are documented here.
 
+## [1.6.0] - 2026-10-16
+
+Workers hand back a job they claimed while shutting down, WebSocket clients stop
+reconnecting to a server that keeps closing them, and gRPC errors for a lost
+lease or an exhausted plan quota carry the same type and code as their REST
+counterparts. One change affects code that catches rate-limit errors from gRPC
+calls; read "Changed" before upgrading.
+
+### Changed
+
+- **A gRPC `RESOURCE_EXHAUSTED` for a plan limit is now `QuotaExceededError`.**
+  Messages such as "Daily job limit reached" or "queues limit reached (1/1)"
+  share the `RESOURCE_EXHAUSTED` status with per-second rate limits, and the gRPC
+  client mapped all of them to `RateLimitError`. When the status has no
+  `retry-after` trailer and the message says that a limit was reached, the client
+  now raises `QuotaExceededError`, the error REST raises for a quota. It is a
+  subclass of `RateLimitError`, so `except RateLimitError` keeps catching it, but
+  it is not retryable and carries no `retry_after`: a cap does not clear after a
+  delay. A real rate limit stays a `RateLimitError`, and its `retry_after` is now
+  read from the `retry-after` trailer when the status carries one.
+- **`CreateScheduleParams.queue_name` and `WorkflowJobDefinition.queue_name`
+  accept at most 100 characters** (they accepted 255). The API rejects anything
+  longer than 100 with a 400, the same cap as `POST /jobs`, so a longer name now
+  fails when the model is built instead of when the request is sent.
+  `UpdateScheduleParams.queue_name` is unchanged because the update route does not
+  apply a new queue name.
+
+### Fixed
+
+- **A worker no longer drops a job it claims while `stop()` is running.** Backend
+  0.1.126 and later does not requeue a job whose lease is still live when the
+  worker deregisters, so a job claimed after `stop()` had ended its drain window
+  stayed in `processing` until the lease expired. The sync and async workers now
+  fail such a job (`"Worker stopped before the job started"`) instead of leaving
+  it unstarted: it is rescheduled when `retry_count < max_retries` and
+  dead-lettered otherwise, the same rule as a handler failure, and `job:failed`
+  is emitted. The handler does not run.
+- **`stop()` waits for a claim that is already in flight.** A claim request on the
+  wire when `stop()` started returns jobs this worker holds leases for. `stop()`
+  now waits for it so those jobs join the drain. The wait ends at the shutdown
+  deadline, so a claim that hangs or retries cannot hold `stop()` past
+  `shutdown_timeout`; jobs it returns later are failed as above. When the sync
+  `stop()` runs inside a signal handler on the thread that is blocked in the claim
+  call, it does not wait for itself.
+- **WebSocket clients stop reconnecting after repeated accept-then-close.**
+  `WebSocketClient`, `AsyncWebSocketClient` and the WebSocket transport of
+  `SpooledRealtime` reset the attempt counter as soon as the upgrade succeeded.
+  A server that accepted the connection and closed it at once (close 1011 when the
+  event channel cannot be opened) therefore refilled the budget on every cycle
+  and the client reconnected forever. The counter is now reset only after a socket
+  stayed up for 10 seconds (`STABLE_CONNECTION_SECONDS`); a socket that closes
+  sooner keeps counting toward `max_reconnect_attempts`, and the client gives up
+  when the budget is spent. An explicit `disconnect()` still starts with a fresh
+  budget.
+- **A lost lease over gRPC is `LEASE_EXPIRED`.** Unary `Complete`, `Fail` and
+  `RenewLease` report a lost lease as `FAILED_PRECONDITION` with the text
+  "Lease expired", or the text saying that `lease_id` does not match the job's
+  current lease, and no error code. The client mapped it to a `ConflictError`
+  with the generic code `conflict`, so `is_lease_expired` was false and the worker
+  kept the handler running. It now raises `ConflictError` with code `LEASE_EXPIRED`, so a worker
+  stops the handler and sends no ack, as it does for REST. Other
+  `FAILED_PRECONDITION` answers, such as "Job is already completed", are still a
+  plain `ConflictError`.
+
+### Added
+
+- `ProcessResponse.error_code`: the error code of an in-band ProcessJobs error
+  (for example `LEASE_EXPIRED`), so callers can branch on it instead of parsing
+  `ProcessResponse.error`, which keeps the format `"<code>: <message>"`.
+
 ## [1.5.0] - 2026-10-15
 
 Workers stop working a job whose lease is gone, and a partial DLQ retry now
