@@ -26,6 +26,7 @@ from spooled.realtime.events import (
     UnsubscribeCommand,
 )
 from spooled.realtime.sse import SSE_TIMEOUT, closes_job_stream
+from spooled.realtime.websocket import _mark_socket_open, _reset_budget_if_stable
 
 # Optional imports
 try:
@@ -153,6 +154,9 @@ class SpooledRealtime:
 
         self._state = ConnectionState.DISCONNECTED
         self._reconnect_attempts = 0
+        # When the current WebSocket upgrade finished. The reconnect budget
+        # resets only after the socket has stayed up (see websocket.py).
+        self._connected_at: float | None = None
         self._reconnect_timer: threading.Timer | None = None
         self._subscriptions: dict[str, SubscriptionFilter] = {}
 
@@ -313,6 +317,11 @@ class SpooledRealtime:
             self._disconnect_websocket()
 
         self._set_state(ConnectionState.DISCONNECTED)
+        # An explicit disconnect starts a fresh reconnect budget. Auto-reconnect
+        # does not come through here, so a server that accepts and immediately
+        # closes still spends max_reconnect_attempts.
+        self._reconnect_attempts = 0
+        self._connected_at = None
         # Subscriptions are intentionally retained so an auto-reconnect (or an
         # explicit reconnect) restores the same queue/job filter instead of
         # silently falling back to the unfiltered "all events" stream.
@@ -441,7 +450,7 @@ class SpooledRealtime:
         try:
             self._ws = sync_ws.connect(ws_url)
             self._set_state(ConnectionState.CONNECTED)
-            self._reconnect_attempts = 0
+            _mark_socket_open(self)
             self._stop_event.clear()
 
             # Start receive thread
@@ -739,6 +748,9 @@ class SpooledRealtime:
             self._disconnect_sse()
         else:
             self._disconnect_websocket()
+            # SSE restores its budget when an event arrives. WebSocket restores
+            # it only after the socket has stayed up; an immediate close counts.
+            _reset_budget_if_stable(self)
 
         if (
             self._options.auto_reconnect

@@ -39,8 +39,15 @@ if TYPE_CHECKING:
 
 
 # How long stop() waits for acks that are already in flight once the shutdown
-# timeout is over, before it deregisters (which re-queues anything still unacked).
+# timeout is over, before it deregisters. Deregister does not requeue a job
+# whose lease is still live, so anything this worker claimed has to be acked
+# or failed first.
 ACK_GRACE_SECONDS = 10.0
+
+# Fail text for a claim that arrived after stop() closed intake. ``fail``
+# reschedules the job when retries remain, instead of leaving the live lease
+# in ``processing`` until it expires.
+_UNSTARTED_CLAIM_ERROR = "Worker stopped before the job started"
 
 
 @dataclass
@@ -152,9 +159,18 @@ class SpooledWorker:
         self._lock = threading.RLock()
         # Signalled whenever a job leaves ``_active_jobs`` so stop() can drain.
         self._idle = threading.Condition(self._lock)
-        # Closed by stop() once the drain window is over: a job claimed by a poll
-        # that was already in flight is then left unstarted (deregister re-queues it).
+        # Closed by stop() once the drain window is over. A claim that lands
+        # after that is failed explicitly: deregister leaves a live lease in
+        # ``processing``.
         self._intake_closed = False
+        # Claims whose HTTP call has not returned. stop() waits for these so
+        # the jobs join the drain instead of being dropped.
+        self._poll_in_flight = 0
+        self._poll_thread_id: int | None = None
+        # Kept after stop() clears ``_worker_id``, so a claim that resumes on
+        # the poll thread (a signal handler cannot wait for itself) can still
+        # fail the job with the id that holds the lease.
+        self._registered_worker_id: str | None = None
         self._abandoned_running = 0
         self._worker_heartbeat_stop = Event()
         # Set when stop() has fully finished, so start() can wait for it.
@@ -236,6 +252,9 @@ class SpooledWorker:
         self._stopped_event.clear()
         self._worker_heartbeat_stop.clear()
         self._intake_closed = False
+        self._poll_in_flight = 0
+        self._poll_thread_id = None
+        self._registered_worker_id = None
 
         if self._debug:
             self._debug(f"Starting worker for queue: {self._options.queue_name}", None)
@@ -256,6 +275,7 @@ class SpooledWorker:
             )
 
             self._worker_id = registration.id
+            self._registered_worker_id = registration.id
 
             if self._debug:
                 self._debug(f"Worker registered: {self._worker_id}", None)
@@ -301,14 +321,19 @@ class SpooledWorker:
         window is still acked with ``complete`` (or ``fail``) and its job heartbeat
         keeps the lease alive. Only handlers still running after the timeout are
         signalled through ``ctx.signal`` and failed with "Worker shutdown timeout".
-        The worker deregisters last, because deregistering re-queues every job
-        the worker still holds.
+        A claim already on the wire is waited for, and its jobs join that drain.
+        Deregister does not requeue a job whose lease is still live, so a claim
+        that lands after the drain is failed (retried when retries remain)
+        instead of dropped. The worker deregisters last.
         """
         with self._lock:
             if self._state != "running":
                 return
             self._state = "stopping"
         self._shutdown_event.set()
+        # The in-flight claim counts against the shutdown budget: once it
+        # returns, only the time still left is available for its handlers.
+        deadline = time.monotonic() + self._options.shutdown_timeout
 
         try:
             if self._debug:
@@ -319,10 +344,15 @@ class SpooledWorker:
                 self._poll_timer.cancel()
                 self._poll_timer = None
 
+            # A claim already on the wire still returns jobs this worker now
+            # holds leases for. Wait for it (unless this thread is inside the
+            # claim — a signal handler cannot wait for itself) so those jobs
+            # join the drain below.
+            self._wait_for_inflight_poll(deadline)
+
             # Drain: job heartbeats and the worker heartbeat keep running so the
             # leases stay valid while handlers finish. Handlers are not signalled
             # yet -- aborting them first is what used to throw their results away.
-            deadline = time.monotonic() + self._options.shutdown_timeout
             if self._active_jobs and self._debug:
                 self._debug(
                     f"Waiting for {len(self._active_jobs)} active jobs to complete...",
@@ -349,7 +379,8 @@ class SpooledWorker:
                 self._executor.shutdown(wait=False)
                 self._executor = None
 
-            # Deregister worker (last: this re-queues any job still unacked)
+            # Deregister last. A live lease is left in place, so every claimed
+            # job has already been completed or failed above.
             if self._worker_id:
                 try:
                     self._client.workers.deregister(self._worker_id)
@@ -375,8 +406,9 @@ class SpooledWorker:
         """Block until no job is active or ``deadline`` (a monotonic time) passes.
 
         ``close_intake`` also closes the intake in the same locked step that
-        observes the end of the wait, so a poll that was already in flight cannot
-        register a job after stop() decided nothing is left to drain.
+        observes the end of the wait, so a poll cannot register a job after
+        stop() decided nothing is left to drain. A claim that still returns
+        is failed in ``_process_job``.
         """
         with self._idle:
             while self._active_jobs:
@@ -387,37 +419,69 @@ class SpooledWorker:
             if close_intake:
                 self._intake_closed = True
 
+    def _wait_for_inflight_poll(self, deadline: float) -> None:
+        """Block until a claim that is already on the wire has registered its jobs.
+
+        The poll thread cannot wait for itself. That happens when ``stop()``
+        runs as a signal handler on the thread blocked in ``jobs.claim``: the
+        handler is deferred until the call returns, and the jobs are released
+        from ``_process_job`` once it sees the closed intake.
+
+        The wait ends at ``deadline`` (a monotonic time): a claim call that
+        hangs or retries must not hold shutdown past its budget. Jobs it
+        returns later are released by ``_process_job`` (closed intake).
+        """
+        with self._idle:
+            if self._poll_thread_id == threading.get_ident():
+                return
+            while self._poll_in_flight:
+                remaining = deadline - time.monotonic()
+                if remaining <= 0:
+                    return
+                self._idle.wait(remaining)
+
     def _poll(self) -> None:
         """Poll for and claim jobs."""
-        if self._state != "running" or not self._worker_id:
-            return
-
-        # Check capacity (handlers abandoned after a timeout still occupy a thread)
+        # The state check and the in-flight counter share the lock so stop()
+        # cannot pass the "nothing in flight" check and then lose a claim that
+        # starts immediately after.
         with self._lock:
+            if self._state != "running" or not self._worker_id:
+                return
+            # Handlers abandoned after a timeout still occupy a thread.
             available_slots = (
                 self._options.concurrency - len(self._active_jobs) - self._abandoned_running
             )
-
-        if available_slots <= 0:
-            return
+            if available_slots <= 0:
+                return
+            self._poll_in_flight += 1
+            self._poll_thread_id = threading.get_ident()
+            worker_id = self._worker_id
 
         try:
-            result = self._client.jobs.claim(
-                {
-                    "queue_name": self._options.queue_name,
-                    "worker_id": self._worker_id,
-                    "limit": available_slots,
-                    "lease_duration_secs": self._options.lease_duration,
-                }
-            )
+            try:
+                result = self._client.jobs.claim(
+                    {
+                        "queue_name": self._options.queue_name,
+                        "worker_id": worker_id,
+                        "limit": available_slots,
+                        "lease_duration_secs": self._options.lease_duration,
+                    }
+                )
 
-            for job in result.jobs:
-                self._process_job(job)
+                for job in result.jobs:
+                    self._process_job(job)
 
-        except Exception as e:
-            if self._debug:
-                self._debug(f"Poll failed: {e}", None)
-            self._emit("error", ErrorEventData(error=e))
+            except Exception as e:
+                if self._debug:
+                    self._debug(f"Poll failed: {e}", None)
+                self._emit("error", ErrorEventData(error=e))
+        finally:
+            with self._lock:
+                self._poll_in_flight -= 1
+                if self._poll_in_flight == 0:
+                    self._poll_thread_id = None
+                self._idle.notify_all()
 
     def _process_job(self, job: ClaimedJob) -> None:
         """Start processing a job."""
@@ -430,12 +494,18 @@ class SpooledWorker:
 
         with self._lock:
             if self._intake_closed:
-                # stop() already ended its drain window. The claim cannot be
-                # undone, but deregistering re-queues it for another worker.
-                if self._debug:
-                    self._debug(f"Not starting job {job.id}: worker is stopping", None)
-                return
-            self._active_jobs[job.id] = active
+                # stop() already ended its drain. The lease is live, and
+                # deregister will not put the job back, so fail it below.
+                release = True
+            else:
+                self._active_jobs[job.id] = active
+                release = False
+
+        if release:
+            if self._debug:
+                self._debug(f"Not starting job {job.id}: worker is stopping", None)
+            self._release_unstarted_job(job)
+            return
 
         self._emit(
             "job:claimed",
@@ -537,6 +607,39 @@ class SpooledWorker:
             if active.timeout_timer:
                 active.timeout_timer.cancel()
             self._idle.notify_all()
+
+    def _release_unstarted_job(self, job: ClaimedJob) -> None:
+        """Fail a claimed job whose handler is not going to run.
+
+        ``fail`` reschedules when ``retry_count < max_retries`` and dead-letters
+        otherwise — the same rule as a handler nack — so the row does not stay
+        ``processing`` until the lease expires.
+        """
+        worker_id = self._worker_id or self._registered_worker_id
+        if not worker_id:
+            if self._debug:
+                self._debug(f"Cannot release job {job.id}: worker id is unknown", None)
+            return
+        error_message = coerce_fail_error(_UNSTARTED_CLAIM_ERROR)
+        params: dict[str, Any] = {"worker_id": worker_id, "error": error_message}
+        if job.lease_id is not None:
+            params["lease_id"] = job.lease_id
+        try:
+            self._client.jobs.fail(job.id, params)
+        except Exception as e:
+            if self._debug:
+                self._debug(f"Failed to release job {job.id}: {e}", None)
+            self._emit("error", ErrorEventData(error=e))
+            return
+        self._emit(
+            "job:failed",
+            JobFailedEventData(
+                job_id=job.id,
+                queue_name=job.queue_name,
+                error=error_message,
+                will_retry=job.retry_count < job.max_retries,
+            ),
+        )
 
     def _claim_settlement(self, active: ActiveJob) -> str | None:
         """Atomically take the right to ack ``active``; returns the worker id or None.

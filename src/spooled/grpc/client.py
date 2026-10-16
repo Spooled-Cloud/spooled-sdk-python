@@ -10,6 +10,7 @@ Note: Requires the 'grpc' extra: pip install spooled[grpc]
 from __future__ import annotations
 
 import queue
+import re
 from collections.abc import Callable, Generator, Iterator
 from dataclasses import dataclass
 from datetime import datetime, timezone
@@ -25,12 +26,22 @@ from spooled.errors import (
     ConflictError,
     NetworkError,
     NotFoundError,
+    QuotaExceededError,
     RateLimitError,
     ServerError,
     SpooledError,
     TimeoutError,
     ValidationError,
 )
+
+# Plan caps ("Daily job limit reached", "queues limit reached (1/1)") share
+# gRPC RESOURCE_EXHAUSTED with per-second rate limits. A quota does not clear
+# on a retry delay, so the message is what tells them apart.
+_GRPC_QUOTA_MESSAGE = re.compile(r"\blimit reached\b", re.IGNORECASE)
+
+# Unary Complete/Fail/RenewLease report a lost lease as FAILED_PRECONDITION
+# with the text only. REST uses 409 code LEASE_EXPIRED for the same two cases.
+_LEASE_MISMATCH_SNIPPET = "does not match the job's current lease"
 
 # Optional gRPC imports
 try:
@@ -305,6 +316,32 @@ def _job_status_to_str(status: int) -> str:
     return status_map.get(status, "unknown")
 
 
+def _grpc_retry_after(error: Any) -> int | None:
+    """Seconds from a ``retry-after`` trailing header, if the status carries one."""
+    trailing = getattr(error, "trailing_metadata", None)
+    if not callable(trailing):
+        return None
+    try:
+        metadata = trailing()
+    except (TypeError, ValueError, AttributeError):
+        return None
+    if not metadata:
+        return None
+    for key, value in metadata:
+        if str(key).lower() == "retry-after":
+            try:
+                return int(value)
+            except (TypeError, ValueError):
+                return None
+    return None
+
+
+def _is_grpc_lease_lost(message: str) -> bool:
+    """True for the two lease-loss texts unary RPCs send with no error code."""
+    text = message.strip().lower()
+    return text == "lease expired" or _LEASE_MISMATCH_SNIPPET in text
+
+
 def _map_grpc_error(error: Any, timeout_seconds: float | None) -> SpooledError:
     """Map grpc.RpcError into the SDK's typed error hierarchy."""
     code = error.code() if hasattr(error, "code") else None
@@ -327,9 +364,22 @@ def _map_grpc_error(error: Any, timeout_seconds: float | None) -> SpooledError:
             # Register with a worker_id another organization uses (REST: 409).
             grpc.StatusCode.ALREADY_EXISTS,
         ):
+            # A lost or mismatched lease has to carry LEASE_EXPIRED so
+            # ``is_lease_expired`` sees it. "Job is already <status>" stays a
+            # plain conflict: that job was finished, not stolen.
+            if code == grpc.StatusCode.FAILED_PRECONDITION and _is_grpc_lease_lost(details or ""):
+                return ConflictError(details or "Lease expired", code="LEASE_EXPIRED")
             return ConflictError(details or "Operation conflict")
         if code == grpc.StatusCode.RESOURCE_EXHAUSTED:
-            return RateLimitError(details or "Rate limit exceeded")
+            message = details or "Rate limit exceeded"
+            retry_after = _grpc_retry_after(error)
+            # No retry delay plus a plan-cap message is a quota, not a rate
+            # limit. Retrying it cannot succeed until the cap resets.
+            if retry_after is None and _GRPC_QUOTA_MESSAGE.search(message):
+                return QuotaExceededError(message)
+            if retry_after is not None:
+                return RateLimitError(message, retry_after=retry_after)
+            return RateLimitError(message)
         if code == grpc.StatusCode.UNAVAILABLE:
             return NetworkError(details or "gRPC service unavailable", cause=error)
 
@@ -480,6 +530,10 @@ class ProcessResponse:
     fail: GrpcFailResponse | None = None
     renew_lease: GrpcRenewLeaseResponse | None = None
     error: str | None = None
+    # ProcessJobs reports lease loss in-band as code ``LEASE_EXPIRED``. Kept
+    # separate from ``error`` (which stays ``"<code>: <message>"``) so callers
+    # can branch on the code instead of parsing the string.
+    error_code: str | None = None
 
 
 class ProcessJobsStream:
@@ -617,6 +671,7 @@ class ProcessJobsStream:
                         ),
                     )
                 elif which == "error":
+                    response.error_code = proto_resp.error.code or None
                     response.error = f"{proto_resp.error.code}: {proto_resp.error.message}"
 
                 yield response

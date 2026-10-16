@@ -29,14 +29,17 @@ from spooled.worker.worker import ActiveJob as SyncActiveJob
 
 
 def _job(
-    job_id: str = "job-1", timeout_seconds: int = 300, lease_id: str = "lease-1"
+    job_id: str = "job-1",
+    timeout_seconds: int = 300,
+    lease_id: str = "lease-1",
+    max_retries: int = 3,
 ) -> ClaimedJob:
     return ClaimedJob(
         id=job_id,
         queue_name="q",
         payload={},
         retry_count=0,
-        max_retries=3,
+        max_retries=max_retries,
         timeout_seconds=timeout_seconds,
         lease_id=lease_id,
     )
@@ -304,17 +307,109 @@ class TestSyncWorkerDrain:
         assert worker.state == "stopped"
         stopper.join(5)
 
-    def test_job_claimed_after_the_drain_window_is_left_for_deregister(self) -> None:
+    def test_job_claimed_after_the_drain_window_is_failed(self) -> None:
+        """A claim that lands after stop() closed intake is nacked, not dropped.
+
+        Deregister leaves a live lease in processing. Failing the job reschedules
+        it when retries remain (and dead-letters it when they do not).
+        """
         client = FakeClient([])
         worker = _sync_worker(client)
+        # stop() has already cleared the live id; the registered id still
+        # owns the lease.
+        worker._worker_id = None
+        worker._registered_worker_id = "worker-1"
         worker._intake_closed = True
-        events: list[Any] = []
-        worker.on("job:claimed", events.append)
+        claimed: list[Any] = []
+        failed: list[Any] = []
+        worker.on("job:claimed", claimed.append)
+        worker.on("job:failed", failed.append)
 
-        worker._process_job(_job())
+        worker._process_job(_job(max_retries=0))
 
         assert worker._active_jobs == {}
-        assert events == []
+        assert claimed == []
+        assert client.names() == ["fail"]
+        params = client.of("fail")[0][1]
+        assert params["worker_id"] == "worker-1"
+        assert params["lease_id"] == "lease-1"
+        assert params["error"] == "Worker stopped before the job started"
+        assert failed[0].will_retry is False
+
+    def test_claim_in_flight_when_stop_starts_is_processed_before_deregister(self) -> None:
+        """stop() waits for a claim already on the wire and runs that job."""
+        gate = threading.Event()
+        release = threading.Event()
+
+        class GatedClient(FakeClient):
+            def _claim(self, params: Any) -> Any:
+                gate.set()
+                assert release.wait(5)
+                return super()._claim(params)
+
+        client = GatedClient([_job(max_retries=0)])
+        worker = _sync_worker(client, shutdown_timeout=2.0)
+        ran = threading.Event()
+
+        @worker.process
+        def handle(ctx: Any) -> dict[str, Any]:
+            ran.set()
+            return {"ok": True}
+
+        runner = _run_sync(worker)
+        stopper: threading.Thread | None = None
+        try:
+            assert gate.wait(5)
+            stopper = threading.Thread(target=worker.stop)
+            stopper.start()
+            _wait_for(lambda: worker.state == "stopping")
+            time.sleep(0.1)
+            # Still inside the claim: deregister must not run yet, or the job
+            # would be left processing with a live lease.
+            assert client.names() == []
+            release.set()
+            stopper.join(5)
+            runner.join(5)
+            assert not stopper.is_alive()
+            assert not runner.is_alive()
+        finally:
+            release.set()
+            if stopper is not None:
+                stopper.join(5)
+            runner.join(5)
+
+        assert ran.is_set()
+        assert client.names() == ["complete", "deregister"]
+        assert worker.state == "stopped"
+
+    def test_hung_claim_does_not_hold_stop_past_the_shutdown_timeout(self) -> None:
+        """A claim that outlives the shutdown budget does not block stop()."""
+        gate = threading.Event()
+        release = threading.Event()
+
+        class HungClient(FakeClient):
+            def _claim(self, params: Any) -> Any:
+                gate.set()
+                release.wait(10)
+                return super()._claim(params)
+
+        client = HungClient([_job(max_retries=0)])
+        worker = _sync_worker(client, shutdown_timeout=0.5)
+
+        @worker.process
+        def handle(ctx: Any) -> dict[str, Any]:
+            return {"ok": True}
+
+        runner = _run_sync(worker)
+        try:
+            assert gate.wait(5)
+            started = time.monotonic()
+            worker.stop()
+            assert time.monotonic() - started < 3.0
+            assert "deregister" in client.names()
+        finally:
+            release.set()
+            runner.join(5)
 
     def test_failed_complete_ack_is_reported_as_an_error_event(self) -> None:
         client = FakeClient([])
@@ -536,13 +631,68 @@ class TestAsyncWorkerDrain:
         await asyncio.wait_for(runner, 5)
 
     @pytest.mark.asyncio
-    async def test_job_claimed_after_the_drain_window_is_left_for_deregister(self) -> None:
-        client = FakeClient([], is_async=True)
+    async def test_job_claimed_after_the_drain_window_is_failed(self) -> None:
+        """A claim that lands after stop() closed intake is nacked, not dropped."""
+        client = FakeClient([_job(max_retries=0)], is_async=True)
         worker = _async_worker(client)
-        worker._intake_closed = True
+        worker._state = "running"
+        worker._worker_id = "worker-1"
+        worker._registered_worker_id = "worker-1"
 
-        assert worker._register_job(_job()) is None
+        async def claim(_params: Any) -> Any:
+            worker._intake_closed = True
+            return client._claim(_params)
+
+        client.jobs.claim = claim
+        failed: list[Any] = []
+        worker.on("job:failed", failed.append)
+
+        await worker._poll()
+
         assert worker._active_jobs == {}
+        assert client.names() == ["fail"]
+        params = client.of("fail")[0][1]
+        assert params["worker_id"] == "worker-1"
+        assert params["lease_id"] == "lease-1"
+        assert params["error"] == "Worker stopped before the job started"
+        assert failed[0].will_retry is False
+
+    @pytest.mark.asyncio
+    async def test_claim_in_flight_when_stop_starts_is_processed_before_deregister(self) -> None:
+        """stop() waits for a claim already on the wire and runs that job."""
+        client = FakeClient([_job(max_retries=0)], is_async=True)
+        started_claim = asyncio.Event()
+        release_claim = asyncio.Event()
+
+        async def claim(_params: Any) -> Any:
+            started_claim.set()
+            await release_claim.wait()
+            return client._claim(_params)
+
+        client.jobs.claim = claim
+        worker = _async_worker(client, shutdown_timeout=2.0)
+        ran = asyncio.Event()
+
+        @worker.process
+        async def handle(ctx: Any) -> dict[str, Any]:
+            ran.set()
+            return {"ok": True}
+
+        runner = asyncio.create_task(worker.start())
+        try:
+            await asyncio.wait_for(started_claim.wait(), 5)
+            stopper = asyncio.create_task(worker.stop())
+            await asyncio.sleep(0.05)
+            assert client.names() == []
+            release_claim.set()
+            await asyncio.wait_for(stopper, 5)
+            await asyncio.wait_for(runner, 5)
+        finally:
+            release_claim.set()
+
+        assert ran.is_set()
+        assert client.names() == ["complete", "deregister"]
+        assert worker.state == "stopped"
 
     @pytest.mark.asyncio
     async def test_failed_complete_ack_is_reported_as_an_error_event(self) -> None:

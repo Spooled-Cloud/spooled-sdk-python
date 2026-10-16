@@ -37,8 +37,15 @@ if TYPE_CHECKING:
 
 
 # How long stop() waits for cancelled handlers (and acks already in flight) once
-# the shutdown timeout is over, before it deregisters.
+# the shutdown timeout is over, before it deregisters. Deregister does not
+# requeue a job whose lease is still live, so anything this worker claimed has
+# to be acked or failed first.
 ACK_GRACE_SECONDS = 10.0
+
+# Fail text for a claim that arrived after stop() closed intake. ``fail``
+# reschedules the job when retries remain, instead of leaving the live lease
+# in ``processing`` until it expires.
+_UNSTARTED_CLAIM_ERROR = "Worker stopped before the job started"
 
 
 @dataclass
@@ -144,9 +151,16 @@ class AsyncSpooledWorker:
         # Strong references to the per-job tasks: the event loop only keeps weak
         # ones, so an unreferenced task could be garbage collected mid-job.
         self._job_tasks: set[asyncio.Task[None]] = set()
-        # Closed by stop() once the drain window is over: a job claimed by a poll
-        # that was already in flight is then left unstarted (deregister re-queues it).
+        # Closed by stop() once the drain window is over. A claim that lands
+        # after that is failed explicitly: deregister leaves a live lease in
+        # ``processing``.
         self._intake_closed = False
+        # Completed when the claim HTTP call returns. stop() awaits it so those
+        # jobs join the drain instead of being dropped.
+        self._claim_inflight: asyncio.Future[None] | None = None
+        # Kept after stop() clears ``_worker_id``, so a late claim can still
+        # fail the job with the id that holds the lease.
+        self._registered_worker_id: str | None = None
         # Set when stop() has fully finished, so start() can wait for it.
         self._stopped_event: asyncio.Event | None = None
 
@@ -223,6 +237,8 @@ class AsyncSpooledWorker:
         self._shutdown_event = asyncio.Event()
         self._stopped_event = asyncio.Event()
         self._intake_closed = False
+        self._claim_inflight = None
+        self._registered_worker_id = None
 
         if self._debug:
             self._debug(f"Starting async worker for queue: {self._options.queue_name}", None)
@@ -243,6 +259,7 @@ class AsyncSpooledWorker:
             )
 
             self._worker_id = registration.id
+            self._registered_worker_id = registration.id
 
             if self._debug:
                 self._debug(f"Worker registered: {self._worker_id}", None)
@@ -294,8 +311,10 @@ class AsyncSpooledWorker:
         window is still acked with ``complete`` (or ``fail``) and its job heartbeat
         keeps the lease alive. Only handlers still running after the timeout are
         signalled through ``ctx.signal``, cancelled, and failed with "Worker
-        shutdown timeout". The worker deregisters last, because deregistering
-        re-queues every job the worker still holds.
+        shutdown timeout". A claim already on the wire is waited for, and its
+        jobs join that drain. Deregister does not requeue a job whose lease is
+        still live, so a claim that lands after the drain is failed (retried
+        when retries remain) instead of dropped. The worker deregisters last.
         """
         if self._state != "running":
             return
@@ -303,16 +322,32 @@ class AsyncSpooledWorker:
         self._state = "stopping"
         if self._shutdown_event:
             self._shutdown_event.set()
+        # The in-flight claim counts against the shutdown budget: once it
+        # returns, only the time still left is available for its handlers.
+        loop = asyncio.get_running_loop()
+        deadline = loop.time() + self._options.shutdown_timeout
 
         try:
             if self._debug:
                 self._debug("Stopping async worker...", None)
 
+            # A claim already on the wire still returns jobs this worker now
+            # holds leases for. Wait for it so those jobs join the drain below.
+            # The wait ends at the shutdown deadline: a claim that hangs or
+            # retries must not hold stop() past its budget. Jobs it returns
+            # later are released because the intake is closed.
+            inflight = self._claim_inflight
+            if inflight is not None:
+                try:
+                    await asyncio.wait_for(
+                        asyncio.shield(inflight), timeout=max(0.0, deadline - loop.time())
+                    )
+                except asyncio.TimeoutError:
+                    pass
+
             # Drain: job heartbeats and the worker heartbeat keep running so the
             # leases stay valid while handlers finish. Handlers are not signalled
             # yet -- aborting them first is what used to throw their results away.
-            loop = asyncio.get_running_loop()
-            deadline = loop.time() + self._options.shutdown_timeout
             if self._active_jobs and self._debug:
                 self._debug(
                     f"Waiting for {len(self._active_jobs)} active jobs to complete...",
@@ -323,8 +358,9 @@ class AsyncSpooledWorker:
                 remaining = deadline - loop.time()
                 if not running or remaining <= 0:
                     # Closed in the same step that observes the end of the wait, so
-                    # a poll that was already in flight cannot register a job after
-                    # this point (there is no await between the check and the flag).
+                    # a poll cannot register a job after this point (there is no
+                    # await between the check and the flag). A claim that still
+                    # returns is failed in ``_poll`` instead of started.
                     self._intake_closed = True
                     break
                 await asyncio.wait(running, timeout=remaining)
@@ -357,7 +393,8 @@ class AsyncSpooledWorker:
                     pass
                 self._worker_heartbeat_task = None
 
-            # Deregister worker (last: this re-queues any job still unacked)
+            # Deregister last. A live lease is left in place, so every claimed
+            # job has already been completed or failed above.
             if self._worker_id:
                 try:
                     await self._client.workers.deregister(self._worker_id)
@@ -382,43 +419,92 @@ class AsyncSpooledWorker:
 
     async def _poll(self) -> None:
         """Poll for and claim jobs."""
+        # No await between the state check and publishing the future, so stop()
+        # cannot decide nothing is in flight and then miss this claim.
         if self._state != "running" or not self._worker_id:
             return
 
-        # Check capacity
         available_slots = self._options.concurrency - len(self._active_jobs)
         if available_slots <= 0:
             return
 
+        loop = asyncio.get_running_loop()
+        done: asyncio.Future[None] = loop.create_future()
+        self._claim_inflight = done
+        worker_id = self._worker_id
         try:
-            result = await self._client.jobs.claim(
-                {
-                    "queue_name": self._options.queue_name,
-                    "worker_id": self._worker_id,
-                    "limit": available_slots,
-                    "lease_duration_secs": self._options.lease_duration,
-                }
-            )
+            try:
+                result = await self._client.jobs.claim(
+                    {
+                        "queue_name": self._options.queue_name,
+                        "worker_id": worker_id,
+                        "limit": available_slots,
+                        "lease_duration_secs": self._options.lease_duration,
+                    }
+                )
 
-            for job in result.jobs:
-                active = self._register_job(job)
-                if active is None:
-                    continue
-                task = asyncio.create_task(self._process_job(active))
-                active.process_task = task
-                self._job_tasks.add(task)
-                task.add_done_callback(self._job_tasks.discard)
+                for job in result.jobs:
+                    if self._intake_closed:
+                        await self._release_unstarted_job(job)
+                        continue
+                    active = self._register_job(job)
+                    if active is None:
+                        # Intake closed between the check above and registration.
+                        await self._release_unstarted_job(job)
+                        continue
+                    task = asyncio.create_task(self._process_job(active))
+                    active.process_task = task
+                    self._job_tasks.add(task)
+                    task.add_done_callback(self._job_tasks.discard)
 
+            except Exception as e:
+                if self._debug:
+                    self._debug(f"Poll failed: {e}", None)
+                self._emit("error", ErrorEventData(error=e))
+        finally:
+            if self._claim_inflight is done:
+                self._claim_inflight = None
+            if not done.done():
+                done.set_result(None)
+
+    async def _release_unstarted_job(self, job: ClaimedJob) -> None:
+        """Fail a claimed job whose handler is not going to run.
+
+        ``fail`` reschedules when ``retry_count < max_retries`` and dead-letters
+        otherwise — the same rule as a handler nack — so the row does not stay
+        ``processing`` until the lease expires.
+        """
+        worker_id = self._worker_id or self._registered_worker_id
+        if not worker_id:
+            if self._debug:
+                self._debug(f"Cannot release job {job.id}: worker id is unknown", None)
+            return
+        error_message = coerce_fail_error(_UNSTARTED_CLAIM_ERROR)
+        params: dict[str, Any] = {"worker_id": worker_id, "error": error_message}
+        if job.lease_id is not None:
+            params["lease_id"] = job.lease_id
+        try:
+            await self._client.jobs.fail(job.id, params)
         except Exception as e:
             if self._debug:
-                self._debug(f"Poll failed: {e}", None)
+                self._debug(f"Failed to release job {job.id}: {e}", None)
             self._emit("error", ErrorEventData(error=e))
+            return
+        self._emit(
+            "job:failed",
+            JobFailedEventData(
+                job_id=job.id,
+                queue_name=job.queue_name,
+                error=error_message,
+                will_retry=job.retry_count < job.max_retries,
+            ),
+        )
 
     def _register_job(self, job: ClaimedJob) -> ActiveJob | None:
         """Track a claimed job right away so the next poll counts its slot."""
         if self._intake_closed:
-            # stop() already ended its drain window. The claim cannot be undone,
-            # but deregistering re-queues it for another worker.
+            # The caller fails the job. Starting it would run the handler
+            # after stop() already ended the drain.
             if self._debug:
                 self._debug(f"Not starting job {job.id}: worker is stopping", None)
             return None

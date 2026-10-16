@@ -775,6 +775,23 @@ class TestCreateScheduleParams:
         assert params.timezone == "America/New_York"
         assert params.priority == 10
 
+    def test_queue_name_matches_the_api_limit_of_100(self) -> None:
+        """Create rejects 101 characters, the same cap as POST /jobs."""
+        ok = CreateScheduleParams(
+            name="Daily Job",
+            cron_expression="0 9 * * *",
+            queue_name="q" * 100,
+            payload_template={},
+        )
+        assert len(ok.queue_name) == 100
+        with pytest.raises(PydanticValidationError):
+            CreateScheduleParams(
+                name="Daily Job",
+                cron_expression="0 9 * * *",
+                queue_name="q" * 101,
+                payload_template={},
+            )
+
     def test_tags_accept_object_and_string_array(self) -> None:
         """GET /schedules/{id} tags is JSON: object with bool values, or a string array."""
         now = datetime.now(timezone.utc)
@@ -841,6 +858,13 @@ class TestCreateWorkflowParams:
         )
         assert params.name == "Test Workflow"
         assert len(params.jobs) == 1
+
+    def test_job_queue_name_matches_the_api_limit_of_100(self) -> None:
+        """A workflow job queue is capped at 100, the same as POST /jobs."""
+        ok = WorkflowJobDefinition(key="step1", queue_name="q" * 100, payload={})
+        assert len(ok.queue_name) == 100
+        with pytest.raises(PydanticValidationError):
+            WorkflowJobDefinition(key="step1", queue_name="q" * 101, payload={})
 
     def test_job_definition_payload_accepts_non_object_json(self) -> None:
         job = WorkflowJobDefinition(

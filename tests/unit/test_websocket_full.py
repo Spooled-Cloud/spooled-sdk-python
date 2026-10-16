@@ -3,7 +3,10 @@ Comprehensive tests for WebSocket client functionality.
 """
 
 import json
+import time
 from unittest.mock import MagicMock
+
+import pytest
 
 
 class TestConnectionState:
@@ -582,3 +585,176 @@ class TestMessageParsing:
 
         for phantom in ("subscribed", "unsubscribed", "pong"):
             assert RealtimeEvent.from_server_event(phantom, {}) is None
+
+
+class _ClosedSocket:
+    """Upgrade succeeds, then the server closes before any frame."""
+
+    def recv(self, timeout: float = 1.0) -> str:
+        raise RuntimeError("close 1011")
+
+    def send(self, _message: str) -> None:
+        return None
+
+    def close(self) -> None:
+        return None
+
+
+def _wait_until(predicate, timeout: float = 3.0) -> None:
+    deadline = time.monotonic() + timeout
+    while time.monotonic() < deadline:
+        if predicate():
+            return
+        time.sleep(0.01)
+    raise AssertionError("condition not reached in time")
+
+
+class TestReconnectBudget:
+    """A socket the server accepts and closes at once must not retry forever."""
+
+    def test_immediate_close_does_not_reset_the_budget(self) -> None:
+        pytest.importorskip("websockets")
+        from spooled.realtime.websocket import (
+            STABLE_CONNECTION_SECONDS,
+            ConnectionState,
+            WebSocketClient,
+            WebSocketConnectionOptions,
+        )
+
+        client = WebSocketClient(
+            WebSocketConnectionOptions(ws_url="ws://example.test", token="t", auto_reconnect=False)
+        )
+        client._reconnect_attempts = 5
+        client._connected_at = time.monotonic()
+        client._handle_disconnect()
+        assert client._reconnect_attempts == 5
+        assert client.state == ConnectionState.DISCONNECTED
+
+        client._reconnect_attempts = 5
+        client._connected_at = time.monotonic() - (STABLE_CONNECTION_SECONDS + 1)
+        client._handle_disconnect()
+        assert client._reconnect_attempts == 0
+
+    def test_sync_client_stops_after_max_immediate_closes(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        pytest.importorskip("websockets")
+        from spooled.realtime.websocket import (
+            ConnectionState,
+            WebSocketClient,
+            WebSocketConnectionOptions,
+        )
+
+        connects = {"n": 0}
+
+        def fake_connect(_url: str) -> _ClosedSocket:
+            connects["n"] += 1
+            return _ClosedSocket()
+
+        monkeypatch.setattr("spooled.realtime.websocket.sync_ws.connect", fake_connect)
+        client = WebSocketClient(
+            WebSocketConnectionOptions(
+                ws_url="ws://example.test",
+                token="t",
+                auto_reconnect=True,
+                max_reconnect_attempts=2,
+                reconnect_delay=0.0,
+                max_reconnect_delay=0.0,
+            )
+        )
+        try:
+            client.connect()
+            _wait_until(lambda: client.state == ConnectionState.DISCONNECTED or connects["n"] > 5)
+        finally:
+            client.disconnect()
+
+        assert connects["n"] == 3
+        assert client.state == ConnectionState.DISCONNECTED
+
+    def test_unified_client_stops_after_max_immediate_closes(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        pytest.importorskip("websockets")
+        from spooled.realtime.unified import (
+            ConnectionState,
+            SpooledRealtime,
+            SpooledRealtimeOptions,
+        )
+
+        connects = {"n": 0}
+
+        def fake_connect(_url: str) -> _ClosedSocket:
+            connects["n"] += 1
+            return _ClosedSocket()
+
+        monkeypatch.setattr("spooled.realtime.unified.sync_ws.connect", fake_connect)
+        client = SpooledRealtime(
+            SpooledRealtimeOptions(
+                base_url="http://example.test",
+                ws_url="ws://example.test",
+                token="t",
+                type="websocket",
+                auto_reconnect=True,
+                max_reconnect_attempts=2,
+                reconnect_delay=0.0,
+                max_reconnect_delay=0.0,
+            )
+        )
+        try:
+            client.connect()
+            _wait_until(lambda: client.state == ConnectionState.DISCONNECTED or connects["n"] > 5)
+        finally:
+            client.disconnect()
+
+        assert connects["n"] == 3
+        assert client.state == ConnectionState.DISCONNECTED
+
+    @pytest.mark.asyncio
+    async def test_async_client_stops_after_max_immediate_closes(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        websockets = pytest.importorskip("websockets")
+        from spooled.realtime.websocket import (
+            AsyncWebSocketClient,
+            ConnectionState,
+            WebSocketConnectionOptions,
+        )
+
+        class Closed:
+            def __aiter__(self) -> "Closed":
+                return self
+
+            async def __anext__(self) -> str:
+                raise RuntimeError("close 1011")
+
+        connects = {"n": 0}
+
+        async def fake_connect(_url: str) -> Closed:
+            connects["n"] += 1
+            return Closed()
+
+        monkeypatch.setattr(websockets, "connect", fake_connect)
+        client = AsyncWebSocketClient(
+            WebSocketConnectionOptions(
+                ws_url="ws://example.test",
+                token="t",
+                auto_reconnect=True,
+                max_reconnect_attempts=2,
+                reconnect_delay=0.0,
+                max_reconnect_delay=0.0,
+            )
+        )
+        client._ws = Closed()
+        client._connected_at = time.monotonic()
+        client._state = ConnectionState.CONNECTED
+
+        async def drain() -> None:
+            async for _event in client.events():
+                pass
+
+        import asyncio
+
+        with pytest.raises(RuntimeError, match="1011"):
+            await asyncio.wait_for(drain(), 2)
+
+        assert connects["n"] == 2

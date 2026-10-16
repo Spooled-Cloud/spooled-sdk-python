@@ -1002,3 +1002,86 @@ class TestGrpcProtoWire:
         error.code.return_value = grpc.StatusCode.ALREADY_EXISTS
         error.details.return_value = "worker id unavailable"
         assert isinstance(_map_grpc_error(error, 1.0), ConflictError)
+
+    @pytest.mark.parametrize(
+        "message",
+        [
+            "Lease expired",
+            "lease_id does not match the job's current lease; this worker no longer holds it",
+        ],
+    )
+    def test_lease_loss_maps_to_lease_expired(self, message: str):
+        """FAILED_PRECONDITION lease loss is LEASE_EXPIRED, not a plain conflict."""
+        grpc = pytest.importorskip("grpc")
+
+        from spooled.errors import ConflictError, is_lease_expired
+        from spooled.grpc.client import _map_grpc_error
+
+        error = MagicMock()
+        error.code.return_value = grpc.StatusCode.FAILED_PRECONDITION
+        error.details.return_value = message
+        mapped = _map_grpc_error(error, 1.0)
+        assert isinstance(mapped, ConflictError)
+        assert mapped.code == "LEASE_EXPIRED"
+        assert is_lease_expired(mapped)
+
+    def test_already_finished_stays_a_plain_conflict(self):
+        grpc = pytest.importorskip("grpc")
+
+        from spooled.errors import is_lease_expired
+        from spooled.grpc.client import _map_grpc_error
+
+        error = MagicMock()
+        error.code.return_value = grpc.StatusCode.FAILED_PRECONDITION
+        error.details.return_value = "Job is already completed"
+        mapped = _map_grpc_error(error, 1.0)
+        assert mapped.code == "conflict"
+        assert not is_lease_expired(mapped)
+
+    def test_daily_quota_is_not_a_retryable_rate_limit(self):
+        grpc = pytest.importorskip("grpc")
+
+        from spooled.config import RetryConfig
+        from spooled.errors import QuotaExceededError, RateLimitError
+        from spooled.grpc.client import _map_grpc_error
+        from spooled.utils.retry import should_retry
+
+        error = MagicMock()
+        error.code.return_value = grpc.StatusCode.RESOURCE_EXHAUSTED
+        error.details.return_value = "Daily job limit reached"
+        error.trailing_metadata.return_value = None
+        mapped = _map_grpc_error(error, 1.0)
+        assert isinstance(mapped, QuotaExceededError)
+        assert mapped.is_retryable() is False
+        assert should_retry(mapped, 1, RetryConfig()) is False
+
+        error.details.return_value = "queues limit reached (1/1)"
+        assert isinstance(_map_grpc_error(error, 1.0), QuotaExceededError)
+
+        error.details.return_value = "Rate limit exceeded"
+        limited = _map_grpc_error(error, 1.0)
+        assert type(limited) is RateLimitError
+        assert limited.is_retryable() is True
+
+        error.details.return_value = "Daily job limit reached"
+        error.trailing_metadata.return_value = [("retry-after", "5")]
+        delayed = _map_grpc_error(error, 1.0)
+        assert type(delayed) is RateLimitError
+        assert delayed.retry_after == 5
+
+    def test_process_jobs_keeps_the_error_code(self):
+        """In-band ProcessJobs errors expose code separately from the text."""
+        from spooled.grpc.client import ProcessJobsStream, StreamOptions
+
+        proto = MagicMock()
+        proto.WhichOneof.return_value = "error"
+        proto.error.code = "LEASE_EXPIRED"
+        proto.error.message = "Lease expired"
+        stream = ProcessJobsStream(MagicMock(), [], options=StreamOptions())
+        stream._started = True
+        stream._stream = [proto]
+
+        responses = list(stream.receive())
+
+        assert responses[0].error_code == "LEASE_EXPIRED"
+        assert responses[0].error == "LEASE_EXPIRED: Lease expired"

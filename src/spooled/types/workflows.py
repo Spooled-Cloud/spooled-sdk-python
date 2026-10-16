@@ -61,7 +61,8 @@ class WorkflowJobDefinition(BaseModel):
     """Job definition within a workflow."""
 
     key: str = Field(..., min_length=1, max_length=100)
-    queue_name: str = Field(..., min_length=1, max_length=255)
+    # Same cap as POST /jobs. The API rejects anything outside 1-100.
+    queue_name: str = Field(..., min_length=1, max_length=100)
     payload: JsonValue
     depends_on: list[str] | None = None
     dependency_mode: Literal["all", "any"] | None = None

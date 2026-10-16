@@ -58,7 +58,8 @@ class CreateScheduleParams(BaseModel):
     description: str | None = None
     cron_expression: str
     timezone: str = Field(default="UTC")
-    queue_name: str = Field(..., min_length=1, max_length=255)
+    # Same cap as POST /jobs. The API rejects anything outside 1-100.
+    queue_name: str = Field(..., min_length=1, max_length=100)
     payload_template: JsonValue
     priority: int = Field(default=0, ge=-100, le=100)
     max_retries: int = Field(default=3, ge=0, le=100)
@@ -85,6 +86,8 @@ class UpdateScheduleParams(BaseModel):
     description: str | None = None
     cron_expression: str | None = None
     timezone: str | None = None
+    # The update route does not apply queue_name (the stored queue is left
+    # as it is), so a longer value is not a 400 the way create is.
     queue_name: str | None = Field(default=None, min_length=1, max_length=255)
     payload_template: JsonValue = None
     priority: int | None = Field(default=None, ge=-100, le=100)

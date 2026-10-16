@@ -12,6 +12,7 @@ import contextlib
 import json
 import random
 import threading
+import time
 from collections.abc import AsyncGenerator, Callable
 from dataclasses import dataclass
 from enum import Enum
@@ -87,6 +88,31 @@ class WebSocketConnectionOptions:
     debug: Callable[[str, Any], None] | None = None
 
 
+# A handshake is not a healthy session: the server can accept the upgrade and
+# close at once (Redis subscribe fails, close 1011). That must spend
+# ``max_reconnect_attempts``. The budget resets only after the socket has
+# stayed up this long, the same rule as the Go client.
+STABLE_CONNECTION_SECONDS = 10.0
+
+
+def _mark_socket_open(client: Any) -> None:
+    """Record that the upgrade succeeded, without touching the retry budget.
+
+    Opening the socket is not proof the session works. Resetting the counter
+    here let a server that accepts and immediately closes dial forever,
+    because ``max_reconnect_attempts`` never accumulated.
+    """
+    client._connected_at = time.monotonic()
+
+
+def _reset_budget_if_stable(client: Any) -> None:
+    """Restore the retry budget only after the socket has stayed up."""
+    connected_at = client._connected_at
+    client._connected_at = None
+    if connected_at is not None and time.monotonic() - connected_at >= STABLE_CONNECTION_SECONDS:
+        client._reconnect_attempts = 0
+
+
 # ─────────────────────────────────────────────────────────────────────────────
 # WebSocket Client
 # ─────────────────────────────────────────────────────────────────────────────
@@ -145,6 +171,10 @@ class WebSocketClient:
         self._ws: Any = None
         self._state = ConnectionState.DISCONNECTED
         self._reconnect_attempts = 0
+        # When the current socket finished its upgrade. Cleared on disconnect.
+        # A reconnect resets the budget only if this is at least
+        # STABLE_CONNECTION_SECONDS ago.
+        self._connected_at: float | None = None
         self._reconnect_timer: threading.Timer | None = None
         self._subscriptions: dict[str, SubscriptionFilter] = {}
 
@@ -233,7 +263,7 @@ class WebSocketClient:
         try:
             self._ws = sync_ws.connect(ws_url)
             self._set_state(ConnectionState.CONNECTED)
-            self._reconnect_attempts = 0
+            _mark_socket_open(self)
             self._stop_event.clear()
 
             # Start receive thread
@@ -279,6 +309,8 @@ class WebSocketClient:
             self._ws = None
 
         self._set_state(ConnectionState.DISCONNECTED)
+        self._reconnect_attempts = 0
+        self._connected_at = None
         self._subscriptions.clear()
 
     def subscribe(self, filter: SubscriptionFilter) -> None:
@@ -389,6 +421,7 @@ class WebSocketClient:
     def _handle_disconnect(self) -> None:
         """Handle WebSocket disconnection."""
         self._ws = None
+        _reset_budget_if_stable(self)
 
         if (
             self._options.auto_reconnect
@@ -421,7 +454,7 @@ class WebSocketClient:
             try:
                 self._ws = sync_ws.connect(self._build_ws_url())
                 self._set_state(ConnectionState.CONNECTED)
-                self._reconnect_attempts = 0
+                _mark_socket_open(self)
 
                 # Restart receive loop
                 self._stop_event.clear()
@@ -505,6 +538,7 @@ class AsyncWebSocketClient:
         self._ws: Any = None
         self._state = ConnectionState.DISCONNECTED
         self._reconnect_attempts = 0
+        self._connected_at: float | None = None
         self._subscriptions: dict[str, SubscriptionFilter] = {}
 
         # Event handlers
@@ -567,7 +601,7 @@ class AsyncWebSocketClient:
         try:
             self._ws = await websockets.connect(ws_url)
             self._set_state(ConnectionState.CONNECTED)
-            self._reconnect_attempts = 0
+            _mark_socket_open(self)
 
             # Resubscribe to all subscriptions
             await self._resubscribe_all()
@@ -587,6 +621,8 @@ class AsyncWebSocketClient:
             self._ws = None
 
         self._set_state(ConnectionState.DISCONNECTED)
+        self._reconnect_attempts = 0
+        self._connected_at = None
         self._subscriptions.clear()
 
     async def subscribe(self, filter: SubscriptionFilter) -> None:
@@ -653,6 +689,10 @@ class AsyncWebSocketClient:
 
             except Exception as e:
                 self._debug(f"WebSocket error: {e}", None)
+                # A socket that stayed up starts a fresh budget. One the server
+                # accepted and closed at once does not: the counter keeps growing
+                # until max_reconnect_attempts.
+                _reset_budget_if_stable(self)
 
                 if not self._options.auto_reconnect:
                     self._set_state(ConnectionState.DISCONNECTED)
@@ -686,7 +726,7 @@ class AsyncWebSocketClient:
         try:
             self._ws = await websockets.connect(self._build_ws_url())
             self._set_state(ConnectionState.CONNECTED)
-            self._reconnect_attempts = 0
+            _mark_socket_open(self)
             await self._resubscribe_all()
             self._debug("Reconnected successfully", None)
         except Exception as e:

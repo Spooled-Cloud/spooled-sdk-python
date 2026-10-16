@@ -496,10 +496,11 @@ class TestSmallParityFixes:
         params = CreateScheduleParams(
             name="n" * 255,
             cron_expression="0 * * * *",
-            queue_name="q" * 255,
+            queue_name="q" * 100,
             payload_template={},
         )
         assert len(params.name) == 255
+        assert len(params.queue_name) == 100
 
     def test_admin_only_client_can_be_constructed(self) -> None:
         with SpooledClient(admin_key="admin-secret-key", base_url=BASE_URL) as client:
