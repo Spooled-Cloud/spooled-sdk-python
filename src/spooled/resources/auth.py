@@ -72,7 +72,14 @@ class AuthResource(BaseResource):
         return StartEmailLoginResponse.model_validate(data)
 
     def check_email(self, email: str) -> CheckEmailResponse:
-        """Check if an email is registered (GET /auth/check-email)."""
+        """Check whether email signup is open (GET /auth/check-email).
+
+        Since backend 0.1.130, ``exists`` and ``available`` describe the address
+        only for a request with the operator's admin key; otherwise they are
+        always ``False`` and ``True``. Whether an address has an account is
+        learned from ``POST /auth/email/verify`` (``type`` ``login`` or
+        ``signup``), after the emailed code.
+        """
         data = self._http.get("/auth/check-email", params={"email": email})
         return CheckEmailResponse.model_validate(data)
 
@@ -121,6 +128,13 @@ class AsyncAuthResource(AsyncBaseResource):
         return StartEmailLoginResponse.model_validate(data)
 
     async def check_email(self, email: str) -> CheckEmailResponse:
-        """Check if an email is registered (GET /auth/check-email)."""
+        """Check whether email signup is open (GET /auth/check-email).
+
+        Since backend 0.1.130, ``exists`` and ``available`` describe the address
+        only for a request with the operator's admin key; otherwise they are
+        always ``False`` and ``True``. Whether an address has an account is
+        learned from ``POST /auth/email/verify`` (``type`` ``login`` or
+        ``signup``), after the emailed code.
+        """
         data = await self._http.get("/auth/check-email", params={"email": email})
         return CheckEmailResponse.model_validate(data)

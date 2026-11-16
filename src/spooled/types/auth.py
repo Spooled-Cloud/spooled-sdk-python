@@ -131,7 +131,11 @@ class StartEmailLoginResponse(BaseModel):
 
 
 class CheckEmailResponse(BaseModel):
-    """Response from GET /auth/check-email."""
+    """Response from GET /auth/check-email.
+
+    Since backend 0.1.130, ``exists`` is always ``False`` and ``available``
+    always ``True`` unless the request carries the admin key.
+    """
 
     exists: bool
     available: bool | None = None
