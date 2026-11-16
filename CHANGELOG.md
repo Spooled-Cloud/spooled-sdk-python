@@ -50,6 +50,11 @@ SIGTERM. Two changes alter what existing code sees; read "Changed" before upgrad
 - `docs/WORKER.md` no longer says that deregistering re-queues the worker's jobs or
   that an in-flight claim is left unstarted; both changed in 1.6.0.
 
+### Removed
+
+- `PYTHON_SDK_TECHNICAL_TASK.md` (archived in the workspace) and a placeholder
+  `vitest.config.ts`. Neither is used by the Python package.
+
 ## [1.6.0] - 2026-10-16
 
 Workers hand back a job they claimed while shutting down, WebSocket clients stop
