@@ -153,9 +153,7 @@ class AsyncWebhooksResource(AsyncBaseResource):
 
     async def retry_delivery(self, webhook_id: str, delivery_id: str) -> RetryDeliveryResponse:
         """Retry a failed webhook delivery."""
-        data = await self._http.post(
-            f"/outgoing-webhooks/{webhook_id}/retry/{delivery_id}"
-        )
+        data = await self._http.post(f"/outgoing-webhooks/{webhook_id}/retry/{delivery_id}")
         return RetryDeliveryResponse.model_validate(data)
 
     async def list_inbound_deliveries(

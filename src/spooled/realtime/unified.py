@@ -519,7 +519,9 @@ class SpooledRealtime:
     def _connect_sse(self, filter: SubscriptionFilter | None = None) -> None:
         """Connect via SSE."""
         if not HAS_HTTPX:
-            raise ImportError('httpx package required. Install with: pip install "spooled[realtime]"')
+            raise ImportError(
+                'httpx package required. Install with: pip install "spooled[realtime]"'
+            )
 
         self._refresh_token()
         url = self._build_sse_url(filter)
