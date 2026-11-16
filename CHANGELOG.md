@@ -29,6 +29,8 @@ SIGTERM. Two changes alter what existing code sees; read "Changed" before upgrad
   (drain running jobs for up to `shutdown_timeout`, then deregister) and re-raises the
   interrupt. `AsyncSpooledWorker.start()` does the same when its task is cancelled,
   which is what Ctrl+C does under `asyncio.run()`, and re-raises the cancellation.
+  If that `stop()` raises, the error is logged (loggers `spooled.worker.worker` and
+  `spooled.worker.async_worker`) and the interrupt or cancellation still propagates.
 
 ### Fixed
 

@@ -6,6 +6,7 @@ Worker runtime for processing jobs from a queue.
 
 from __future__ import annotations
 
+import logging
 import socket
 import threading
 import time
@@ -36,6 +37,8 @@ from spooled.worker.types import (
 
 if TYPE_CHECKING:
     from spooled.client import SpooledClient
+
+logger = logging.getLogger(__name__)
 
 
 # How long stop() waits for acks that are already in flight once the shutdown
@@ -311,8 +314,13 @@ class SpooledWorker:
                 # stop as a SIGTERM handler would (drain, then deregister), so
                 # the worker frees its slot instead of holding it until the
                 # server notices the missing heartbeats. The interrupt is then
-                # re-raised; a second Ctrl+C during the drain exits at once.
-                self.stop()
+                # re-raised; a second Ctrl+C during the drain exits at once. A
+                # failing stop() is logged, not raised, so it cannot replace the
+                # interrupt.
+                try:
+                    self.stop()
+                except Exception:
+                    logger.exception("Graceful stop after KeyboardInterrupt failed")
                 raise
 
             # stop() may be running on another thread: hold start() until it has

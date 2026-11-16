@@ -891,3 +891,61 @@ class TestInterruptStopsGracefully:
 
         assert client.names() == ["complete", "deregister"]
         assert worker.state == "stopped"
+
+    def test_sync_failing_stop_does_not_replace_keyboard_interrupt(
+        self, monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
+    ) -> None:
+        client = InterruptingClient([])
+        worker = _sync_worker(client)
+        real_stop = worker.stop
+
+        def failing_stop() -> None:
+            real_stop()
+            raise RuntimeError("stop failed")
+
+        monkeypatch.setattr(worker, "stop", failing_stop)
+
+        @worker.process
+        def handle(ctx: Any) -> None:
+            return None
+
+        with caplog.at_level("ERROR", logger="spooled.worker.worker"):
+            with pytest.raises(KeyboardInterrupt):
+                worker.start()
+
+        assert client.names() == ["deregister"]
+        [record] = [r for r in caplog.records if r.name == "spooled.worker.worker"]
+        assert record.exc_info is not None
+        assert isinstance(record.exc_info[1], RuntimeError)
+
+    @pytest.mark.asyncio
+    async def test_async_failing_stop_does_not_replace_cancellation(
+        self, monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
+    ) -> None:
+        client = FakeClient([], is_async=True)
+        worker = _async_worker(client)
+        real_stop = worker.stop
+
+        async def failing_stop() -> None:
+            await real_stop()
+            raise RuntimeError("stop failed")
+
+        monkeypatch.setattr(worker, "stop", failing_stop)
+
+        @worker.process
+        async def handle(ctx: Any) -> None:
+            return None
+
+        with caplog.at_level("ERROR", logger="spooled.worker.async_worker"):
+            runner = asyncio.create_task(worker.start())
+            while worker.state != "running":
+                await asyncio.sleep(0.01)
+            runner.cancel()
+
+            with pytest.raises(asyncio.CancelledError):
+                await asyncio.wait_for(runner, 5)
+
+        assert client.names() == ["deregister"]
+        [record] = [r for r in caplog.records if r.name == "spooled.worker.async_worker"]
+        assert record.exc_info is not None
+        assert isinstance(record.exc_info[1], RuntimeError)

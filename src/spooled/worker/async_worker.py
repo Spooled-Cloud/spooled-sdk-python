@@ -7,6 +7,7 @@ Worker runtime for processing jobs from a queue (async version).
 from __future__ import annotations
 
 import asyncio
+import logging
 import socket
 import time
 from collections.abc import Callable, Coroutine
@@ -34,6 +35,8 @@ from spooled.worker.types import (
 
 if TYPE_CHECKING:
     from spooled.async_client import AsyncSpooledClient
+
+logger = logging.getLogger(__name__)
 
 
 # How long stop() waits for cancelled handlers (and acks already in flight) once
@@ -302,7 +305,12 @@ class AsyncSpooledWorker:
                 # KeyboardInterrupt in it). Run the same graceful stop as a
                 # SIGTERM handler would (drain, then deregister), so the worker
                 # frees its slot, then let the cancellation/interrupt continue.
-                await self.stop()
+                # A failing stop() is logged, not raised: it must not replace
+                # the cancellation the caller is waiting for.
+                try:
+                    await self.stop()
+                except Exception:
+                    logger.exception("Graceful stop after cancellation failed")
                 raise
 
             # stop() runs in its own task: hold start() until it has drained and
