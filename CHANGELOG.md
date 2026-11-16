@@ -4,6 +4,8 @@ All notable changes to the Spooled Python SDK are documented here.
 
 ## [Unreleased]
 
+## [1.7.0] - 2026-11-16
+
 gRPC claims use the server's default lease when none is given, gRPC payloads keep
 their integers, and a worker stopped with Ctrl+C deregisters like one stopped with
 SIGTERM. Two changes alter what existing code sees; read "Changed" before upgrading.
