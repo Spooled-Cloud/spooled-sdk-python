@@ -6,7 +6,6 @@ Guide for processing jobs using the Spooled Worker runtime.
 
 ```python
 import signal
-import socket
 
 from spooled import SpooledClient
 from spooled.worker import SpooledWorker
@@ -19,8 +18,7 @@ worker = SpooledWorker(
     client,
     queue_name="my-queue",
     concurrency=10,
-    # Stable and unique: worker ids are global across all Spooled accounts.
-    worker_id=f"{socket.gethostname()}-my-queue",
+    # No worker_id: the server generates one (see Stable Worker Identity below).
 )
 
 # Register job handler
@@ -54,7 +52,7 @@ worker = SpooledWorker(
     heartbeat_fraction=0.5,   # Heartbeat at 50% of lease
     shutdown_timeout=30.0,    # Graceful shutdown timeout
     hostname="web-7",         # Custom hostname (default: socket.gethostname())
-    worker_id=f"{socket.gethostname()}-my-queue",  # Stable id: registration becomes an upsert
+    worker_id=os.environ.get("SPOOLED_WORKER_ID"),  # Stable id unique to you (see below); None: server-generated
     worker_type="python",     # Worker type identifier
     # version defaults to spooled.__version__
     metadata={"env": "prod"}, # Custom metadata
@@ -69,17 +67,32 @@ Pass a stable id (1-128 characters from `A-Z a-z 0-9 . _ -`) and registration be
 
 Omit it and the server mints a fresh UUID on every registration. The row from the previous run keeps occupying the plan worker cap until the stale-worker reaper clears it, which takes about two minutes — so a worker that crash-loops on a tight plan can register itself into a `RateLimitError` with code `QUOTA_EXCEEDED`. Give any long-lived or supervised worker a stable id; the UUID default is fine for one-off and short-lived workers.
 
-Worker ids are global across all Spooled accounts, not per organization. An id that already belongs to a different organization is rejected with a 409 `ConflictError`, so generic ids such as `worker-1` are effectively taken. Derive ids from something unique that you control, such as the pod or machine name plus the queue:
+Worker ids are global across all Spooled accounts, not per organization. An id that already belongs to a different organization is rejected with a 409 `ConflictError`, so generic ids such as `worker-1` are effectively taken, and so is a bare host or pod name (`worker-0`, or an AWS default such as `ip-172-31-5-17`). Build the id from a prefix, the host name and a random suffix, generate it once, and keep it so every restart sends the same one; the random suffix is what makes it yours, since host names repeat across accounts:
 
 ```python
+import os
+import secrets
 import socket
+from pathlib import Path
+
+
+def stable_worker_id(path: Path = Path(".spooled-worker-id")) -> str:
+    """Generated on the first start, then read back from the file on every restart."""
+    if path.exists():
+        return path.read_text().strip()
+    worker_id = f"myapp-{socket.gethostname()}-{secrets.token_hex(6)}"  # e.g. myapp-web-1-3f9a0c12b7e4
+    path.write_text(worker_id)
+    return worker_id
+
 
 worker = SpooledWorker(
     client,
     queue_name="my-queue",
-    worker_id=f"{socket.gethostname()}-my-queue",
+    worker_id=os.environ.get("SPOOLED_WORKER_ID") or stable_worker_id(),
 )
 ```
+
+A container loses that file on redeploy: generate the id once the same way and set it per replica as `SPOOLED_WORKER_ID` in your deployment config instead.
 
 ## Job Context
 
@@ -220,7 +233,6 @@ The job will be marked as failed and retried if retries remain. The failure text
 
 ```python
 import asyncio
-import socket
 
 from spooled import AsyncSpooledClient
 from spooled.worker import AsyncSpooledWorker
@@ -231,7 +243,7 @@ async def main():
             client,
             queue_name="my-queue",
             concurrency=10,
-            worker_id=f"{socket.gethostname()}-my-queue",
+            # No worker_id: the server generates one (see Stable Worker Identity)
         )
 
         @worker.process

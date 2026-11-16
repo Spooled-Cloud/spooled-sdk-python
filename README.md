@@ -67,7 +67,6 @@ client.close()
 
 ```python
 import signal
-import socket
 
 from spooled import SpooledClient
 from spooled.worker import SpooledWorker
@@ -77,9 +76,8 @@ worker = SpooledWorker(
     client,
     queue_name="emails",
     concurrency=10,
-    # Worker ids are global across all Spooled accounts, so "worker-1" is taken.
-    # Derive a stable one from something unique to this machine, or omit it.
-    worker_id=f"{socket.gethostname()}-emails",
+    # No worker_id: the server generates one. To keep one id across restarts,
+    # see "Stable Worker Identity" in docs/WORKER.md.
 )
 
 @worker.process
@@ -266,10 +264,12 @@ Leases and streams (server behaviour):
 - `queue.complete`, `queue.fail` and `queue.renew_lease` need the dequeued job's `lease_id`
   (`INVALID_ARGUMENT` without it). `queue.fail(..., retry=False, lease_id=...)` dead-letters the
   job now; the default (`retry=True`) retries it until `max_retries` is used up.
-- `workers.register(queue_name, hostname, worker_id=f"{socket.gethostname()}-emails")` takes
-  an optional stable `worker_id`: registering the same id again after a restart updates that
-  worker instead of adding one. Ids are global across all Spooled accounts (one another
-  account holds is a 409), so derive it from something unique to the machine.
+- `workers.register(queue_name, hostname, worker_id=...)` takes an optional stable `worker_id`:
+  registering the same id again after a restart updates that worker instead of adding one, and
+  without it the server generates one. Ids are global across all Spooled accounts (one another
+  account holds is a 409), so build it from a prefix, the host name and a random suffix,
+  generated once and kept: host names alone repeat across accounts (AWS default host names all
+  look like `ip-172-31-x-y`). See "Stable Worker Identity" in `docs/WORKER.md`.
 
 Payloads over gRPC are `google.protobuf.Struct`, which has two limits that REST does not:
 

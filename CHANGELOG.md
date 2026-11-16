@@ -43,10 +43,13 @@ SIGTERM. Two changes alter what existing code sees; read "Changed" before upgrad
 
 ### Documentation
 
-- Worker examples (README, `docs/WORKER.md`, `examples/worker_example.py`) use a stable
-  worker id derived from the host name and stop the worker on both SIGINT and SIGTERM.
-  Worker ids are global across all Spooled accounts, so ids such as `worker-1` are
-  rejected with a 409; the guide now says so.
+- Worker examples (README, `docs/WORKER.md`, `examples/worker_example.py`) no longer
+  pin a fixed worker id, and they stop the worker on both SIGINT and SIGTERM. Worker
+  ids are global across all Spooled accounts, so ids such as `worker-1`, or a bare host
+  name that machines of other accounts share (AWS defaults such as `ip-172-31-5-17`),
+  are rejected with a 409. The examples omit the id (the server generates one) or read
+  `SPOOLED_WORKER_ID`, and `docs/WORKER.md` builds a stable id from a prefix, the host
+  name and a random suffix generated once and kept.
 - `pip install "spooled[grpc]"` and the other extras are quoted everywhere, including
   the install hints in import errors, because an unquoted `[...]` is a glob in zsh.
 - `docs/WORKER.md` no longer says that deregistering re-queues the worker's jobs or

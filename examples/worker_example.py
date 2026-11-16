@@ -7,7 +7,6 @@ Demonstrates processing jobs from a queue.
 
 import os
 import signal
-import socket
 import time
 
 from spooled import SpooledClient
@@ -26,17 +25,19 @@ def main() -> None:
     client = SpooledClient(api_key=api_key)
 
     # Create worker.
-    # A stable worker_id makes registration an upsert, so restarts reuse the
-    # same row instead of leaving stale ones against the plan worker cap.
-    # Worker ids are global across all Spooled accounts, so derive it from
-    # something unique to this machine ("worker-1" is already taken).
+    # With SPOOLED_WORKER_ID unset the server generates a worker id. A stable
+    # worker_id makes registration an upsert, so restarts reuse the same row
+    # instead of leaving stale ones against the plan worker cap, but worker ids
+    # are global across all Spooled accounts, so it must be unique to you: a
+    # prefix, the host name and a random suffix generated once and kept in your
+    # config (see "Stable Worker Identity" in docs/WORKER.md).
     worker = SpooledWorker(
         client,
         queue_name="example-queue",
         concurrency=5,
         poll_interval=1.0,
         lease_duration=30,
-        worker_id=f"{socket.gethostname()}-example-queue",
+        worker_id=os.environ.get("SPOOLED_WORKER_ID") or None,
     )
 
     # Register job handler
