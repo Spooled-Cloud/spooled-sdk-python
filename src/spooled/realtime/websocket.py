@@ -124,7 +124,7 @@ class WebSocketClient:
 
     Provides full feature parity with the Node.js SDK WebSocket client.
 
-    Note: Requires the 'realtime' extra: pip install spooled[realtime]
+    Note: Requires the 'realtime' extra: pip install "spooled[realtime]"
 
     Example:
         >>> ws = WebSocketClient(WebSocketConnectionOptions(
@@ -162,7 +162,7 @@ class WebSocketClient:
         """
         if not HAS_WEBSOCKETS:
             raise ImportError(
-                "websockets package required. Install with: pip install spooled[realtime]"
+                'websockets package required. Install with: pip install "spooled[realtime]"'
             )
 
         self._options = options
@@ -508,7 +508,7 @@ class AsyncWebSocketClient:
 
     Provides full feature parity with the Node.js SDK WebSocket client.
 
-    Note: Requires the 'realtime' extra: pip install spooled[realtime]
+    Note: Requires the 'realtime' extra: pip install "spooled[realtime]"
 
     Example:
         >>> async with AsyncWebSocketClient(WebSocketConnectionOptions(
@@ -529,7 +529,7 @@ class AsyncWebSocketClient:
         """
         if not HAS_WEBSOCKETS:
             raise ImportError(
-                "websockets package required. Install with: pip install spooled[realtime]"
+                'websockets package required. Install with: pip install "spooled[realtime]"'
             )
 
         self._options = options

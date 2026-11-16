@@ -7,7 +7,7 @@ Demonstrates processing jobs from a queue.
 
 import os
 import signal
-import sys
+import socket
 import time
 
 from spooled import SpooledClient
@@ -28,13 +28,15 @@ def main() -> None:
     # Create worker.
     # A stable worker_id makes registration an upsert, so restarts reuse the
     # same row instead of leaving stale ones against the plan worker cap.
+    # Worker ids are global across all Spooled accounts, so derive it from
+    # something unique to this machine ("worker-1" is already taken).
     worker = SpooledWorker(
         client,
         queue_name="example-queue",
         concurrency=5,
         poll_interval=1.0,
         lease_duration=30,
-        worker_id="example-worker-1",
+        worker_id=f"{socket.gethostname()}-example-queue",
     )
 
     # Register job handler
@@ -88,19 +90,19 @@ def main() -> None:
         print(f"  Error: {event.error}")
         print(f"  Will retry: {event.will_retry}")
 
-    # Set up graceful shutdown
+    # Set up graceful shutdown: drain running jobs, then deregister so the
+    # worker frees its slot at once.
     def shutdown(signum, frame):
         print("\nShutting down...")
         worker.stop()
-        client.close()
-        sys.exit(0)
 
     signal.signal(signal.SIGTERM, shutdown)
     signal.signal(signal.SIGINT, shutdown)
 
-    # Start worker
+    # Start worker (returns once stop() has finished)
     print("Starting worker... (Press Ctrl+C to stop)")
     worker.start()
+    client.close()
 
 
 if __name__ == "__main__":

@@ -131,7 +131,7 @@ class SSEClient:
     """
     Server-Sent Events client for real-time events.
 
-    Note: Requires the 'realtime' extra: pip install spooled[realtime]
+    Note: Requires the 'realtime' extra: pip install "spooled[realtime]"
 
     Example:
         >>> # SSE for all events
@@ -173,7 +173,7 @@ class SSEClient:
         """
         if not HAS_SSE:
             raise ImportError(
-                "sseclient-py package required. Install with: pip install spooled[realtime]"
+                'sseclient-py package required. Install with: pip install "spooled[realtime]"'
             )
 
         self._base_url = base_url
@@ -569,7 +569,7 @@ class AsyncSSEClient:
     """
     Async Server-Sent Events client for real-time events.
 
-    Note: Requires the 'realtime' extra: pip install spooled[realtime]
+    Note: Requires the 'realtime' extra: pip install "spooled[realtime]"
 
     Example:
         >>> async with AsyncSSEClient(base_url="...", token="...") as sse:

@@ -2,6 +2,54 @@
 
 All notable changes to the Spooled Python SDK are documented here.
 
+## [Unreleased]
+
+gRPC claims use the server's default lease when none is given, gRPC payloads keep
+their integers, and a worker stopped with Ctrl+C deregisters like one stopped with
+SIGTERM. Two changes alter what existing code sees; read "Changed" before upgrading.
+
+### Changed
+
+- **gRPC `dequeue()`, `stream_jobs()` and `GrpcDequeueRequest` no longer send a
+  30-second lease by default.** `lease_duration_secs` defaulted to `30`, so the
+  server's gRPC default lease (300 s on Spooled Cloud, as the README says) never
+  applied and a job that ran longer than 30 s was handed to another worker. The
+  default is now `None`: the field is left unset and the server applies its default.
+  Pass `lease_duration_secs` (5-3600) to choose a lease, as before.
+- **gRPC payloads and results keep their integers.** `Struct` carries every number
+  as a double, and the client decoded `{"x": 1}` as `{"x": 1.0}` where REST returns
+  `{"x": 1}`. Whole numbers up to 2^53 - 1 in magnitude now decode as `int`, at any
+  depth. Fractional numbers stay `float`, and so do integers of 2^53 and above,
+  which a double cannot hold exactly. A whole-number float the producer sent
+  (`1.0`) also decodes as `1`, since `Struct` cannot tell the two apart.
+- **Ctrl+C stops a worker gracefully.** A `KeyboardInterrupt` in `SpooledWorker.start()`
+  (Ctrl+C with no SIGINT handler installed) ended the process without deregistering,
+  so the worker kept its slot against the plan worker cap until the server noticed the
+  missing heartbeats. `start()` now runs the same `stop()` a SIGTERM handler would
+  (drain running jobs for up to `shutdown_timeout`, then deregister) and re-raises the
+  interrupt. `AsyncSpooledWorker.start()` does the same when its task is cancelled,
+  which is what Ctrl+C does under `asyncio.run()`, and re-raises the cancellation.
+
+### Fixed
+
+- **Cancelling a gRPC stream from the client ends the loop quietly.** `JobStream.cancel()`
+  made a loop that was iterating the stream raise
+  `ServerError("Locally cancelled by application!")`, and `ProcessJobsStream.cancel()`
+  did the same to a `receive()` loop. A cancel the caller requested now ends the
+  iteration normally (`on_end` runs once, `on_error` does not). A `CANCELLED` status
+  the client did not request is still raised.
+
+### Documentation
+
+- Worker examples (README, `docs/WORKER.md`, `examples/worker_example.py`) use a stable
+  worker id derived from the host name and stop the worker on both SIGINT and SIGTERM.
+  Worker ids are global across all Spooled accounts, so ids such as `worker-1` are
+  rejected with a 409; the guide now says so.
+- `pip install "spooled[grpc]"` and the other extras are quoted everywhere, including
+  the install hints in import errors, because an unquoted `[...]` is a glob in zsh.
+- `docs/WORKER.md` no longer says that deregistering re-queues the worker's jobs or
+  that an in-flight claim is left unstarted; both changed in 1.6.0.
+
 ## [1.6.0] - 2026-10-16
 
 Workers hand back a job they claimed while shutting down, WebSocket clients stop

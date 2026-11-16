@@ -4,7 +4,7 @@ Realtime module for Spooled SDK.
 Provides WebSocket and Server-Sent Events (SSE) clients for real-time
 event streaming.
 
-Note: Requires the 'realtime' extra: pip install spooled[realtime]
+Note: Requires the 'realtime' extra: pip install "spooled[realtime]"
 """
 
 from spooled.realtime.events import (

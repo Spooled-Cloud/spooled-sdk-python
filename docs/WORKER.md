@@ -5,6 +5,9 @@ Guide for processing jobs using the Spooled Worker runtime.
 ## Basic Usage
 
 ```python
+import signal
+import socket
+
 from spooled import SpooledClient
 from spooled.worker import SpooledWorker
 
@@ -16,6 +19,8 @@ worker = SpooledWorker(
     client,
     queue_name="my-queue",
     concurrency=10,
+    # Stable and unique: worker ids are global across all Spooled accounts.
+    worker_id=f"{socket.gethostname()}-my-queue",
 )
 
 # Register job handler
@@ -28,8 +33,13 @@ def handle_job(ctx):
     
     return {"success": True, "result": result}
 
-# Start worker (blocking)
+# Ctrl+C and SIGTERM drain running jobs, then deregister (frees the worker slot)
+signal.signal(signal.SIGINT, lambda *_: worker.stop())
+signal.signal(signal.SIGTERM, lambda *_: worker.stop())
+
+# Start worker (blocking until stop() has finished)
 worker.start()
+client.close()
 ```
 
 ## Worker Options
@@ -43,8 +53,8 @@ worker = SpooledWorker(
     lease_duration=30,        # Job lease in seconds
     heartbeat_fraction=0.5,   # Heartbeat at 50% of lease
     shutdown_timeout=30.0,    # Graceful shutdown timeout
-    hostname="worker-1",      # Custom hostname
-    worker_id="worker-1",     # Stable id: registration becomes an upsert
+    hostname="web-7",         # Custom hostname (default: socket.gethostname())
+    worker_id=f"{socket.gethostname()}-my-queue",  # Stable id: registration becomes an upsert
     worker_type="python",     # Worker type identifier
     # version defaults to spooled.__version__
     metadata={"env": "prod"}, # Custom metadata
@@ -59,15 +69,15 @@ Pass a stable id (1-128 characters from `A-Z a-z 0-9 . _ -`) and registration be
 
 Omit it and the server mints a fresh UUID on every registration. The row from the previous run keeps occupying the plan worker cap until the stale-worker reaper clears it, which takes about two minutes — so a worker that crash-loops on a tight plan can register itself into a `RateLimitError` with code `QUOTA_EXCEEDED`. Give any long-lived or supervised worker a stable id; the UUID default is fine for one-off and short-lived workers.
 
-An id that already belongs to a different organization is rejected with a 409 `ConflictError`, so derive ids from something you control, such as the pod or machine name:
+Worker ids are global across all Spooled accounts, not per organization. An id that already belongs to a different organization is rejected with a 409 `ConflictError`, so generic ids such as `worker-1` are effectively taken. Derive ids from something unique that you control, such as the pod or machine name plus the queue:
 
 ```python
-import os
+import socket
 
 worker = SpooledWorker(
     client,
     queue_name="my-queue",
-    worker_id=os.environ.get("HOSTNAME", "worker-local"),
+    worker_id=f"{socket.gethostname()}-my-queue",
 )
 ```
 
@@ -141,24 +151,29 @@ def on_failed(event):
 
 ```python
 import signal
-import sys
 
 def shutdown(signum, frame):
     print("Shutting down...")
     worker.stop()  # Drains running jobs (up to shutdown_timeout), then deregisters
-    client.close()
-    sys.exit(0)
 
 signal.signal(signal.SIGTERM, shutdown)
-signal.signal(signal.SIGINT, shutdown)
+signal.signal(signal.SIGINT, shutdown)  # Ctrl+C
 
-worker.start()
+worker.start()  # Returns once stop() has finished
+client.close()
 ```
+
+Without a SIGINT handler, Ctrl+C raises `KeyboardInterrupt` inside `start()`. The worker
+catches it, runs the same graceful `stop()` and then re-raises it, so an interrupted worker
+still deregisters and frees its slot. A second Ctrl+C during the drain exits at once,
+without deregistering. The async worker does the same when the task running `start()` is
+cancelled, which is what Ctrl+C does under `asyncio.run()`.
 
 `stop()` (sync) / `await worker.stop()` (async) drains the worker:
 
-1. It stops claiming new jobs. A claim that was already in flight is left unstarted;
-   deregistering re-queues it for another worker.
+1. It stops claiming new jobs. A claim that was already in flight is waited for and its
+   jobs join the drain; jobs it returns after the drain are failed (retried when retries
+   remain) without running the handler.
 2. Running handlers keep going for up to `shutdown_timeout` seconds. Their job
    heartbeats and the worker heartbeat keep running, so the leases stay valid.
    `ctx.signal` is **not** set yet.
@@ -169,8 +184,7 @@ worker.start()
    worker also cancels the task) and their jobs are failed with
    "Worker shutdown timeout", so they retry elsewhere. A sync handler thread cannot
    be killed: it keeps running but its late result is discarded.
-5. The worker deregisters last, because deregistering re-queues every job the worker
-   still holds.
+5. The worker deregisters last, once every claimed job has been completed or failed.
 
 `start()` returns only after `stop()` has finished, so it is safe to close the client
 right after `start()` returns, even when `stop()` ran on another thread. Set
@@ -206,6 +220,8 @@ The job will be marked as failed and retried if retries remain. The failure text
 
 ```python
 import asyncio
+import socket
+
 from spooled import AsyncSpooledClient
 from spooled.worker import AsyncSpooledWorker
 
@@ -215,7 +231,7 @@ async def main():
             client,
             queue_name="my-queue",
             concurrency=10,
-            worker_id="worker-1",
+            worker_id=f"{socket.gethostname()}-my-queue",
         )
 
         @worker.process
@@ -224,6 +240,7 @@ async def main():
             await asyncio.sleep(1)
             return {"success": True}
 
+        # Ctrl+C cancels main(); the worker drains and deregisters before exiting
         await worker.start()
 
 asyncio.run(main())

@@ -55,7 +55,7 @@ class TestGrpcModels:
             batch_size=10,
         )
         assert req.batch_size == 10
-        assert req.lease_duration_secs == 30  # default
+        assert req.lease_duration_secs is None  # unset: server gRPC default (300 s)
 
     def test_complete_request_validation(self):
         """Test GrpcCompleteRequest validation."""

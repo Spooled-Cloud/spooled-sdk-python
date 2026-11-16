@@ -812,3 +812,82 @@ class TestAsyncJobTimeout:
         await asyncio.wait_for(runner, 5)
 
         assert client.of("fail")[0][1]["error"] == "upstream timed out"
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Ctrl+C (NP-1): an interrupted worker drains and deregisters
+# ─────────────────────────────────────────────────────────────────────────────
+
+
+class InterruptingClient(FakeClient):
+    """Claims the queued jobs once, then raises KeyboardInterrupt from the next claim.
+
+    That is where Ctrl+C lands in a sync worker with no SIGINT handler: in the
+    main thread, inside the poll loop of ``start()``.
+    """
+
+    def __init__(self, jobs: list[ClaimedJob]) -> None:
+        super().__init__(jobs)
+        self._claims = 0
+
+    def _claim(self, _params: Any) -> Any:
+        self._claims += 1
+        if self._claims > 1:
+            raise KeyboardInterrupt
+        return super()._claim(_params)
+
+
+class TestInterruptStopsGracefully:
+    def test_sync_keyboard_interrupt_drains_then_deregisters(self) -> None:
+        client = InterruptingClient([_job()])
+        worker = _sync_worker(client)
+
+        @worker.process
+        def handle(ctx: Any) -> dict[str, Any]:
+            time.sleep(0.2)
+            return {"ok": True}
+
+        with pytest.raises(KeyboardInterrupt):
+            worker.start()
+
+        # The running handler was allowed to finish and was acked, and the
+        # worker deregistered so its slot is free.
+        assert client.names() == ["complete", "deregister"]
+        assert worker.state == "stopped"
+
+    def test_sync_keyboard_interrupt_with_no_jobs_deregisters(self) -> None:
+        client = InterruptingClient([])
+        worker = _sync_worker(client)
+
+        @worker.process
+        def handle(ctx: Any) -> None:
+            return None
+
+        with pytest.raises(KeyboardInterrupt):
+            worker.start()
+
+        assert client.names() == ["deregister"]
+        assert worker.state == "stopped"
+
+    @pytest.mark.asyncio
+    async def test_async_cancelled_start_drains_then_deregisters(self) -> None:
+        """Ctrl+C under asyncio.run() cancels the task awaiting start()."""
+        client = FakeClient([_job()], is_async=True)
+        worker = _async_worker(client)
+        started = asyncio.Event()
+
+        @worker.process
+        async def handle(ctx: Any) -> dict[str, Any]:
+            started.set()
+            await asyncio.sleep(0.2)
+            return {"ok": True}
+
+        runner = asyncio.create_task(worker.start())
+        await asyncio.wait_for(started.wait(), 5)
+        runner.cancel()
+
+        with pytest.raises(asyncio.CancelledError):
+            await asyncio.wait_for(runner, 5)
+
+        assert client.names() == ["complete", "deregister"]
+        assert worker.state == "stopped"

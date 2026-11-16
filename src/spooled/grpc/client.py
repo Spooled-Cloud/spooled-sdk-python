@@ -4,7 +4,7 @@ gRPC client for Spooled SDK.
 Provides high-performance gRPC communication with the Spooled API,
 including support for unary calls, server-side streaming, and bidirectional streaming.
 
-Note: Requires the 'grpc' extra: pip install spooled[grpc]
+Note: Requires the 'grpc' extra: pip install "spooled[grpc]"
 """
 
 from __future__ import annotations
@@ -42,6 +42,11 @@ _GRPC_QUOTA_MESSAGE = re.compile(r"\blimit reached\b", re.IGNORECASE)
 # Unary Complete/Fail/RenewLease report a lost lease as FAILED_PRECONDITION
 # with the text only. REST uses 409 code LEASE_EXPIRED for the same two cases.
 _LEASE_MISMATCH_SNIPPET = "does not match the job's current lease"
+
+# Struct numbers are doubles. A whole number up to this bound is an integer the
+# producer sent (REST returns it as an int); above it the double is no longer
+# exact, so it stays a float rather than pretending to be the original value.
+_MAX_SAFE_INTEGER = 2**53 - 1
 
 # Optional gRPC imports
 try:
@@ -85,7 +90,9 @@ class GrpcDequeueRequest(BaseModel):
     queue_name: str = Field(..., min_length=1, max_length=100)
     worker_id: str
     batch_size: int = Field(default=1, ge=1, le=100)
-    lease_duration_secs: int = Field(default=30, ge=5, le=3600)
+    # None leaves the field unset on the wire; the server then applies its gRPC
+    # default lease (GRPC_DEFAULT_LEASE_DURATION_SECS, 300 s unless configured).
+    lease_duration_secs: int | None = Field(default=None, ge=5, le=3600)
 
     model_config = {"extra": "forbid"}
 
@@ -269,20 +276,51 @@ def _dict_to_struct(d: dict[str, Any] | None) -> struct_pb2.Struct | None:
     return struct
 
 
+def _restore_ints(value: Any) -> Any:
+    """Turn whole-number floats back into ints, recursively.
+
+    ``Struct`` stores every number as a double, so ``{"x": 1}`` decodes as
+    ``{"x": 1.0}``. REST returns ``1``; this makes gRPC agree. Only floats that
+    are whole and within ``_MAX_SAFE_INTEGER`` are converted: fractional values,
+    NaN/inf and integers too large to be exact stay floats.
+    """
+    if isinstance(value, float):
+        if value.is_integer() and abs(value) <= _MAX_SAFE_INTEGER:
+            return int(value)
+        return value
+    if isinstance(value, dict):
+        return {key: _restore_ints(item) for key, item in value.items()}
+    if isinstance(value, list):
+        return [_restore_ints(item) for item in value]
+    return value
+
+
 def _struct_to_dict(struct: struct_pb2.Struct | None) -> dict[str, Any] | None:
     """Convert a protobuf Struct to a Python dict.
 
     gRPC carries payload/result as ``google.protobuf.Struct``: only JSON
     objects fit (a non-object REST payload arrives empty), and numbers are
-    doubles, so integers of 2**53 and above lose precision. REST keeps both.
+    doubles. Whole numbers come back as ``int``, as over REST; integers of
+    2**53 and above lose precision and stay ``float``. A whole-number float the
+    producer sent (``1.0``) also comes back as ``int``.
     """
     if struct is None:
         return None
     # MessageToDict preserves all nested structures
     from google.protobuf.json_format import MessageToDict
 
-    result: dict[str, Any] = MessageToDict(struct)
+    result: dict[str, Any] = _restore_ints(MessageToDict(struct))
     return result
+
+
+def _is_local_cancel(error: Any) -> bool:
+    """True when ``error`` carries the CANCELLED status a local ``cancel()`` produces."""
+    if grpc is None:
+        return False
+    try:
+        return bool(error.code() == grpc.StatusCode.CANCELLED)
+    except (AttributeError, TypeError):
+        return False
 
 
 def _timestamp_to_datetime(ts: timestamp_pb2.Timestamp | None) -> datetime | None:
@@ -479,23 +517,38 @@ class JobStream:
         self._options = options or StreamOptions()
         self._timeout_seconds = timeout_seconds
         self._cancelled = False
+        self._ended = False
 
     def __iter__(self) -> Iterator[GrpcJob]:
         return self
 
+    def _end(self) -> None:
+        """Run ``on_end`` once, however the stream finished."""
+        if self._ended:
+            return
+        self._ended = True
+        if self._options.on_end:
+            self._options.on_end()
+
     def __next__(self) -> GrpcJob:
         if self._cancelled:
+            self._end()
             raise StopIteration
 
         try:
             proto_job = next(self._call)
             return _proto_job_to_grpc_job(proto_job)
         except StopIteration:
-            if self._options.on_end:
-                self._options.on_end()
+            self._end()
             raise
         except Exception as e:
             if grpc is not None and isinstance(e, grpc.RpcError):
+                # cancel() makes a next() that is blocked on the call raise
+                # CANCELLED ("Locally cancelled by application!"). The caller
+                # asked for that, so the iteration just ends.
+                if self._cancelled and _is_local_cancel(e):
+                    self._end()
+                    raise StopIteration from None
                 mapped = _map_grpc_error(e, self._timeout_seconds)
                 if self._options.on_error:
                     self._options.on_error(mapped)
@@ -505,7 +558,7 @@ class JobStream:
             raise
 
     def cancel(self) -> None:
-        """Cancel the stream."""
+        """Cancel the stream. A loop iterating it ends without an error."""
         self._cancelled = True
         if hasattr(self._call, "cancel"):
             self._call.cancel()
@@ -565,6 +618,7 @@ class ProcessJobsStream:
         self._response_iterator: Any = None
         self._stream: Any = None
         self._ended = False
+        self._cancelled = False
         self._started = False
 
     def _ensure_started(self) -> None:
@@ -608,14 +662,15 @@ class ProcessJobsStream:
         proto_req = ProtoProcessRequest()
 
         if request.dequeue:
-            proto_req.dequeue.CopyFrom(
-                DequeueRequest(
-                    queue_name=request.dequeue.queue_name,
-                    worker_id=request.dequeue.worker_id,
-                    lease_duration_secs=request.dequeue.lease_duration_secs,
-                    batch_size=request.dequeue.batch_size,
-                )
+            dequeue_req = DequeueRequest(
+                queue_name=request.dequeue.queue_name,
+                worker_id=request.dequeue.worker_id,
+                batch_size=request.dequeue.batch_size,
             )
+            # Left unset (0), the server applies its gRPC default lease.
+            if request.dequeue.lease_duration_secs is not None:
+                dequeue_req.lease_duration_secs = request.dequeue.lease_duration_secs
+            proto_req.dequeue.CopyFrom(dequeue_req)
         elif request.complete:
             complete_req = CompleteRequest(
                 job_id=request.complete.job_id,
@@ -678,6 +733,10 @@ class ProcessJobsStream:
 
         except Exception as e:
             if grpc is not None and isinstance(e, grpc.RpcError):
+                # cancel() ends the response stream with CANCELLED. The caller
+                # asked for that, so the generator just finishes.
+                if self._cancelled and _is_local_cancel(e):
+                    return
                 mapped = _map_grpc_error(e, self._timeout_seconds)
                 if self._options.on_error:
                     self._options.on_error(mapped)
@@ -695,8 +754,9 @@ class ProcessJobsStream:
         self._request_queue.put(None)
 
     def cancel(self) -> None:
-        """Cancel the stream."""
+        """Cancel the stream. A ``receive()`` loop ends without an error."""
         self._ended = True
+        self._cancelled = True
         self._request_queue.put(None)
         if self._stream and hasattr(self._stream, "cancel"):
             self._stream.cancel()
@@ -777,7 +837,7 @@ class GrpcQueueService:
         worker_id: str,
         *,
         batch_size: int = 1,
-        lease_duration_secs: int = 30,
+        lease_duration_secs: int | None = None,
     ) -> GrpcDequeueResponse:
         """
         Dequeue jobs via gRPC.
@@ -786,7 +846,9 @@ class GrpcQueueService:
             queue_name: Name of the queue
             worker_id: Worker ID
             batch_size: Number of jobs to dequeue
-            lease_duration_secs: Lease duration in seconds
+            lease_duration_secs: Lease duration in seconds (5-3600). Omit it to
+                use the server's gRPC default, 300 s unless the server is
+                configured otherwise.
 
         Returns:
             GrpcDequeueResponse with list of jobs
@@ -797,8 +859,10 @@ class GrpcQueueService:
             queue_name=queue_name,
             worker_id=worker_id,
             batch_size=batch_size,
-            lease_duration_secs=lease_duration_secs,
         )
+        # proto3 int32: unset is 0, which the server reads as "use the default".
+        if lease_duration_secs is not None:
+            request.lease_duration_secs = lease_duration_secs
 
         response = _call_unary(self._stub.Dequeue, request, self._metadata, self._timeout_seconds)
         jobs = [_proto_job_to_grpc_job(job) for job in response.jobs]
@@ -967,7 +1031,7 @@ class GrpcQueueService:
         queue_name: str,
         worker_id: str,
         *,
-        lease_duration_secs: int = 30,
+        lease_duration_secs: int | None = None,
         options: StreamOptions | None = None,
     ) -> JobStream:
         """
@@ -979,7 +1043,9 @@ class GrpcQueueService:
         Args:
             queue_name: Name of the queue
             worker_id: Worker ID
-            lease_duration_secs: Lease duration for claimed jobs
+            lease_duration_secs: Lease duration for claimed jobs (5-3600). Omit
+                it to use the server's gRPC default, 300 s unless the server is
+                configured otherwise.
             options: Stream options for callbacks
 
         Returns:
@@ -995,11 +1061,10 @@ class GrpcQueueService:
         """
         from spooled.grpc.stubs import StreamJobsRequest
 
-        request = StreamJobsRequest(
-            queue_name=queue_name,
-            worker_id=worker_id,
-            lease_duration_secs=lease_duration_secs,
-        )
+        request = StreamJobsRequest(queue_name=queue_name, worker_id=worker_id)
+        # proto3 int32: unset is 0, which the server reads as "use the default".
+        if lease_duration_secs is not None:
+            request.lease_duration_secs = lease_duration_secs
 
         kwargs: dict[str, Any] = {"metadata": self._metadata}
         if self._stream_timeout_seconds is not None:
@@ -1204,7 +1269,7 @@ class SpooledGrpcClient:
     Provides high-performance communication with the Spooled API using gRPC.
     Supports unary calls, server-side streaming, and bidirectional streaming.
 
-    Note: Requires the 'grpc' extra: pip install spooled[grpc]
+    Note: Requires the 'grpc' extra: pip install "spooled[grpc]"
 
     Example:
         >>> from spooled.grpc import SpooledGrpcClient
@@ -1256,7 +1321,7 @@ class SpooledGrpcClient:
             stream_timeout: Optional timeout for long-lived streaming RPCs. Defaults to no deadline.
         """
         if not HAS_GRPC:
-            raise ImportError("grpcio package required. Install with: pip install spooled[grpc]")
+            raise ImportError('grpcio package required. Install with: pip install "spooled[grpc]"')
 
         self._address = address
         self._api_key = api_key

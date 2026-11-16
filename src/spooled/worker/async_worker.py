@@ -226,7 +226,12 @@ class AsyncSpooledWorker:
         return decorator
 
     async def start(self) -> None:
-        """Start the worker (runs until it has fully stopped)."""
+        """Start the worker (runs until it has fully stopped).
+
+        Cancelling the task that runs ``start()`` (which is what Ctrl+C does
+        under ``asyncio.run()``) runs a graceful ``stop()`` before the
+        cancellation propagates, so the worker drains and deregisters.
+        """
         if self._state != "idle":
             raise RuntimeError(f"Cannot start worker in state: {self._state}")
 
@@ -281,16 +286,24 @@ class AsyncSpooledWorker:
             )
 
             # Poll loop
-            while self._state == "running":
-                await self._poll()
-                try:
-                    await asyncio.wait_for(
-                        self._shutdown_event.wait(),
-                        timeout=self._options.poll_interval,
-                    )
-                    break  # Shutdown requested
-                except asyncio.TimeoutError:
-                    pass  # Continue polling
+            try:
+                while self._state == "running":
+                    await self._poll()
+                    try:
+                        await asyncio.wait_for(
+                            self._shutdown_event.wait(),
+                            timeout=self._options.poll_interval,
+                        )
+                        break  # Shutdown requested
+                    except asyncio.TimeoutError:
+                        pass  # Continue polling
+            except (asyncio.CancelledError, KeyboardInterrupt):
+                # Ctrl+C under asyncio.run() cancels this task (or raises
+                # KeyboardInterrupt in it). Run the same graceful stop as a
+                # SIGTERM handler would (drain, then deregister), so the worker
+                # frees its slot, then let the cancellation/interrupt continue.
+                await self.stop()
+                raise
 
             # stop() runs in its own task: hold start() until it has drained and
             # deregistered, so callers can safely close the client once start()

@@ -76,7 +76,7 @@ class TestDequeueRequest:
             worker_id="worker_1",
         )
         assert req.batch_size == 1
-        assert req.lease_duration_secs == 30
+        assert req.lease_duration_secs is None  # unset: server gRPC default (300 s)
 
     def test_custom_values(self) -> None:
         """Test custom values."""

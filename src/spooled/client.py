@@ -276,7 +276,7 @@ class SpooledClient:
                 from spooled.grpc.client import SpooledGrpcClient
             except ImportError as e:
                 raise ImportError(
-                    "gRPC package required. Install with: pip install spooled[grpc]"
+                    'gRPC package required. Install with: pip install "spooled[grpc]"'
                 ) from e
 
             # Use the configured gRPC address (default: grpc.spooled.cloud:443, as in
@@ -339,7 +339,7 @@ class SpooledClient:
             )
         except ImportError as e:
             raise ImportError(
-                "Realtime packages required. Install with: pip install spooled[realtime]"
+                'Realtime packages required. Install with: pip install "spooled[realtime]"'
             ) from e
 
         # Get an initial JWT (fails fast on auth errors at call time).

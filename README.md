@@ -25,13 +25,13 @@ pip install spooled
 
 ```bash
 # For real-time events (WebSocket/SSE)
-pip install spooled[realtime]
+pip install "spooled[realtime]"
 
 # For gRPC support
-pip install spooled[grpc]
+pip install "spooled[grpc]"
 
 # All features
-pip install spooled[all]
+pip install "spooled[all]"
 ```
 
 ## Quick Start
@@ -66,11 +66,21 @@ client.close()
 ### Process Jobs with a Worker
 
 ```python
+import signal
+import socket
+
 from spooled import SpooledClient
 from spooled.worker import SpooledWorker
 
 client = SpooledClient(api_key="sp_live_...")
-worker = SpooledWorker(client, queue_name="emails", concurrency=10)
+worker = SpooledWorker(
+    client,
+    queue_name="emails",
+    concurrency=10,
+    # Worker ids are global across all Spooled accounts, so "worker-1" is taken.
+    # Derive a stable one from something unique to this machine, or omit it.
+    worker_id=f"{socket.gethostname()}-emails",
+)
 
 @worker.process
 def handle_job(ctx):
@@ -91,13 +101,21 @@ def handle_job(ctx):
 def on_completed(event):
     print(f"Job {event.job_id} completed!")
 
-worker.start()  # Blocking; returns after worker.stop() has drained running jobs
+# Ctrl+C (SIGINT) and SIGTERM both stop the worker gracefully. Deregistering
+# frees its slot at once instead of after the server notices missed heartbeats.
+signal.signal(signal.SIGINT, lambda *_: worker.stop())
+signal.signal(signal.SIGTERM, lambda *_: worker.stop())
+
+worker.start()  # Blocking; returns after worker.stop() has drained and deregistered
+client.close()
 ```
 
-`worker.stop()` (call it from a SIGTERM/SIGINT handler) stops claiming jobs, lets running
-handlers finish for up to `shutdown_timeout` seconds and still acks their results, then
-deregisters. A handler is only signalled (`ctx.signal`) and failed once it outlives that
-timeout or the job's own `timeout_seconds`. See [docs/WORKER.md](docs/WORKER.md).
+`worker.stop()` stops claiming jobs, lets running handlers finish for up to
+`shutdown_timeout` seconds and still acks their results, then deregisters. A handler is only
+signalled (`ctx.signal`) and failed once it outlives that timeout or the job's own
+`timeout_seconds`. Without a SIGINT handler, Ctrl+C runs the same `stop()` inside `start()`
+before the `KeyboardInterrupt` propagates (the async worker does the same when its task is
+cancelled). See [docs/WORKER.md](docs/WORKER.md).
 
 If you drive the worker endpoints yourself (`client.jobs.claim/complete/fail/heartbeat`),
 send the `lease_id` from the claimed job on every `complete`, `fail` and `heartbeat`: the API
@@ -248,16 +266,19 @@ Leases and streams (server behaviour):
 - `queue.complete`, `queue.fail` and `queue.renew_lease` need the dequeued job's `lease_id`
   (`INVALID_ARGUMENT` without it). `queue.fail(..., retry=False, lease_id=...)` dead-letters the
   job now; the default (`retry=True`) retries it until `max_retries` is used up.
-- `workers.register(queue_name, hostname, worker_id="pod-7")` takes an optional stable
-  `worker_id`: registering the same id again after a restart updates that worker instead of
-  adding one.
+- `workers.register(queue_name, hostname, worker_id=f"{socket.gethostname()}-emails")` takes
+  an optional stable `worker_id`: registering the same id again after a restart updates that
+  worker instead of adding one. Ids are global across all Spooled accounts (one another
+  account holds is a 409), so derive it from something unique to the machine.
 
 Payloads over gRPC are `google.protobuf.Struct`, which has two limits that REST does not:
 
 - `payload` and `result` must be JSON **objects**. A job created over REST with a string,
   number or array payload arrives over gRPC as an empty dict.
 - Struct numbers are doubles, so integers of 2^53 (9 007 199 254 740 992) and above lose
-  precision over gRPC. REST keeps them exact; send large ids as strings, or use REST.
+  precision over gRPC and come back as `float`. REST keeps them exact; send large ids as
+  strings, or use REST. Smaller whole numbers come back as `int`, as over REST (a `1.0`
+  the producer sent also comes back as `1`).
 
 ### When to use gRPC?
 

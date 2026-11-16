@@ -4,7 +4,7 @@ gRPC module for Spooled SDK.
 Provides high-performance gRPC communication with the Spooled API,
 including unary calls, server-side streaming, and bidirectional streaming.
 
-Note: Requires the 'grpc' extra: pip install spooled[grpc]
+Note: Requires the 'grpc' extra: pip install "spooled[grpc]"
 
 Example:
     >>> from spooled.grpc import SpooledGrpcClient

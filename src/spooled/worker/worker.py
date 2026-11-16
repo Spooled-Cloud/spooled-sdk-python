@@ -240,7 +240,11 @@ class SpooledWorker:
         return decorator
 
     def start(self) -> None:
-        """Start the worker (blocking until it has fully stopped)."""
+        """Start the worker (blocking until it has fully stopped).
+
+        ``KeyboardInterrupt`` (Ctrl+C without a SIGINT handler) runs a graceful
+        ``stop()`` before it propagates, so the worker drains and deregisters.
+        """
         if self._state != "idle":
             raise RuntimeError(f"Cannot start worker in state: {self._state}")
 
@@ -298,9 +302,18 @@ class SpooledWorker:
             )
 
             # Poll loop (blocking)
-            while self._state == "running" and not self._shutdown_event.is_set():
-                self._poll()
-                self._shutdown_event.wait(self._options.poll_interval)
+            try:
+                while self._state == "running" and not self._shutdown_event.is_set():
+                    self._poll()
+                    self._shutdown_event.wait(self._options.poll_interval)
+            except KeyboardInterrupt:
+                # Ctrl+C with no SIGINT handler installed: run the same graceful
+                # stop as a SIGTERM handler would (drain, then deregister), so
+                # the worker frees its slot instead of holding it until the
+                # server notices the missing heartbeats. The interrupt is then
+                # re-raised; a second Ctrl+C during the drain exits at once.
+                self.stop()
+                raise
 
             # stop() may be running on another thread: hold start() until it has
             # drained and deregistered, so callers can safely close the client
